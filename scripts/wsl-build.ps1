@@ -4,7 +4,8 @@ param(
     [Parameter(ParameterSetName = 'Sync')] [switch] $SyncOnly,
     [Parameter(ParameterSetName = 'Broad')] [switch] $Broad,
     [Parameter(ParameterSetName = 'Style')] [switch] $StyleIO,
-    [Parameter(ParameterSetName = 'Engine')] [switch] $Engine
+    [Parameter(ParameterSetName = 'Engine')] [switch] $Engine,
+    [switch] $SkipTests
 )
 
 $ErrorActionPreference = 'Stop'
@@ -26,6 +27,7 @@ rsync -rt --delete --exclude=/.git --exclude=/WSL_image --exclude=target/ -- ./ 
 if [ "$1" = sync ]; then
     exit 0
 fi
+test_mode="$2"
 cd -- "$workspace"
 if [ "$1" = broad ]; then
     classes=$(
@@ -33,7 +35,8 @@ if [ "$1" = broad ]; then
             core/{RhythmMusicGeneration,RhythmMusicGenerationSPI,RhythmParametersImpl,RhythmDatabase,OutputSynth}/src/main/java \
             plugins/YamJJazz/src/main/java -type f -name '*.java' \
             ! -name package-info.java ! -name module-info.java \
-            ! -path '*/ui/*' ! -path '*/test/*' |
+            ! -path '*/ui/*' ! -path '*/test/*' ! -name FixMidiMixDialog.java \
+            ! -path '*/midi/api/device/*' ! -path '*/midi/api/sequencer/*' |
         sed -e 's|^.*/src/main/java/||' -e 's|\.java$||' -e 's|/|.|g' |
         sort -u | paste -sd, -
     )
@@ -48,10 +51,14 @@ elif [ "$1" = engine ]; then
 else
     set --
 fi
+if [ "$test_mode" = skip ]; then
+    set -- -Djjazzlab.surefire.skipTests=true "$@"
+fi
 exec mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 '@
 $command = $command -replace "`r`n", "`n"
 $action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } elseif ($Engine) { 'engine' } else { 'build' }
+$testMode = if ($SkipTests) { 'skip' } else { 'run' }
 $launcher = @'
 set -euo pipefail
 cg=/sys/fs/cgroup
@@ -86,11 +93,11 @@ printf '%s\n' '12884901888' > "$job/memory.max"
 (
     printf '%s\n' "$BASHPID" > "$job/cgroup.procs"
     exec setpriv --reuid=jjazzdev --regid="$(id -g jjazzdev)" --init-groups --reset-env \
-        /bin/bash -c "$1" bash "$2"
+        /bin/bash -c "$1" bash "$2" "$3"
 )
 '@
 $launcher = $launcher -replace "`r`n", "`n"
-& wsl.exe -d wasm_jjazzlab_dev -u root --cd $repo --exec bash -c $launcher bash $command $action
+& wsl.exe -d wasm_jjazzlab_dev -u root --cd $repo --exec bash -c $launcher bash $command $action $testMode
 if ($LASTEXITCODE -ne 0) {
     throw "WSL $action failed with exit code $LASTEXITCODE"
 }
