@@ -125,38 +125,10 @@ public class CASMDataReader
 
             long sectionSize = readUInt(in);
             LOGGER.log(Level.FINE, "read() CASM sectionSize={0}", hex(sectionSize));
-            parseCASMdata(readSection(in, sectionSize));
+            buf = new byte[(int) sectionSize]; // cast to int is ok, CASM section should never be > 0X7FFF (32KBytes)
+            in.readFully(buf);
+            parseCASMdata(buf);
         }
-    }
-
-    /**
-     * Read the CASM chunk of an in-memory style without opening its file again.
-     *
-     * @param data the original style bytes
-     * @param offset byte offset of the CASM chunk header
-     * @param ticksPerQuarter MIDI resolution read from the style header
-     */
-    public void readCasmChunk(byte[] data, int offset, int ticksPerQuarter) throws IOException, FormatNotSupportedException
-    {
-        if (offset < 0 || offset > data.length)
-        {
-            throw new FormatNotSupportedException(logName + " - Invalid CASM offset");
-        }
-        var in = new DataInputStream(new ByteArrayInputStream(data, offset, data.length - offset));
-        readStringAndAssert(in, "CASM");
-        style.ticksPerQuarter = ticksPerQuarter;
-        parseCASMdata(readSection(in, readUInt(in)));
-    }
-
-    private byte[] readSection(DataInputStream in, long size) throws IOException, FormatNotSupportedException
-    {
-        if (size > in.available())
-        {
-            throw new FormatNotSupportedException(logName + " - Truncated CASM section (" + size + " bytes)");
-        }
-        byte[] section = new byte[(int) size];
-        in.readFully(section);
-        return section;
     }
 
     private void parseCASMdata(byte[] casmData) throws IOException, FormatNotSupportedException
@@ -173,7 +145,9 @@ public class CASMDataReader
                 throw new FormatNotSupportedException(logName + " - CSEG section expected, found section name=" + sectionName);
             }
             long sectionSize = readUInt(in);
-            parseCSEGdata(readSection(in, sectionSize));
+            buf = new byte[(int) sectionSize]; // cast to int is ok, CASM section should never be > 0X7FFF (32KBytes)
+            in.readFully(buf);
+            parseCSEGdata(buf);
             buf = new byte[4];
         }
     }
@@ -188,7 +162,8 @@ public class CASMDataReader
         readStringAndAssert(in, "Sdec");
         long sectionSize = readUInt(in);
         LOGGER.log(Level.FINE, "parseCSEGdata() sSdec sectionSize={0}", sectionSize);
-        byte[] buf = readSection(in, sectionSize);
+        byte[] buf = new byte[(int) sectionSize]; // cast to int is ok, small section
+        in.read(buf);
         String s = Utilities.toString(buf); // E.g. "Main A,Main B,Intro A,Fill In AA,Ending A"
         LOGGER.log(Level.FINE, "parseCSEGdata() s={0}", s);
         String[] strs = s.split(" *, *");
@@ -227,7 +202,8 @@ public class CASMDataReader
             }
             sectionSize = readUInt(in);
             LOGGER.log(Level.FINE, "parseCSEGdata() Ctab sectionName=" + sectionName + " sectionSize={0}", sectionSize);
-            buf = readSection(in, sectionSize);
+            buf = new byte[(int) sectionSize]; // cast to int is ok, small section
+            in.readFully(buf);
             switch (sectionName)
             {
                 case "Ctab":
@@ -265,7 +241,8 @@ public class CASMDataReader
                             ctab.ctb2Main.ntt = cnttData.ntt;
                         } else
                         {
-                            LOGGER.info(logName + " - parseCSEGData() cntt processing, unexpected ctab=null for channel=" + cnttData.channel);
+                            LOGGER.log(Level.INFO, "{0} - parseCSEGData() cntt processing, unexpected ctab=null for channel={1}", new Object[]{logName,
+                                cnttData.channel});
                         }
                     }
                     break;
@@ -437,7 +414,10 @@ public class CASMDataReader
             throw new FormatNotSupportedException(logName + " - Invalid dest channel value in Ctab: " + destChannel);
         }
         cTab.accType = AccType.getAccType(destChannel);
-        LOGGER.fine("parseCtabData()  channel=" + srcChannel + " name=" + cTab.name + " accType=" + cTab.accType);
+        LOGGER.log(Level.FINE, "parseCtabData()  channel={0} name={1} accType={2}", new Object[]
+        {
+            srcChannel, cTab.name, cTab.accType
+        });
         cTab.editable = (in.readByte() == 0);
         // Bitfields for muted notes
         byte b1 = in.readByte();
@@ -496,7 +476,7 @@ public class CASMDataReader
 
     private long readUInt(DataInputStream in) throws IOException
     {
-        return in.readInt() & 0xffff_ffffL;
+        return (long) (in.readInt() & 0xFFFFFFFF);
     }
 
     private int readUByte(DataInputStream in) throws IOException

@@ -8,6 +8,7 @@ public final class SmfReader
 {
     private static final int HEADER = 0x4d546864;
     private static final int TRACK = 0x4d54726b;
+    private static final int CASM = 0x4341534d;
 
     public record Header(int format, int trackCount, int ticksPerQuarter, int endOffset)
     {
@@ -72,6 +73,34 @@ public final class SmfReader
             }
         }
         return new Header(format, tracks, division, file.position);
+    }
+
+    /** Bounds-check lengths before passing an uploaded file to the desktop CASM reader. */
+    static void validateStyleLayout(byte[] input)
+    {
+        int trackEnd = read(input, null).endOffset();
+        // Yamaha styles occasionally report a track size off by one byte.
+        for (int offset = Math.max(0, trackEnd - 1); offset <= Math.min((long) trackEnd + 1, input.length - 4L); offset++)
+        {
+            var tail = new Cursor(input, offset, input.length);
+            if (tail.readInt() != CASM)
+            {
+                continue;
+            }
+            var casm = tail.readChunk();
+            while (casm.position < casm.end)
+            {
+                casm.readInt(); // CSEG tag
+                var segment = casm.readChunk();
+                while (segment.position < segment.end)
+                {
+                    segment.readInt();
+                    segment.readChunk();
+                }
+            }
+            return;
+        }
+        throw new IllegalArgumentException("Missing CASM chunk");
     }
 
     private static void readTrack(Cursor track, int trackNumber, EventSink sink)

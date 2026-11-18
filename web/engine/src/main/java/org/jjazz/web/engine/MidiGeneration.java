@@ -6,10 +6,7 @@ import java.util.List;
 import javax.sound.midi.MidiSystem;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
 import org.jjazz.harmony.api.Position;
-import org.jjazz.midi.api.MidiUtilities;
-import org.jjazz.midi.api.synths.GMSynth;
-import org.jjazz.midimix.MidiMixManagerImpl;
-import org.jjazz.outputsynth.api.OutputSynth;
+import org.jjazz.midimix.spi.MidiMixManager;
 import org.jjazz.rhythmmusicgeneration.api.SongSequenceBuilder;
 import org.jjazz.song.spi.SongContextFactory;
 import org.jjazz.song.spi.SongFactory;
@@ -44,11 +41,10 @@ final class MidiGeneration
         structure.performWriteAPImethodThrowing(structure.addSongPartsOperation(List.of(part)));
         var song = factory.createSong("Web accompaniment", structure, true);
         song.setTempo(tempo == 0 ? rhythm.getPreferredTempo() : tempo);
-        var gm = new OutputSynth(GMSynth.getInstance());
-        var mix = new MidiMixManagerImpl().createMix(rhythm, gm::findInstrument);
+        var mix = MidiMixManager.getDefault().createMix(rhythm);
         var builder = new SongSequenceBuilder(SongContextFactory.getDefault().of(song, mix));
-        var result = builder.buildAll();
-        builder.makeSequenceExportable(result, false, MidiUtilities::getGmModeOnSysExMessage);
+        var result = builder.buildAll(true);
+        builder.makeSequenceExportable(result, false);
         MidiSystem.write(result.sequence, 1, output);
     }
 }

@@ -12,8 +12,6 @@ import javax.sound.midi.MetaMessage;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.ShortMessage;
 import javax.sound.midi.SysexMessage;
-import org.jjazz.yamjjazz.CASMDataReader;
-import org.jjazz.yamjjazz.FormatNotSupportedException;
 import org.jjazz.yamjjazz.rhythm.api.Style;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -144,8 +142,10 @@ class SmfReaderTest
     @Test
     void rejectsOversizedCasmLength()
     {
-        var reader = new CASMDataReader(new Style(), "Oversized CASM");
-        byte[] bytes = HEX.parseHex("4341534dffffffff");
-        assertThrows(FormatNotSupportedException.class, () -> reader.readCasmChunk(bytes, 0, 480));
+        String midi = "4d546864000000060000000101e04d54726b0000000400ff2f00";
+        byte[] outer = HEX.parseHex(midi + "4341534dffffffff");
+        byte[] inner = HEX.parseHex(midi + "4341534d00000010435345470000000853646563ffffffff");
+        assertThrows(IllegalArgumentException.class, () -> SmfReader.validateStyleLayout(outer));
+        assertThrows(IllegalArgumentException.class, () -> SmfReader.validateStyleLayout(inner));
     }
 }

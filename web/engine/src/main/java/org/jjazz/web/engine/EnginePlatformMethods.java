@@ -28,4 +28,9 @@ public final class EnginePlatformMethods
     {
         throw new IOException("Desktop MIDI mix files are unavailable in the Web engine");
     }
+
+    public static void showProgressDialogAndRun(Runnable work, String caption)
+    {
+        work.run();
+    }
 }

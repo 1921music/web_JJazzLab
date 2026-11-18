@@ -35,7 +35,6 @@ import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import org.jjazz.chordleadsheet.api.UnsupportedEditException;
@@ -227,14 +226,6 @@ public class MidiMixManagerImpl implements MidiMixManager, PropertyChangeListene
     @Override
     public MidiMix createMix(Rhythm r)
     {
-        return createMix(r, rv -> RhythmVoiceInstrumentProvider.getProvider().findInstrument(rv));
-    }
-
-    /**
-     * Create a rhythm mix using the caller's instrument mapping.
-     */
-    public MidiMix createMix(Rhythm r, Function<RhythmVoice, Instrument> instrumentForVoice)
-    {
         Objects.requireNonNull(r);
         LOGGER.log(Level.FINE, "createMix() -- r={0}", r);
 
@@ -243,7 +234,8 @@ public class MidiMixManagerImpl implements MidiMixManager, PropertyChangeListene
         {
             for (RhythmVoice rv : r.getRhythmVoices())
             {
-                Instrument ins = instrumentForVoice.apply(rv);
+                RhythmVoiceInstrumentProvider p = RhythmVoiceInstrumentProvider.getProvider();
+                Instrument ins = p.findInstrument(rv);
                 assert ins != null : "rv=" + rv;
                 int channel = rv.getPreferredChannel();
 

@@ -40,7 +40,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.sound.midi.InvalidMidiDataException;
@@ -157,30 +156,14 @@ public class SongSequenceBuilder
      */
     public SongSequence buildAll(boolean silent) throws MusicGenerationException
     {
+        RvPhrasesBuilderTask task = new RvPhrasesBuilderTask();
         if (silent)
         {
-            return buildAll();
+            task.run();
+        } else
+        {
+            BaseProgressUtils.showProgressDialogAndRun(task, ResUtil.getString(getClass(), "PREPARING_MUSIC"));
         }
-        var task = new RvPhrasesBuilderTask();
-        BaseProgressUtils.showProgressDialogAndRun(task, ResUtil.getString(getClass(), "PREPARING_MUSIC"));
-        return buildSongSequence(task);
-    }
-
-    /**
-     * Generate the accompaniment and build its sequence synchronously, without a progress dialog.
-     *
-     * @return the generated song sequence
-     * @throws MusicGenerationException if accompaniment generation fails
-     */
-    public SongSequence buildAll() throws MusicGenerationException
-    {
-        var task = new RvPhrasesBuilderTask();
-        task.run();
-        return buildSongSequence(task);
-    }
-
-    private SongSequence buildSongSequence(RvPhrasesBuilderTask task) throws MusicGenerationException
-    {
         if (task.musicException != null)
         {
             throw task.musicException;
@@ -348,20 +331,6 @@ public class SongSequenceBuilder
      */
     public void makeSequenceExportable(SongSequence songSequence, boolean ignoreMidiMixMute)
     {
-        makeSequenceExportable(songSequence, ignoreMidiMixMute, () ->
-        {
-            OutputSynth os = OutputSynthManager.getDefault().getDefaultOutputSynth();
-            return os.getUserSettings().getModeOnUponPlaySysexMessages();
-        });
-    }
-
-    /**
-     * Prepare a sequence for export with a caller-supplied MIDI mode initialization message.
-     *
-     * @param modeOn supplies the initialization message, or null if none is needed
-     */
-    public void makeSequenceExportable(SongSequence songSequence, boolean ignoreMidiMixMute, Supplier<SysexMessage> modeOn)
-    {
         Preconditions.checkNotNull(songSequence);
 
         Sequence sequence = songSequence.sequence;
@@ -457,7 +426,8 @@ public class SongSequenceBuilder
 
 
         // Add XX mode ON initialization message
-        SysexMessage sxm = modeOn.get();
+        OutputSynth os = OutputSynthManager.getDefault().getDefaultOutputSynth();
+        SysexMessage sxm = os.getUserSettings().getModeOnUponPlaySysexMessages();
         if (sxm != null)
         {
             me = new MidiEvent(sxm, 0);

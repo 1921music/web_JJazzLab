@@ -30,9 +30,11 @@ public final class StyleInputProbe
     @JSExport
     public static int countStyleParts(byte[] bytes) throws IOException, FormatNotSupportedException
     {
-        var header = SmfReader.read(bytes, (track, tick, status, data1, data2, offset, length) -> {});
         var style = new Style();
-        new CASMDataReader(style, "Wasm style").readCasmChunk(bytes, header.endOffset(), header.ticksPerQuarter());
+        try (var file = new RawStyleFile(bytes, "style.sty"))
+        {
+            new CASMDataReader(style, "Wasm style").read(file.file());
+        }
         return style.getStylePartTypes().size();
     }
 

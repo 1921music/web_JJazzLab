@@ -75,6 +75,11 @@ public final class LibraryMethodSubstitution implements ClassHolderTransformer
                     ? EnginePlatformMethods.class.getName() : null;
             case "org.jjazz.midimix.api.MidiMix" -> target.getName().equals("loadFromFile")
                     ? EnginePlatformMethods.class.getName() : null;
+            case "org.jjazz.outputsynth.spi.OutputSynthManager" -> target.getName().equals("getDefault")
+                    ? GmOutputSynthManager.class.getName() : null;
+            case "org.netbeans.api.progress.BaseProgressUtils" -> target.getDescriptor().toString()
+                    .equals("showProgressDialogAndRun(Ljava/lang/Runnable;Ljava/lang/String;)V")
+                    ? EnginePlatformMethods.class.getName() : null;
             default -> null;
         };
     }
