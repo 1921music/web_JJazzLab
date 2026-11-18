@@ -21,6 +21,7 @@ if [ "$memory_max" != 12884901888 ] || [ "$cpus" != 0-5 ]; then
 fi
 echo "WSL sync/build: CPUs $cpus, memory limit $memory_max bytes"
 workspace="$HOME/src/web_jjazzlab"
+windows_checkout="$PWD"
 test -f pom.xml
 mkdir -p -- "$workspace"
 rsync -rt --delete --exclude=/.git --exclude=/WSL_image --exclude=target/ -- ./ "$workspace/"
@@ -28,6 +29,7 @@ if [ "$1" = sync ]; then
     exit 0
 fi
 test_mode="$2"
+build_mode="$1"
 cd -- "$workspace"
 if [ "$1" = broad ]; then
     classes=$(
@@ -54,7 +56,13 @@ fi
 if [ "$test_mode" = skip ]; then
     set -- -Djjazzlab.surefire.skipTests=true "$@"
 fi
-exec mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
+if [ "$build_mode" != engine ]; then
+    exec mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
+fi
+
+mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
+python3 web/engine/demo/package-demo.py web/engine/target/wasm-diagnostics \
+    "$windows_checkout/WSL_image/midi-demo.html"
 '@
 $command = $command -replace "`r`n", "`n"
 $action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } elseif ($Engine) { 'engine' } else { 'build' }

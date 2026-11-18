@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="ja">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>伴奏 MIDI を作成 | JJazzLab</title>
+    <!-- DEMO_STYLE -->
+</head>
+<body>
+    <main>
+        <header>
+            <p class="brand">JJazzLab</p>
+            <h1>伴奏 MIDI を作成</h1>
+            <p>コード進行とスタイルから、ブラウザで伴奏を生成します。</p>
+        </header>
+
+        <form id="midi-form">
+            <fieldset id="options">
+                <div class="field">
+                    <label for="chords">コード進行</label>
+                    <textarea id="chords" rows="3" required spellcheck="false"
+                              aria-describedby="chord-help">C | Am7 | Dm7 | G7</textarea>
+                    <small id="chord-help">1小節に1コード。空白、改行、カンマ、または | で区切ります。</small>
+                </div>
+                <div class="settings">
+                    <div class="field">
+                        <label for="style">スタイル</label>
+                        <input id="style" type="file" accept=".sty,.sst,.prs,.bcs"
+                               aria-describedby="style-help">
+                        <small id="style-help">未選択の場合は同梱の 8Beat を使用します。</small>
+                    </div>
+                    <div class="field">
+                        <label for="tempo">テンポ <span>(BPM)</span></label>
+                        <input id="tempo" type="number" min="20" max="400" step="1"
+                               placeholder="スタイルの既定値" aria-describedby="tempo-help">
+                        <small id="tempo-help">20〜400。空欄でスタイルの既定値。</small>
+                    </div>
+                </div>
+                <button type="submit">MIDIを生成してダウンロード</button>
+            </fieldset>
+            <p id="status" role="status"></p>
+            <a id="download" hidden>もう一度ダウンロード</a>
+        </form>
+    </main>
+    <!-- DEMO_SCRIPTS -->
+</body>
+</html>

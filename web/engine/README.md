@@ -21,7 +21,11 @@ TeaVMの診断や成果物の生成だけを行う場合は、`-SkipTests` で�
 
 ## ブラウザから呼び出す
 
-`-Engine` は、WSLの作業コピー（`/home/jjazzdev/src/web_jjazzlab`）内の `web/engine/target/wasm-diagnostics/` に `engine.wasm` と `engine.wasm-runtime.js` を出力します。両ファイルをHTTPで配信し、ページで先に `engine.wasm-runtime.js` を読み込みます。下の `styleFile` はブラウザで選んだ生のスタイルファイルです。
+`-Engine` で生成される Windows 側の `WSL_image/midi-demo.html` を、WasmGC に対応したブラウザで開きます。HTML単体で動作し、`file://` で開いてコード進行を入力するとMIDIをダウンロードできます。スタイルは同梱の8Beatか、選択したYamahaスタイルファイルを使います。
+
+検証ページのソースは [`demo/`](demo/) にあります。ビルド時にPython 3でWasmをgzip圧縮してBase64に変換し、ローダー、画面のコード、サンプルスタイルとともにHTMLへ埋め込みます。
+
+別の画面から使う場合、WSLの作業コピー（`/home/jjazzdev/src/web_jjazzlab`）内の `web/engine/target/wasm-diagnostics/` にある `engine.wasm` と `engine.wasm-runtime.js` をHTTPで配信し、先にローダーを読み込みます。下の `styleFile` はブラウザで選んだ生のスタイルファイルです。
 
 ```javascript
 const { exports } = await TeaVM.wasmGC.load("./engine.wasm");

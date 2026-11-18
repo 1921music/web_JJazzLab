@@ -7,7 +7,7 @@ This fork adds an experimental browser engine for [JJazzLab](https://github.com/
 
 - Read a raw Yamaha style (`.sty`, `.sst`, or `.prs`) and generate a General MIDI file from a chord progression. The current API takes one chord per bar.
 - The Web module in [`web/engine`](web/engine) supplies the browser-compatible services and TeaVM substitutions for desktop dependencies. The upstream Java sources match the base commit.
-- The Web build ends at MIDI export. A browser UI and SoundFont playback can be built separately.
+- A standalone HTML demo lets you edit chords and download MIDI. It includes an 8Beat style and accepts your own style files.
 
 From the repository root on Windows, run the following commands in PowerShell 7 with WSL 2 available.
 
@@ -16,7 +16,7 @@ From the repository root on Windows, run the following commands in PowerShell 7 
 ./scripts/wsl-build.ps1 -Engine
 ```
 
-The setup script provisions a dedicated Ubuntu 24.04 distribution with JDK 25 and Maven. Edit and commit in the Windows checkout. The build script syncs the source to WSL and writes `engine.wasm` and `engine.wasm-runtime.js` to `web/engine/target/wasm-diagnostics/` inside the WSL checkout.
+The setup script provisions a dedicated Ubuntu 24.04 distribution with JDK 25, Maven, and Python 3. Edit and commit in the Windows checkout. The build script syncs the source to WSL and writes `engine.wasm` and `engine.wasm-runtime.js` to `web/engine/target/wasm-diagnostics/` inside the WSL checkout. Open the generated `WSL_image/midi-demo.html` in a browser with WasmGC support. The demo embeds the compressed engine and works from `file://`.
 
 See the [build and API guide](web/engine/README.md) and the [design notes](docs/wasm-engine-design.md) for details in Japanese. See [LICENSE](LICENSE) for the upstream license text.
 
