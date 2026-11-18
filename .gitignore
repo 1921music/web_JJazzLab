@@ -2,6 +2,8 @@
 *.sf2
 nb-configuration.xml
 /target/
+/WSL_image/
+/web/engine/target/
 .sdkmanrc
 
 /core/Harmony/nbproject/
