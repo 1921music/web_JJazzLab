@@ -1,8 +1,9 @@
 #requires -Version 7.0
-[CmdletBinding()]
+[CmdletBinding(DefaultParameterSetName = 'Build')]
 param(
-    [switch] $SyncOnly,
-    [switch] $Broad
+    [Parameter(ParameterSetName = 'Sync')] [switch] $SyncOnly,
+    [Parameter(ParameterSetName = 'Broad')] [switch] $Broad,
+    [Parameter(ParameterSetName = 'Style')] [switch] $StyleIO
 )
 
 $ErrorActionPreference = 'Stop'
@@ -37,13 +38,16 @@ if [ "$1" = broad ]; then
     )
     test -n "$classes"
     set -- "-Dwasm.diagnostic.classes=$classes"
+elif [ "$1" = style ]; then
+    set -- -Dwasm.main.class=org.jjazz.web.engine.StyleInputProbe \
+        -Dwasm.target.file=style-io.wasm -Dwasm.diagnostic.classes=
 else
     set --
 fi
 exec mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 '@
 $command = $command -replace "`r`n", "`n"
-$action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } else { 'build' }
+$action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } else { 'build' }
 $launcher = @'
 set -euo pipefail
 cg=/sys/fs/cgroup

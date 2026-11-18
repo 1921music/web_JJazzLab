@@ -14,6 +14,8 @@
 
     <properties>
         <teavm.version>0.16.0</teavm.version>
+        <wasm.main.class>org.jjazz.web.engine.MidiGenerationProbe</wasm.main.class>
+        <wasm.target.file>probe.wasm</wasm.target.file>
         <wasm.diagnostic.classes>org.jjazz.song.SongFactoryImpl,org.jjazz.song.SongContextFactoryImpl,org.jjazz.midimix.MidiMixManagerImpl,org.jjazz.chordleadsheet.item.CLI_FactoryImpl</wasm.diagnostic.classes>
     </properties>
 
@@ -32,6 +34,17 @@
             <groupId>org.teavm</groupId>
             <artifactId>teavm-classlib</artifactId>
             <version>${teavm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.teavm</groupId>
+            <artifactId>teavm-jso</artifactId>
+            <version>${teavm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
         </dependency>
     </dependencies>
 
@@ -52,12 +65,14 @@
                         <phase>prepare-package</phase>
                         <goals>
                             <goal>compile</goal>
+                            <goal>copy-webassembly-gc-runtime</goal>
                         </goals>
                         <configuration>
-                            <mainClass>org.jjazz.web.engine.MidiGenerationProbe</mainClass>
+                            <mainClass>${wasm.main.class}</mainClass>
                             <targetType>WEBASSEMBLY_GC</targetType>
                             <targetDirectory>${project.build.directory}/wasm-diagnostics</targetDirectory>
-                            <targetFileName>probe.wasm</targetFileName>
+                            <targetFileName>${wasm.target.file}</targetFileName>
+                            <runtimeFileName>${wasm.target.file}-runtime.js</runtimeFileName>
                             <classesToPreserve>${wasm.diagnostic.classes}</classesToPreserve>
                         </configuration>
                     </execution>
