@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.jjazz.web.engine.platform.beans.PropertyChangeSupport;
+import org.jjazz.web.engine.platform.locks.ReentrantReadWriteLock;
 import org.jjazz.web.engine.platform.netbeans.Lookup;
 import org.jjazz.web.engine.platform.prefs.Preferences;
 import org.junit.jupiter.api.Test;
@@ -54,5 +55,25 @@ class PlatformSubstitutionTest
         assertEquals(60, two.getInt("tempo", 60));
         one.remove("tempo");
         assertEquals(60, one.getInt("tempo", 60));
+    }
+
+    @Test
+    void permitsNestedReadsDuringWritesAndRejectsAReadToWriteUpgrade()
+    {
+        var lock = new ReentrantReadWriteLock();
+        var reader = lock.readLock();
+        var writer = lock.writeLock();
+        reader.lock();
+        assertThrows(IllegalStateException.class, writer::lock);
+        reader.unlock();
+        writer.lock();
+        reader.lock();
+        writer.lock();
+        writer.unlock();
+        assertTrue(lock.isWriteLockedByCurrentThread());
+        reader.unlock();
+        writer.unlock();
+        assertFalse(lock.isWriteLockedByCurrentThread());
+        assertThrows(IllegalMonitorStateException.class, writer::unlock);
     }
 }
