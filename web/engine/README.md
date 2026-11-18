@@ -11,7 +11,15 @@ WindowsのリポジトリルートからPowerShell 7で実行します。
 
 同期とビルドは専用WSL内の一時的なLinux cgroupで、CPU 6個・メモリ12 GiBを上限として実行します。WSL 2のディストリビューションごとのcgroup分離が必要です。
 
-伴奏生成全体の診断は、JVM用のコードをコンパイルした後、TeaVMの依存解析で停止します。MIDI生成の入口からも `javax.sound.midi`、`java.beans`、Undoやクリップボード関連、並行処理の一部への依存が見つかっています。
+`./scripts/wsl-build.ps1 -Engine` は、伴奏生成だけを保持したWasmGCとローダーをWSLの作業コピー内の `web/engine/target/wasm-diagnostics/` に出力します。ローダーの `TeaVM.wasmGC.load` が返すインスタンスから、次のように呼び出せます。
+
+```javascript
+const { exports } = await TeaVM.wasmGC.load("./engine.wasm");
+const midi = exports.generateMidi(new Int8Array(await styleFile.arrayBuffer()),
+                                  styleFile.name, ["C", "Am7", "Dm7", "G7"], 120);
+```
+
+エンジンは生のYamahaスタイルからGMの標準MIDIファイルを生成します。初期の呼び出し口は1小節につき1コードを受け取り、テンポに `0` を指定するとスタイルの既定値を使います。
 
 `./scripts/wsl-build.ps1 -StyleIO` は、生のスタイルから標準MIDIのイベントとCASMを読む部分をWasmGCにコンパイルします。WSLの作業コピー内の `web/engine/target/wasm-diagnostics/` にWasmとローダーが出力されます。調査用の `countStyleNotes` と `countStyleParts` は、スタイルのバイト列を `Int8Array` で受け取り、Note OnとCASMのスタイルパートを数えます。
 

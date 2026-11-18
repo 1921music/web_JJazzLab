@@ -4,30 +4,18 @@ import java.util.function.Supplier;
 import java.util.logging.Level;
 
 /** Routes warnings and errors to the host without desktop log handlers. */
-public final class Logger
+public final class WebLog
 {
-    private static final Logger INSTANCE = new Logger();
-
-    private Logger()
+    private WebLog()
     {
     }
 
-    public static Logger getLogger(String name)
+    public static boolean isLoggable(Level level)
     {
-        return INSTANCE;
+        return level == Level.WARNING || level == Level.SEVERE;
     }
 
-    public static Logger getLogger(String name, String resourceBundleName)
-    {
-        return INSTANCE;
-    }
-
-    public boolean isLoggable(Level level)
-    {
-        return level.intValue() >= Level.WARNING.intValue() && level != Level.OFF;
-    }
-
-    public void log(Level level, String message)
+    public static void log(Level level, String message)
     {
         if (isLoggable(level))
         {
@@ -35,7 +23,7 @@ public final class Logger
         }
     }
 
-    public void log(Level level, String message, Object value)
+    public static void log(Level level, String message, Object value)
     {
         if (isLoggable(level))
         {
@@ -43,7 +31,7 @@ public final class Logger
         }
     }
 
-    public void log(Level level, String message, Object[] values)
+    public static void log(Level level, String message, Object[] values)
     {
         if (isLoggable(level))
         {
@@ -55,7 +43,7 @@ public final class Logger
         }
     }
 
-    public void log(Level level, String message, Throwable error)
+    public static void log(Level level, String message, Throwable error)
     {
         if (isLoggable(level))
         {
@@ -63,7 +51,7 @@ public final class Logger
         }
     }
 
-    public void log(Level level, Supplier<String> message)
+    public static void log(Level level, Supplier<String> message)
     {
         if (isLoggable(level))
         {
@@ -71,23 +59,28 @@ public final class Logger
         }
     }
 
-    public void severe(String message)
+    public static void severe(String message)
     {
         log(Level.SEVERE, message);
     }
 
-    public void warning(String message)
+    public static void warning(String message)
     {
         log(Level.WARNING, message);
     }
 
-    public void info(String message)
+    public static void info(String message)
     {
         log(Level.INFO, message);
     }
 
-    public void fine(String message)
+    public static void fine(String message)
     {
         log(Level.FINE, message);
+    }
+
+    public static void finest(String message)
+    {
+        log(Level.FINEST, message);
     }
 }

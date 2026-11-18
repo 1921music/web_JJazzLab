@@ -2,7 +2,10 @@ package org.jjazz.web.engine;
 
 import org.jjazz.chordleadsheet.item.CLI_FactoryImpl;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
+import org.jjazz.midi.api.keymap.StdKeyMapProvider;
+import org.jjazz.midi.spi.KeyMapProvider;
 import org.jjazz.midi.spi.MidiSynthFileReader;
+import org.jjazz.midi.spi.MidiSynthManager;
 import org.jjazz.midimix.MidiMixManagerImpl;
 import org.jjazz.midimix.spi.MidiMixManager;
 import org.jjazz.outputsynth.api.CakewalkInsFileReader;
@@ -32,6 +35,8 @@ final class WebServices
         registry.register(CLI_Factory.class, CLI_FactoryImpl::new);
         registry.register(MidiMixManager.class, MidiMixManagerImpl::new);
         registry.register(MidiSynthFileReader.class, CakewalkInsFileReader::new);
+        registry.register(MidiSynthManager.class, WebMidiSynthManager::new);
+        registry.register(KeyMapProvider.class, StdKeyMapProvider::new);
         installed = true;
     }
 }

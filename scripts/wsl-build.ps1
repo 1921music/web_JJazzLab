@@ -3,7 +3,8 @@
 param(
     [Parameter(ParameterSetName = 'Sync')] [switch] $SyncOnly,
     [Parameter(ParameterSetName = 'Broad')] [switch] $Broad,
-    [Parameter(ParameterSetName = 'Style')] [switch] $StyleIO
+    [Parameter(ParameterSetName = 'Style')] [switch] $StyleIO,
+    [Parameter(ParameterSetName = 'Engine')] [switch] $Engine
 )
 
 $ErrorActionPreference = 'Stop'
@@ -41,13 +42,16 @@ if [ "$1" = broad ]; then
 elif [ "$1" = style ]; then
     set -- -Dwasm.main.class=org.jjazz.web.engine.StyleInputProbe \
         -Dwasm.target.file=style-io.wasm -Dwasm.diagnostic.classes=
+elif [ "$1" = engine ]; then
+    set -- -Dwasm.main.class=org.jjazz.web.engine.WasmMidiEngine \
+        -Dwasm.target.file=engine.wasm -Dwasm.diagnostic.classes= -Dteavm.optimizationLevel=ADVANCED
 else
     set --
 fi
 exec mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 '@
 $command = $command -replace "`r`n", "`n"
-$action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } else { 'build' }
+$action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } elseif ($Engine) { 'engine' } else { 'build' }
 $launcher = @'
 set -euo pipefail
 cg=/sys/fs/cgroup

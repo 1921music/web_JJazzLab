@@ -22,6 +22,7 @@ import static org.junit.jupiter.api.Assertions.*;
 class SmfReaderTest
 {
     private static final HexFormat HEX = HexFormat.of();
+    private static final String STYLE_NAME = "8Beat.T160.STY";
 
     private record Event(int track, long tick, int status, int data1, int data2, String payload)
     {
@@ -30,22 +31,7 @@ class SmfReaderTest
     @Test
     void matchesJvmEventsFromUnmodifiedYamahaStyle(@TempDir Path directory) throws Exception
     {
-        byte[] style;
-        try (var zip = new ZipInputStream(getClass().getResourceAsStream(
-                "/org/jjazz/yamjjazz/rhythm/api/resources/YamahaDefaultFiles.zip")))
-        {
-            while (true)
-            {
-                var entry = zip.getNextEntry();
-                assertNotNull(entry, "Bundled style is missing");
-                if (entry.getName().equals("8Beat.T160.STY"))
-                {
-                    style = zip.readAllBytes();
-                    break;
-                }
-            }
-        }
-
+        byte[] style = bundledStyle();
         var sequence = MidiSystem.getSequence(new ByteArrayInputStream(style));
         var expected = new ArrayList<Event>();
         var tracks = sequence.getTracks();
@@ -87,10 +73,62 @@ class SmfReaderTest
         assertEquals("4341534d", HEX.formatHex(style, header.endOffset(), header.endOffset() + 4));
         assertEquals(expected.stream().filter(e -> (e.status & 0xf0) == 0x90 && e.data2 > 0).count(),
                 StyleInputProbe.countStyleNotes(style));
-        var file = Files.write(directory.resolve("8Beat.T160.STY"), style);
+        var file = Files.write(directory.resolve(STYLE_NAME), style);
         var desktopStyle = new Style();
         desktopStyle.readNonMusicData(file.toFile());
         assertEquals(desktopStyle.getStylePartTypes().size(), StyleInputProbe.countStyleParts(style));
+    }
+
+    @Test
+    void exportsPlayableTracksAtRequestedTempo() throws Exception
+    {
+        var output = WasmMidiEngine.generateMidi(bundledStyle(), STYLE_NAME,
+                new String[]{"C", "Am7", "Dm7", "G7"}, 120);
+        var sequence = MidiSystem.getSequence(new ByteArrayInputStream(output));
+        var tracks = sequence.getTracks();
+        assertTrue(tracks.length > 2);
+        assertTrue(sequence.getTickLength() >= 4L * 4 * sequence.getResolution() - 1);
+        boolean hasTempo = false;
+        boolean hasDrum = false;
+        boolean hasMelody = false;
+        for (var track : tracks)
+        {
+            for (int i = 0; i < track.size(); i++)
+            {
+                var message = track.get(i).getMessage();
+                if (message instanceof MetaMessage meta && meta.getType() == 0x51)
+                {
+                    if (Arrays.equals(new byte[]{7, (byte) 0xa1, 0x20}, meta.getData()))
+                    {
+                        hasTempo = true;
+                    }
+                } else if (message instanceof ShortMessage note && note.getCommand() == ShortMessage.NOTE_ON
+                        && note.getData2() > 0)
+                {
+                    hasDrum |= note.getChannel() == 9;
+                    hasMelody |= note.getChannel() != 9;
+                }
+            }
+        }
+        assertTrue(hasTempo, "Expected 120 BPM tempo meta-event");
+        assertTrue(hasDrum, "Expected GM channel 10 drum notes");
+        assertTrue(hasMelody, "Expected pitched notes");
+    }
+
+    private byte[] bundledStyle() throws Exception
+    {
+        try (var zip = new ZipInputStream(getClass().getResourceAsStream(
+                "/org/jjazz/yamjjazz/rhythm/api/resources/YamahaDefaultFiles.zip")))
+        {
+            for (var entry = zip.getNextEntry(); entry != null; entry = zip.getNextEntry())
+            {
+                if (entry.getName().equals(STYLE_NAME))
+                {
+                    return zip.readAllBytes();
+                }
+            }
+        }
+        throw new IllegalStateException("Bundled style is missing: " + STYLE_NAME);
     }
 
     @Test

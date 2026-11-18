@@ -79,6 +79,9 @@
                             <targetFileName>${wasm.target.file}</targetFileName>
                             <runtimeFileName>${wasm.target.file}-runtime.js</runtimeFileName>
                             <classesToPreserve>${wasm.diagnostic.classes}</classesToPreserve>
+                            <transformers>
+                                <transformer>org.jjazz.web.engine.LibraryMethodSubstitution</transformer>
+                            </transformers>
                         </configuration>
                     </execution>
                 </executions>
