@@ -44,10 +44,45 @@ exec mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 '@
 $command = $command -replace "`r`n", "`n"
 $action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } else { 'build' }
-& wsl.exe -d wasm_jjazzlab_dev -u root --cd $repo --exec systemd-run `
-    --quiet --wait --pipe --collect --same-dir --expand-environment=no `
-    --unit=jjazzlab-sync-build --uid=jjazzdev -p AllowedCPUs=0-5 -p MemoryMax=12G `
-    /bin/bash -c $command bash $action
+$launcher = @'
+set -euo pipefail
+cg=/sys/fs/cgroup
+# Only operate inside the distro's own cgroup. The VM root has no memory.max.
+if [ "$(findmnt -n -o FSTYPE -T "$cg")" != cgroup2 ] || [ ! -f "$cg/memory.max" ]; then
+    echo 'An isolated WSL cgroup v2 hierarchy is required.' >&2
+    exit 1
+fi
+
+mkdir -p /run/lock
+exec 9>/run/lock/jjazzlab-sync-build.lock
+if ! flock -n 9; then
+    echo 'A JJazzLab sync or build is already running.' >&2
+    exit 1
+fi
+
+printf '%s\n' '+memory +cpuset' > "$cg/cgroup.subtree_control"
+job=$(mktemp -d "$cg/jjazzlab-sync-build.XXXXXX")
+cleanup() {
+    if ! rmdir -- "$job" 2>/dev/null; then
+        # A failed build can leave child processes in this temporary group.
+        printf '1\n' > "$job/cgroup.kill"
+        rmdir -- "$job"
+    fi
+}
+trap cleanup EXIT
+trap 'exit 130' INT
+trap 'exit 143' TERM
+chmod 755 "$job"
+printf '%s\n' '0-5' > "$job/cpuset.cpus"
+printf '%s\n' '12884901888' > "$job/memory.max"
+(
+    printf '%s\n' "$BASHPID" > "$job/cgroup.procs"
+    exec setpriv --reuid=jjazzdev --regid="$(id -g jjazzdev)" --init-groups --reset-env \
+        /bin/bash -c "$1" bash "$2"
+)
+'@
+$launcher = $launcher -replace "`r`n", "`n"
+& wsl.exe -d wasm_jjazzlab_dev -u root --cd $repo --exec bash -c $launcher bash $command $action
 if ($LASTEXITCODE -ne 0) {
     throw "WSL $action failed with exit code $LASTEXITCODE"
 }
