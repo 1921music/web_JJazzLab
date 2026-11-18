@@ -28,6 +28,7 @@ public final class MidiGenerationProbe
         {
             throw new IllegalArgumentException("Usage: MidiGenerationProbe <style-file> <output.mid>");
         }
+        WebServices.install();
         var rhythm = new YamJJazzRhythmImpl(new File(args[0]));
         rhythm.loadResources();
         var factory = SongFactory.getDefault();
