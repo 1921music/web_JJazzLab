@@ -2,6 +2,10 @@
 *.sf2
 nb-configuration.xml
 /target/
+# Local WSL disks and development artifacts
+/WSL_image/
+*.vhdx
+/web/engine/target/
 .sdkmanrc
 
 /core/Harmony/nbproject/

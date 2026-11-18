@@ -1,0 +1,91 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <parent>
+        <groupId>org.jjazzlab</groupId>
+        <artifactId>jjazzlab-parent</artifactId>
+        <version>5.2.1</version>
+        <relativePath>../../pom.xml</relativePath>
+    </parent>
+    <artifactId>wasm-engine</artifactId>
+    <name>JJazzLab Web Engine</name>
+
+    <properties>
+        <teavm.version>0.16.0</teavm.version>
+        <wasm.main.class>org.jjazz.web.engine.MidiGenerationProbe</wasm.main.class>
+        <wasm.target.file>probe.wasm</wasm.target.file>
+        <wasm.diagnostic.classes>org.jjazz.song.SongFactoryImpl,org.jjazz.song.SongContextFactoryImpl,org.jjazz.midimix.MidiMixManagerImpl,org.jjazz.chordleadsheet.item.CLI_FactoryImpl</wasm.diagnostic.classes>
+    </properties>
+
+    <dependencies>
+        <dependency>
+            <groupId>org.jjazzlab.plugins</groupId>
+            <artifactId>yamjjazz</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jjazzlab.core</groupId>
+            <artifactId>songimpl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.teavm</groupId>
+            <artifactId>teavm-classlib</artifactId>
+            <version>${teavm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.teavm</groupId>
+            <artifactId>teavm-jso</artifactId>
+            <version>${teavm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.teavm</groupId>
+            <artifactId>teavm-extension-spi</artifactId>
+            <version>${teavm.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter-engine</artifactId>
+            <version>5.10.2</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-jar-plugin</artifactId>
+                <configuration combine.self="override"/>
+            </plugin>
+            <plugin>
+                <groupId>org.teavm</groupId>
+                <artifactId>teavm-maven-plugin</artifactId>
+                <version>${teavm.version}</version>
+                <executions>
+                    <execution>
+                        <id>probe-midi-generation</id>
+                        <phase>prepare-package</phase>
+                        <goals>
+                            <goal>compile</goal>
+                            <goal>copy-webassembly-gc-runtime</goal>
+                        </goals>
+                        <configuration>
+                            <mainClass>${wasm.main.class}</mainClass>
+                            <targetType>WEBASSEMBLY_GC</targetType>
+                            <targetDirectory>${project.build.directory}/wasm-diagnostics</targetDirectory>
+                            <targetFileName>${wasm.target.file}</targetFileName>
+                            <runtimeFileName>${wasm.target.file}-runtime.js</runtimeFileName>
+                            <classesToPreserve>${wasm.diagnostic.classes}</classesToPreserve>
+                            <transformers>
+                                <transformer>org.jjazz.web.engine.LibraryMethodSubstitution</transformer>
+                            </transformers>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
