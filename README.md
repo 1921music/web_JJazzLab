@@ -1,6 +1,27 @@
 
 # JJazzLab
 
+## Web MIDI engine
+
+This fork adds an experimental browser engine for [JJazzLab](https://github.com/jjazzboss/JJazzLab). It uses TeaVM 0.16.0 to compile the accompaniment generator to WebAssembly GC. The port starts from JJazzLab [`cd1944afd`](https://github.com/jjazzboss/JJazzLab/commit/cd1944afdf8a18b659cdbf63538b6df625a515ec), a commit after the 5.2.1 release.
+
+- Read a raw Yamaha style (`.sty`, `.sst`, or `.prs`) and generate a General MIDI file from a chord progression. The current API takes one chord per bar.
+- The Web module in [`web/engine`](web/engine) supplies the browser-compatible services and TeaVM substitutions for desktop dependencies. The upstream Java sources match the base commit.
+- The Web build ends at MIDI export. A browser UI and SoundFont playback can be built separately.
+
+From the repository root on Windows, run the following commands in PowerShell 7 with WSL 2 available.
+
+```powershell
+./scripts/wsl-dev.ps1
+./scripts/wsl-build.ps1 -Engine
+```
+
+The setup script provisions a dedicated Ubuntu 24.04 distribution with JDK 25 and Maven. Edit and commit in the Windows checkout. The build script syncs the source to WSL and writes `engine.wasm` and `engine.wasm-runtime.js` to `web/engine/target/wasm-diagnostics/` inside the WSL checkout.
+
+See the [build and API guide](web/engine/README.md) and the [design notes](docs/wasm-engine-design.md) for details in Japanese. See [LICENSE](LICENSE) for the upstream license text.
+
+## JJazzLab desktop application
+
 JJazzLab is a complete and open application dedicated to backing tracks generation. You type in chord symbols, select a rhythm (music style), then the application generates a complete backing track with drums, bass, guitar, piano, strings, etc. 
 
 The objective is to generate **interesting backing tracks**, i.e tracks which are: 
