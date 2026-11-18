@@ -14,7 +14,7 @@
 
     <properties>
         <teavm.version>0.16.0</teavm.version>
-        <wasm.diagnostic.classes>org.jjazz.song.SongFactoryImpl,org.jjazz.song.SongContextFactoryImpl,org.jjazz.midimix.MidiMixManagerImpl,org.jjazz.chordleadsheet.item.CLI_FactoryImpl,org.jjazz.outputsynth.api.DefaultOutputSynthManager</wasm.diagnostic.classes>
+        <wasm.diagnostic.classes>org.jjazz.song.SongFactoryImpl,org.jjazz.song.SongContextFactoryImpl,org.jjazz.midimix.MidiMixManagerImpl,org.jjazz.chordleadsheet.item.CLI_FactoryImpl</wasm.diagnostic.classes>
     </properties>
 
     <dependencies>
