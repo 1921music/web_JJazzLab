@@ -1,6 +1,10 @@
 package org.jjazz.web.engine;
 
+import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import javax.sound.midi.InvalidMidiDataException;
+import javax.sound.midi.MidiSystem;
 import org.jjazz.yamjjazz.CASMDataReader;
 import org.jjazz.yamjjazz.FormatNotSupportedException;
 import org.jjazz.yamjjazz.rhythm.api.Style;
@@ -30,6 +34,15 @@ public final class StyleInputProbe
         var style = new Style();
         new CASMDataReader(style, "Wasm style").readCasmChunk(bytes, header.endOffset(), header.ticksPerQuarter());
         return style.getStylePartTypes().size();
+    }
+
+    @JSExport
+    public static byte[] rewriteAsMidi(byte[] bytes) throws IOException, InvalidMidiDataException
+    {
+        var sequence = MidiSystem.getSequence(new ByteArrayInputStream(bytes));
+        var output = new ByteArrayOutputStream();
+        MidiSystem.write(sequence, 1, output);
+        return output.toByteArray();
     }
 
     private static final class NoteCounter implements SmfReader.EventSink

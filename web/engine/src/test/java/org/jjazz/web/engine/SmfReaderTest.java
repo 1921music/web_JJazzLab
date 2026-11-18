@@ -1,6 +1,7 @@
 package org.jjazz.web.engine;
 
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -72,6 +73,17 @@ class SmfReaderTest
         assertEquals(sequence.getResolution(), header.ticksPerQuarter());
         assertEquals(tracks.length, header.trackCount());
         assertEquals(expected, actual);
+        var webSequence = org.jjazz.web.engine.midi.MidiSystem.getSequence(new ByteArrayInputStream(style));
+        assertEquals(sequence.getTickLength(), webSequence.getTickLength());
+        var output = new ByteArrayOutputStream();
+        assertEquals(org.jjazz.web.engine.midi.MidiSystem.write(webSequence, 1, output), output.size());
+        byte[] exported = output.toByteArray();
+        var reread = new ArrayList<Event>();
+        assertEquals(1, SmfReader.read(exported, (track, tick, status, data1, data2, offset, length) ->
+            reread.add(new Event(track, tick, status, data1, data2, HEX.formatHex(exported, offset, offset + length))))
+                .format());
+        assertEquals(expected, reread);
+        assertEquals(sequence.getTickLength(), MidiSystem.getSequence(new ByteArrayInputStream(exported)).getTickLength());
         assertEquals("4341534d", HEX.formatHex(style, header.endOffset(), header.endOffset() + 4));
         assertEquals(expected.stream().filter(e -> (e.status & 0xf0) == 0x90 && e.data2 > 0).count(),
                 StyleInputProbe.countStyleNotes(style));

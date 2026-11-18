@@ -41,6 +41,11 @@
             <version>${teavm.version}</version>
         </dependency>
         <dependency>
+            <groupId>org.teavm</groupId>
+            <artifactId>teavm-extension-spi</artifactId>
+            <version>${teavm.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.junit.jupiter</groupId>
             <artifactId>junit-jupiter-engine</artifactId>
             <version>5.10.2</version>

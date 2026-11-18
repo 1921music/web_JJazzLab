@@ -4,18 +4,22 @@ package org.jjazz.web.engine;
  * Reads the PPQ MIDI portion of standard MIDI files and Yamaha style files.
  * Stops after the declared tracks so the caller can read trailing style chunks.
  */
-final class SmfReader
+public final class SmfReader
 {
     private static final int HEADER = 0x4d546864;
     private static final int TRACK = 0x4d54726b;
 
-    record Header(int format, int trackCount, int ticksPerQuarter, int endOffset)
+    public record Header(int format, int trackCount, int ticksPerQuarter, int endOffset)
     {
     }
 
     @FunctionalInterface
-    interface EventSink
+    public interface EventSink
     {
+        default void header(int format, int trackCount, int ticksPerQuarter)
+        {
+        }
+
         /**
          * For a channel event, data1 and data2 are the MIDI data bytes.
          * For a meta event, data1 is the meta type. Meta and SysEx payload
@@ -28,7 +32,10 @@ final class SmfReader
     {
     }
 
-    static Header read(byte[] input, EventSink sink)
+    /**
+     * Read the file layout and optionally decode the track events.
+     */
+    public static Header read(byte[] input, EventSink sink)
     {
         var file = new Cursor(input, 0, input.length);
         if (file.readInt() != HEADER)
@@ -47,13 +54,20 @@ final class SmfReader
         {
             throw new IllegalArgumentException("Expected positive ticks per quarter note");
         }
+        if (sink != null)
+        {
+            sink.header(format, tracks, division);
+        }
         for (int i = 0; i < tracks;)
         {
             int id = file.readInt();
             var chunk = file.readChunk();
             if (id == TRACK)
             {
-                readTrack(chunk, i, sink);
+                if (sink != null)
+                {
+                    readTrack(chunk, i, sink);
+                }
                 i++;
             }
         }
