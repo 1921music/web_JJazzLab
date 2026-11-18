@@ -213,6 +213,12 @@
     
        
     <profiles>
+        <profile>
+            <id>wasm-diagnostics</id>
+            <modules>
+                <module>web/engine</module>
+            </modules>
+        </profile>
         
         <profile>
             <!-- Use mvn -Pprepare-deploy install. Prepare a javadoc jar and a sources jar, gpg signing when needed, for each module, gpg when  -->
