@@ -8,6 +8,8 @@ import org.teavm.jso.JSExport;
 public final class WasmMidiEngine
 {
     private static String[] partMetadata = new String[0];
+    private static String[] songMix = new String[0];
+    private static boolean importedMixApplied;
     private WasmMidiEngine()
     {
     }
@@ -46,23 +48,41 @@ public final class WasmMidiEngine
     public static byte[] generateSongMidi(byte[] styleBytes, String styleName, String title, String meter, int tempo, int bars,
                                           String[] sectionNames, int[] sectionBars, String[] chords, int[] chordBars, float[] chordBeats,
                                           String[] partNames, int[] partSections, String[] partParameters,
-                                          String[] userTrackNames, String[] userPhrases) throws Exception
+                                          String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
     {
         partMetadata = new String[0];
+        songMix = new String[0];
+        importedMixApplied = false;
         var song = new SongInput(title, meter, tempo, bars, sectionNames, sectionBars, chords, chordBars, chordBeats,
                 partNames, partSections, partParameters, userTrackNames, userPhrases);
         var midi = new ByteArrayOutputStream();
+        MidiGeneration.Result result;
         if (styleName.isEmpty())
         {
-            partMetadata = MidiGeneration.generateSong(null, song, midi);
+            result = MidiGeneration.generateSong(null, song, mix, midi);
         } else
         {
             try (var style = new RawStyleFile(styleBytes, styleName))
             {
-                partMetadata = MidiGeneration.generateSong(style.file(), song, midi);
+                result = MidiGeneration.generateSong(style.file(), song, mix, midi);
             }
         }
+        partMetadata = result.metadata();
+        songMix = result.mix();
+        importedMixApplied = result.importedMixApplied();
         return midi.toByteArray();
+    }
+
+    @JSExport
+    public static String[] getSongMix()
+    {
+        return songMix.clone();
+    }
+
+    @JSExport
+    public static boolean wasImportedMixApplied()
+    {
+        return importedMixApplied;
     }
 
     /** Available values come from the original jjSwing rhythm parameter. */
