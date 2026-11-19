@@ -92,7 +92,8 @@ final class WebJJSwing
     {
         for (var entry : sequence.mapRvTrackId.entrySet())
         {
-            if (entry.getKey().isDrums() && !(entry.getKey() instanceof UserRhythmVoice))
+            if (entry.getKey().isDrums() && !(entry.getKey() instanceof UserRhythmVoice)
+                    && entry.getKey().getContainer() instanceof JJSwingRhythm)
             {
                 adaptDrumTrack(sequence.sequence.getTracks()[entry.getValue()]);
             }

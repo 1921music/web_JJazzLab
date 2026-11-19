@@ -66,21 +66,53 @@ public final class WasmMidiEngine
                                                     int[] partSections, String[] partParameters, String[] userTrackNames,
                                                     String[] userPhrases, String[] mix) throws Exception
     {
+        return generateSongMidiWithStyles(styleBytes, new String[]{styleName}, new int[]{styleBytes.length}, new int[partNames.length],
+                title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats, partNames, partSections,
+                partParameters, userTrackNames, userPhrases, mix);
+    }
+
+    /** Per-part style indices refer to the supplied style names and contiguous byte ranges. */
+    @JSExport
+    public static byte[] generateSongMidiWithStyles(byte[] styleBytes, String[] styleNames, int[] styleLengths, int[] partSources,
+                                                    String title, int tempo, int bars, String[] sectionNames, int[] sectionBars,
+                                                    String[] sectionMeters, String[] chords, int[] chordBars, float[] chordBeats,
+                                                    String[] partNames, int[] partSections, String[] partParameters,
+                                                    String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
+    {
         partMetadata = new String[0];
         songMix = new String[0];
         importedMixApplied = false;
+        if (styleNames.length == 0 || styleNames.length != styleLengths.length)
+        {
+            throw new IllegalArgumentException("Invalid song style columns");
+        }
         var song = new SongInput(title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats,
                 partNames, partSections, partParameters, userTrackNames, userPhrases);
         var midi = new ByteArrayOutputStream();
+        var staged = new RawStyleFile[styleNames.length];
+        var files = new java.io.File[styleNames.length];
         MidiGeneration.Result result;
-        if (styleName.isEmpty())
+        int offset = 0;
+        try
         {
-            result = MidiGeneration.generateSong(null, song, mix, midi);
-        } else
-        {
-            try (var style = new RawStyleFile(styleBytes, styleName))
+            for (int index = 0; index < styleNames.length; index++)
             {
-                result = MidiGeneration.generateSong(style.file(), song, mix, midi);
+                int length = styleLengths[index];
+                if (length < 0 || length > styleBytes.length - offset) throw new IllegalArgumentException("Invalid style length");
+                if (!styleNames[index].isEmpty())
+                {
+                    staged[index] = new RawStyleFile(Arrays.copyOfRange(styleBytes, offset, offset + length), styleNames[index]);
+                    files[index] = staged[index].file();
+                }
+                offset += length;
+            }
+            if (offset != styleBytes.length) throw new IllegalArgumentException("Invalid packed song styles");
+            result = MidiGeneration.generateSong(files, partSources, song, mix, midi);
+        } finally
+        {
+            for (var style : staged)
+            {
+                if (style != null) style.close();
             }
         }
         partMetadata = result.metadata();

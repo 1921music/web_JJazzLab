@@ -178,6 +178,18 @@ const DesktopSongFiles = (() => {
             mix.map(track => [track.rhythmId, track.name, track.mute, ...mixValues.map(key => track[key])].join("\t"))];
     }
 
+    function multiStyleEngineArgs(song, styles, sources, mix) {
+        const lengths = Int32Array.from(styles, style => style.bytes.length);
+        const bytes = new Int8Array(lengths.reduce((total, length) => total + length, 0));
+        let offset = 0;
+        for (const style of styles) {
+            bytes.set(style.bytes, offset);
+            offset += style.bytes.length;
+        }
+        const columns = engineArgs(song, bytes, "", mix);
+        return [bytes, styles.map(style => style.id === "jjSwing-ID" ? "" : style.name), lengths, Int32Array.from(sources), ...columns.slice(2)];
+    }
+
     const escape = value => String(value ?? "").replace(/[&<>"\r\n\t]/gu, char => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\r": "&#13;", "\n": "&#10;", "\t": "&#9;"
     })[char]);
@@ -256,5 +268,5 @@ const DesktopSongFiles = (() => {
             + `<spInsMixes>\n${settings.join("\n")}\n</spInsMixes><spKeys>\n${keys.join("\n")}\n</spKeys></MidiMix>\n`;
     }
 
-    return { readSong, readMix, writeSong, writeMix, engineArgs, decodeEngineMix, validateSong, meters, sourceStyleId, barBeats };
+    return { readSong, readMix, writeSong, writeMix, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters, sourceStyleId, barBeats };
 })();

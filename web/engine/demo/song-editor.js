@@ -102,6 +102,10 @@ class SongEditor {
         this.exportButton.disabled = true;
     }
 
+    get attachedStyles() {
+        return Array.isArray(this.style) ? this.style : this.style ? [this.style] : [];
+    }
+
     editArrangement(action) {
         try { this.readChords(); action(); this.changed(); this.render(); }
         catch (error) { this.notify(error.message, true); }
@@ -271,6 +275,8 @@ class SongEditor {
             variation.setAttribute("aria-label", `${index + 1}番目のバリエーション`);
             variation.value = part.parameters.rpVariationID ?? "";
             variation.oninput = () => { part.parameters.rpVariationID = variation.value; this.changed(); };
+            const styleName = document.createElement("span");
+            styleName.textContent = part.styleName || part.styleId.replace(/-ID$/u, "");
             const move = (destination) => {
                 try {
                     this.readChords();
@@ -287,7 +293,7 @@ class SongEditor {
                 } catch (error) { this.notify(error.message, true); }
             });
             remove.disabled = parts.length < 2;
-            row.append(select, variation, up, down, remove, this.button("この区間を選択", () => {
+            row.append(select, styleName, variation, up, down, remove, this.button("この区間を選択", () => {
                 this.selectedPart = index; this.chooseBar(sections[part.section].bar, index);
             }));
             item.append(row); this.parts.append(item);
@@ -328,7 +334,9 @@ class SongEditor {
             const stem = this.fileStem();
             const desktopMix = this.renderedMix.map(track => ({ ...track, channel: track.sourceChannel ?? track.channel }));
             const files = [[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)], [`${stem}.mix`, DesktopSongFiles.writeMix(desktopMix)]];
-            if (this.style?.data) files.push([`styles/${this.style.name}`, Uint8Array.from(this.style.data)]);
+            for (const style of this.attachedStyles) {
+                if (style.data) files.push([`styles/${style.name}`, Uint8Array.from(style.data)]);
+            }
             downloadSongFile(`${stem}.zip`, packageSongFiles(files), "application/zip");
         } catch (error) { this.notify(error.message, true); }
     }

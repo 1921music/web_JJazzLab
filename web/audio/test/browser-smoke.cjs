@@ -27,11 +27,15 @@ const scratch = fs.mkdtempSync(path.join(path.dirname(htmlPath), "soundfont-smok
 const smokePath = path.join(scratch, "smoke.html");
 const songFiles = path.resolve(__dirname, "../../../model/SongImpl/src/test/resources/org/jjazz/song");
 const repertoire = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.env.JJAZZ_REPERTOIRE_FIXTURES;
+const multiStyle = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.env.JJAZZ_MULTI_STYLE_FIXTURES;
 const songFixture = process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
     song: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.sng"), "utf8"),
     mix: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.mix"), "utf8"),
     africa: process.env.JJAZZ_AFRICA_FIXTURE ? fs.readFileSync(process.env.JJAZZ_AFRICA_FIXTURE, "utf8") : null,
-    styles: repertoire ? fs.readFileSync(path.resolve(__dirname, "../../engine/demo/assets/jjazzlab_user_styles.zip"), "base64") : null,
+    styles: repertoire || multiStyle ? fs.readFileSync(path.resolve(__dirname, "../../engine/demo/assets/jjazzlab_user_styles.zip"), "base64") : null,
+    multiStyle: multiStyle ? ["ANightinTunisia-Eb-Theme", "Django-Fm-Theme", "PetiteFleur-Dm-Theme2-Tango"].map(name => ({ name,
+        song: fs.readFileSync(path.join(multiStyle, `${name}.sng`), "utf8"), mix: fs.readFileSync(path.join(multiStyle, `${name}.mix`), "utf8")
+    })) : [],
     repertoire: repertoire ? ["BlueBossa-Cm-Theme", "AllBlues-G-Theme"].map(name => ({ name,
         song: fs.readFileSync(path.join(repertoire, `${name}.sng`), "utf8"), mix: fs.readFileSync(path.join(repertoire, `${name}.mix`), "utf8")
     })) : []

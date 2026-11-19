@@ -2,11 +2,14 @@ package org.jjazz.web.engine;
 
 import java.io.File;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.List;
 import javax.sound.midi.MidiSystem;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
 import org.jjazz.harmony.api.Position;
 import org.jjazz.midimix.api.UserRhythmVoice;
+import org.jjazz.midimix.MidiMixManagerImpl;
+import org.jjazz.jjswing.api.JJSwingRhythm;
 import org.jjazz.jjswing.api.RP_BassStyle;
 import org.jjazz.jjswing.api.RP_DrumsStyle;
 import org.jjazz.rhythm.api.Rhythm;
@@ -49,13 +52,17 @@ final class MidiGeneration
         return generate(rhythm, chords, tempo, variation, bassStyle, drumsStyle, output);
     }
 
-    static Result generateSong(File styleFile, SongInput input, String[] mix, OutputStream output) throws Exception
+    static Result generateSong(File[] styleFiles, int[] partSources, SongInput input, String[] mix, OutputStream output) throws Exception
     {
         WebServices.install();
-        boolean swing = styleFile == null;
-        var rhythm = swing ? WebJJSwing.rhythm() : new YamJJazzRhythmImpl(styleFile);
-        rhythm.loadResources();
-        return render(rhythm, input.createSong(rhythm), swing, mix, output);
+        var rhythms = new Rhythm[styleFiles.length];
+        for (int index = 0; index < styleFiles.length; index++)
+        {
+            var file = styleFiles[index];
+            rhythms[index] = file == null ? WebJJSwing.rhythm() : new YamJJazzRhythmImpl(file);
+            rhythms[index].loadResources();
+        }
+        return render(Arrays.asList(rhythms), input.createSong(rhythms, partSources), mix, output);
     }
 
     private static String[] generate(Rhythm rhythm, String[] chords, int tempo, String variation, String bassStyle, String drumsStyle, OutputStream output) throws Exception
@@ -87,16 +94,24 @@ final class MidiGeneration
         }
         var song = factory.createSong("Web accompaniment", structure, true);
         song.setTempo(tempo == 0 ? rhythm.getPreferredTempo() : tempo);
-        return render(rhythm, song, bassStyle != null, null, output).metadata();
+        return render(List.of(rhythm), song, null, output).metadata();
     }
 
-    private static Result render(Rhythm rhythm, Song song, boolean swing, String[] mixInput, OutputStream output) throws Exception
+    private static Result render(List<Rhythm> rhythms, Song song, String[] mixInput, OutputStream output) throws Exception
     {
-        var mix = MidiMixManager.getDefault().createMix(rhythm);
-        if (swing) WebJJSwing.configureMix(rhythm, mix);
-        for (var name : song.getUserPhraseNames().stream().sorted().toList())
+        boolean multiple = rhythms.size() > 1;
+        // Use the desktop's allocator for a whole arrangement. Keep its song registry local to this render.
+        var mix = multiple ? new MidiMixManagerImpl().createMix(song) : MidiMixManager.getDefault().createMix(rhythms.get(0));
+        if (!multiple)
         {
-            mix.addUserChannel(name, song.getUserPhrase(name).isDrums());
+            for (var name : song.getUserPhraseNames().stream().sorted().toList())
+            {
+                mix.addUserChannel(name, song.getUserPhrase(name).isDrums());
+            }
+        }
+        for (var rhythm : rhythms)
+        {
+            if (rhythm instanceof JJSwingRhythm) WebJJSwing.configureMix(rhythm, mix);
         }
         boolean editableMix = mixInput != null;
         if (editableMix)
@@ -112,7 +127,7 @@ final class MidiGeneration
         var builder = new SongSequenceBuilder(SongContextFactory.getDefault().of(song, mix));
         var result = builder.buildAll(true);
         builder.makeSequenceExportable(result, editableMix);
-        if (swing) WebJJSwing.adaptDrumNotes(result);
+        WebJJSwing.adaptDrumNotes(result);
         MidiSystem.write(result.sequence, 1, output);
         // Track-indexed metadata keeps percussion outside channel 10 identifiable
         // without changing the exported Standard MIDI File.
@@ -124,7 +139,8 @@ final class MidiGeneration
             if (editableMix)
             {
                 var source = voice instanceof UserRhythmVoice ? "user" : "rhythm";
-                partMetadata[entry.getValue()] = source + "-" + kind + "\t" + voice.getName();
+                String styleId = multiple && !(voice instanceof UserRhythmVoice) ? "\t" + voice.getContainer().getUniqueId() : "";
+                partMetadata[entry.getValue()] = source + "-" + kind + "\t" + voice.getName() + styleId;
             } else
             {
                 partMetadata[entry.getValue()] = kind + "\t" + voice.getName();

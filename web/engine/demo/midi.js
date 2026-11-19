@@ -67,10 +67,11 @@ function parseMidi(input, barCount, metadata = [], barBeats) {
                 if (!trackEvents.some(e => e.channel === channel && e.type === 0x90 && e.b)) continue;
                 const part = parts.length;
                 const info = metadata[track]?.split("\t");
-                const label = info?.slice(1).join("\t") || name.replace(/-channel\d+\/16$/u, "") || `パート ${part + 1}`;
                 const match = /^(user|rhythm)-(drums|melodic)$/u.exec(info?.[0] ?? "");
+                const styleId = match?.[1] === "rhythm" && info?.length > 2 ? info.at(-1) : undefined;
+                const label = (styleId ? info.slice(1, -1) : info?.slice(1))?.join("\t") || name.replace(/-channel\d+\/16$/u, "") || `パート ${part + 1}`;
                 const drum = info ? isDrumMetadata(metadata[track]) : channel === 9;
-                parts.push(match ? { id: `${match[1]}:${label}`, name: label, channel, drum, source: match[1] }
+                parts.push(match ? { id: styleId ? `${match[1]}:${styleId}:${label}` : `${match[1]}:${label}`, name: label, channel, drum, source: match[1], ...(styleId ? { styleId } : {}) }
                     : { id: `${label}:${channel}`, name: label, channel, drum });
                 for (const e of trackEvents) if (e.channel === channel) events.push({ ...e, part });
             }

@@ -3,6 +3,7 @@ package org.jjazz.web.engine;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.IdentityHashMap;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
 import org.jjazz.harmony.api.Position;
 import org.jjazz.harmony.api.TimeSignature;
@@ -24,10 +25,11 @@ record SongInput(String title, int tempo, int bars,
                  String[] partNames, int[] partSections, String[] partParameters,
                  String[] userTrackNames, String[] userPhrases)
 {
-    Song createSong(Rhythm rhythm) throws Exception
+    Song createSong(Rhythm[] sources, int[] partSources) throws Exception
     {
         if (sectionNames.length == 0 || sectionNames.length != sectionBars.length || sectionNames.length != sectionMeters.length || sectionBars[0] != 0
                 || partNames.length == 0 || partNames.length != partSections.length || partNames.length != partParameters.length
+                || partNames.length != partSources.length
                 || chords.length != chordBars.length || chords.length != chordBeats.length
                 || userTrackNames.length != userPhrases.length)
         {
@@ -48,13 +50,15 @@ record SongInput(String title, int tempo, int bars,
 
         var structure = new SongStructureImpl(leadSheet);
         var parts = new ArrayList<SongPart>();
-        var rhythms = new EnumMap<TimeSignature, Rhythm>(TimeSignature.class);
-        rhythms.put(rhythm.getTimeSignature(), rhythm);
+        var adapted = new IdentityHashMap<Rhythm, EnumMap<TimeSignature, Rhythm>>();
         int startBar = 0;
         for (int i = 0; i < partNames.length; i++)
         {
             var section = leadSheet.getSection(sectionBars[partSections[i]]);
             var meter = section.getData().getTimeSignature();
+            var rhythm = sources[partSources[i]];
+            var rhythms = adapted.computeIfAbsent(rhythm, source -> new EnumMap<>(TimeSignature.class));
+            rhythms.putIfAbsent(rhythm.getTimeSignature(), rhythm);
             var partRhythm = rhythms.get(meter);
             if (partRhythm == null)
             {
@@ -92,7 +96,7 @@ record SongInput(String title, int tempo, int bars,
         }
 
         var song = factory.createSong(title, structure, true);
-        song.setTempo(tempo == 0 ? rhythm.getPreferredTempo() : tempo);
+        song.setTempo(tempo == 0 ? parts.get(0).getRhythm().getPreferredTempo() : tempo);
         for (int i = 0; i < userTrackNames.length; i++)
         {
             song.setUserPhrase(userTrackNames[i], Phrase.loadAsString(userPhrases[i]));

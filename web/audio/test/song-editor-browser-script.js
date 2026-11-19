@@ -197,6 +197,70 @@
                 await player.stop();
             }
         }
+        report.multiStyle = [];
+        for (const fixture of desktopFixture.multiStyle) {
+            const arrangement = DesktopSongFiles.readSong(fixture.song);
+            const originalIds = arrangement.parts.map(part => part.styleId);
+            const originalVariations = arrangement.parts.map(part => part.parameters.rpVariationID);
+            const pair = new DataTransfer();
+            pair.items.add(new File([fixture.song], `${fixture.name}.sng`));
+            pair.items.add(new File([fixture.mix], `${fixture.name}.mix`));
+            open.files = pair.files;
+            await editor.openFiles(open);
+            check(rhythmEngine.value === "song", `${fixture.name} did not default to its saved styles`);
+            await generate();
+            check(engine.exports.wasImportedMixApplied(), `${fixture.name} lost its original mix`);
+            check(arrangement.title === editor.project.title && originalIds.join() === editor.project.parts.map(part => part.styleId).join(),
+                `${fixture.name} did not retain its saved style IDs`);
+            check(originalVariations.join() === editor.project.parts.map(part => part.parameters.rpVariationID).join(),
+                `${fixture.name} did not retain its saved variations`);
+            check(new Set(song.parts.map(part => part.id)).size === song.parts.length, "Different styles collided in the mixer");
+            const styleBars = editor.project.parts.flatMap(part => {
+                const section = editor.project.sections[part.section];
+                const end = editor.project.sections[part.section + 1]?.bar ?? editor.project.bars;
+                return Array(end - section.bar).fill(DesktopSongFiles.sourceStyleId(part.styleId));
+            });
+            const boundary = styleBars.findIndex(style => style !== styleBars[0]);
+            check(boundary > 0, `${fixture.name} has no style switch`);
+            const start = song.barTimes[boundary - 1], middle = song.barTimes[boundary], end = song.barTimes[boundary + 1];
+            const hasNotes = (styleId, from, to) => song.events.some(event => event.type === 0x90 && event.b
+                && event.seconds >= from - 1e-6 && event.seconds < to - 1e-6 && song.parts[event.part].styleId === styleId);
+            check(hasNotes(styleBars[boundary - 1], start, middle), `${fixture.name}: source style did not produce notes before the switch`);
+            check(hasNotes(styleBars[boundary], middle, end), `${fixture.name}: destination style did not produce notes after the switch`);
+            const summary = { title: fixture.name, bars: styleBars.length, switchAtBar: boundary + 1,
+                styles: [...new Set(styleBars)], meters: [...new Set(song.meterChanges.map(({ numerator, denominator }) => `${numerator}/${denominator}`))] };
+            const roundTrip = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+            check(roundTrip.parts.map(part => part.styleId).join() === originalIds.join(), `${fixture.name} lost its styles on export`);
+            const exportedMix = DesktopSongFiles.writeMix(editor.renderedMix.map(track => ({ ...track, channel: track.sourceChannel ?? track.channel })));
+            const trackKeys = mix => mix.map(track => `${track.channel}:${track.rhythmId}:${track.name}`).join();
+            check(trackKeys(DesktopSongFiles.readMix(exportedMix)) === trackKeys(DesktopSongFiles.readMix(fixture.mix)),
+                `${fixture.name} lost its native mix channel assignments on export`);
+            loopStart.value = boundary;
+            loopEnd.value = boundary + 2;
+            loopEnabled.checked = true;
+            const loop = readLoop();
+            await player.initialize(showPlayStatus);
+            const positions = [];
+            const originalPosition = player.onPosition;
+            player.onPosition = data => { if (data.playing) positions.push(data.seconds); originalPosition(data); };
+            try {
+                await player.play(song, loop, mixerParts, 0.8);
+                let wrap = -1;
+                for (let i = 0; i < 250 && wrap < 0; i++) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                    wrap = positions.findIndex((value, index) => index && value < positions[index - 1]);
+                }
+                check(wrap > 0 && positions[wrap] < start + 0.25, "The style-change loop did not return to its first bar");
+                check(positions.some(seconds => seconds < middle) && positions.some(seconds => seconds >= middle), "The loop skipped a side of the style switch");
+                check(positions.every(seconds => seconds >= loop.start - 0.01 && seconds <= loop.end + 0.01), "Playback escaped the style-change loop");
+                summary.loopBars = [boundary, boundary + 2];
+                summary.loopSeconds = loop.end - loop.start;
+            } finally {
+                player.onPosition = originalPosition;
+                await player.stop();
+            }
+            report.multiStyle.push(summary);
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
