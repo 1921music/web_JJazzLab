@@ -3,14 +3,14 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>伴奏 MIDI を作成 | JJazzLab</title>
+    <title>伴奏を作って演奏 | JJazzLab</title>
     <!-- DEMO_STYLE -->
 </head>
 <body>
     <main>
         <header>
             <p class="brand">JJazzLab</p>
-            <h1>伴奏 MIDI を作成</h1>
+            <h1>伴奏を作って演奏</h1>
             <p>コード進行とスタイルから、ブラウザで伴奏を生成します。</p>
         </header>
 
@@ -36,11 +36,34 @@
                         <small id="tempo-help">20〜400。空欄でスタイルの既定値。</small>
                     </div>
                 </div>
-                <button type="submit">MIDIを生成してダウンロード</button>
+                <button type="submit">伴奏を生成</button>
             </fieldset>
             <p id="status" role="status"></p>
-            <a id="download" hidden>もう一度ダウンロード</a>
+            <a id="download" hidden>MIDIをダウンロード（GM）</a>
         </form>
+        <section id="player" class="panel" aria-labelledby="player-title" hidden>
+            <h2 id="player-title">演奏</h2>
+            <div class="transport">
+                <button id="play" type="button">再生</button>
+                <button id="stop" type="button" class="secondary" disabled>停止</button>
+                <output id="position" aria-label="再生位置">1小節 / 4小節</output>
+            </div>
+            <fieldset id="loop-controls" class="loop-controls">
+                <legend>ループ</legend>
+                <label class="check"><input id="loop-enabled" type="checkbox" checked> ループする</label>
+                <label>開始小節 <input id="loop-start" type="number" min="1" value="1" step="1" required></label>
+                <label>終了小節 <input id="loop-end" type="number" min="1" value="4" step="1" required></label>
+            </fieldset>
+            <p id="loop-status" class="hint" role="status">終了小節を含めて繰り返します。</p>
+            <p id="play-status" role="status"></p>
+        </section>
+        <section id="mixer" class="panel" aria-labelledby="mixer-title" hidden>
+            <div class="section-heading"><h2 id="mixer-title">ミキサー</h2><button id="reset-mixer" type="button" class="secondary">リセット</button></div>
+            <label class="master">マスター音量 <input id="master" type="range" min="0" max="100" value="80"><output id="master-value">80%</output></label>
+            <p class="hint">音量は曲の音量に掛け合わせ、panは曲の定位に加えて調整します。</p>
+            <div id="mixer-parts"></div>
+        </section>
+        <footer><small>音源: <a href="https://github.com/schellingb/TinySoundFont">TinySoundFont</a> (MIT) / TimGM6mb — Tim Brechbill (GPL-2.0)。初回の再生にはネット接続が必要です。</small><details><summary>音源ライセンス</summary><!-- AUDIO_LICENSES --></details></footer>
     </main>
     <!-- DEMO_SCRIPTS -->
 </body>

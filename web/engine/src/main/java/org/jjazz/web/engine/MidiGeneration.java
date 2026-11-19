@@ -19,7 +19,7 @@ final class MidiGeneration
     {
     }
 
-    static void generate(File styleFile, String[] chords, int tempo, OutputStream output) throws Exception
+    static String[] generate(File styleFile, String[] chords, int tempo, OutputStream output) throws Exception
     {
         if (chords.length == 0)
         {
@@ -46,5 +46,14 @@ final class MidiGeneration
         var result = builder.buildAll(true);
         builder.makeSequenceExportable(result, false);
         MidiSystem.write(result.sequence, 1, output);
+        // Track-indexed metadata keeps percussion outside channel 10 identifiable
+        // without changing the exported Standard MIDI File.
+        var partMetadata = new String[result.sequence.getTracks().length];
+        for (var entry : result.mapRvTrackId.entrySet())
+        {
+            var voice = entry.getKey();
+            partMetadata[entry.getValue()] = (voice.isDrums() ? "drums" : "melodic") + "\t" + voice.getName();
+        }
+        return partMetadata;
     }
 }

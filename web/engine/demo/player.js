@@ -1,0 +1,101 @@
+"use strict";
+
+const soundFontUrl = "https://raw.githubusercontent.com/craffel/pretty-midi/0df351ff2949ef80e788343e952fe15e473f0cde/pretty_midi/TimGM6mb.sf2";
+
+class AccompanimentPlayer {
+    constructor(onPosition, onError) {
+        this.onPosition = onPosition;
+        this.onError = onError;
+        this.waiting = new Map();
+        this.serial = 0;
+    }
+
+    async initialize(onStatus) {
+        if (!this.context) this.context = new AudioContext({ latencyHint: "interactive" });
+        // Called directly from the play button, before the first asynchronous download.
+        await this.context.resume();
+        if (this.ready) return;
+        if (!this.loading) this.loading = this.load(onStatus).then(() => { this.ready = true; }).finally(() => { this.loading = null; });
+        return this.loading;
+    }
+
+    async load(onStatus) {
+        onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
+        if (!this.context.audioWorklet) throw new Error("AudioWorkletに対応したPC版ChromeまたはEdgeで開いてください。");
+        const abort = new AbortController();
+        const timeout = setTimeout(() => abort.abort(), 60000);
+        try {
+            const [wasm, response] = await Promise.all([
+                decompress(embeddedSynth),
+                fetch(soundFontUrl, { credentials: "omit", signal: abort.signal }).catch(() => {
+                    throw new Error("SoundFontを取得できませんでした。ネット接続を確認して再生を押してください。");
+                })
+            ]);
+            if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
+            const soundfont = await response.arrayBuffer();
+            if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000 ||
+                new DataView(soundfont).getUint32(0) !== 0x52494646 || new DataView(soundfont).getUint32(8) !== 0x7366626b)
+                throw new Error("取得したSoundFontが不正です。");
+            onStatus("SoundFontを読み込んでいます…");
+            if (!this.workletLoaded) {
+                // Chrome rejects blob:null worklet module URLs from file://.
+                // A self-contained data URL has no local-file subresource fetch.
+                const source = new TextEncoder().encode(embeddedWorklet);
+                const url = "data:text/javascript;base64," + btoa(Array.from(source, byte => String.fromCharCode(byte)).join(""));
+                try { await this.context.audioWorklet.addModule(url); this.workletLoaded = true; }
+                catch (error) { throw new Error("音声処理モジュールを読み込めませんでした: " + error.message); }
+            }
+            this.node?.disconnect();
+            this.node = new AudioWorkletNode(this.context, "soundfont-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
+            this.node.port.onmessage = ({ data }) => {
+                if (data.type === "position") this.onPosition(data);
+                else if (data.type === "error") { this.ready = false; this.onError(data.error); }
+                else if (this.waiting.has(data.id)) {
+                    const request = this.waiting.get(data.id); this.waiting.delete(data.id);
+                    clearTimeout(request.timeout);
+                    if (data.error) request.reject(new Error(data.error)); else request.resolve();
+                }
+            };
+            this.node.onprocessorerror = () => {
+                this.ready = false;
+                for (const request of this.waiting.values()) { clearTimeout(request.timeout); request.reject(new Error("音源の処理に失敗しました。再生を押して再試行してください。")); }
+                this.waiting.clear();
+                this.onError("音源の処理に失敗しました。再生を押して再試行してください。");
+            };
+            // A single compressor catches peaks from combinations of loud parts.
+            if (!this.compressor) {
+                this.compressor = this.context.createDynamicsCompressor();
+                this.compressor.threshold.value = -3;
+                this.compressor.knee.value = 3;
+                this.compressor.ratio.value = 20;
+                this.compressor.connect(this.context.destination);
+            }
+            this.node.connect(this.compressor);
+            await this.send("init", { wasm, soundfont }, [wasm, soundfont]);
+            this.loadedSong = null;
+        } catch (error) {
+            this.node?.disconnect();
+            throw error;
+        } finally { clearTimeout(timeout); }
+    }
+
+    send(type, data = {}, transfer = []) {
+        const id = ++this.serial;
+        return new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => { this.waiting.delete(id); reject(new Error("音源からの応答がありません。ページを開き直してください。")); }, 30000);
+            this.waiting.set(id, { resolve, reject, timeout });
+            this.node.port.postMessage({ id, type, ...data }, transfer);
+        });
+    }
+
+    async play(song, loop, parts, master) {
+        if (this.loadedSong !== song) { await this.send("song", { song, loop }); this.loadedSong = song; }
+        await this.send("loop", { loop });
+        await this.send("mix", { parts, master });
+        await this.send("play");
+    }
+
+    async stop() { if (this.ready) await this.send("stop"); }
+    mix(parts, master) { if (this.ready && this.loadedSong) this.send("mix", { parts, master }).catch(error => this.onError(error.message)); }
+    loop(loop) { if (this.ready && this.loadedSong) this.send("loop", { loop }).catch(error => this.onError(error.message)); }
+}

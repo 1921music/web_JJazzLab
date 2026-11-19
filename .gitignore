@@ -6,6 +6,7 @@ nb-configuration.xml
 /WSL_image/
 *.vhdx
 /web/engine/target/
+/web/audio/target/
 .sdkmanrc
 
 /core/Harmony/nbproject/
