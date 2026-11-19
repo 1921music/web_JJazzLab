@@ -82,6 +82,7 @@ textarea, input, select {
 
 .rhythm-choice { margin-top: 1.25rem; }
 .swing-help { grid-column: 1 / -1; }
+.swing-variation-field { grid-column: 1 / -1; }
 select { appearance: none; padding-right: 2.25rem; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16'%3E%3Cpath d='m4 6 4 4 4-4' fill='none' stroke='%234e645a' stroke-width='2'/%3E%3C/svg%3E"); background-position: right .75rem center; background-repeat: no-repeat; }
 
 textarea {

@@ -9,6 +9,7 @@ import org.jjazz.harmony.api.Position;
 import org.jjazz.jjswing.api.RP_BassStyle;
 import org.jjazz.jjswing.api.RP_DrumsStyle;
 import org.jjazz.rhythm.api.Rhythm;
+import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.jjazz.midimix.spi.MidiMixManager;
 import org.jjazz.rhythmmusicgeneration.api.SongSequenceBuilder;
 import org.jjazz.song.spi.SongContextFactory;
@@ -25,16 +26,26 @@ final class MidiGeneration
     static String[] generate(File styleFile, String[] chords, int tempo, OutputStream output) throws Exception
     {
         WebServices.install();
-        return generate(new YamJJazzRhythmImpl(styleFile), chords, tempo, null, null, output);
+        return generate(new YamJJazzRhythmImpl(styleFile), chords, tempo, null, null, null, output);
     }
 
     static String[] generateSwing(String[] chords, int tempo, String bassStyle, String drumsStyle, OutputStream output) throws Exception
     {
-        WebServices.install();
-        return generate(WebJJSwing.rhythm(), chords, tempo, bassStyle, drumsStyle, output);
+        return generateSwing(chords, tempo, "Main A-1", bassStyle, drumsStyle, output);
     }
 
-    private static String[] generate(Rhythm rhythm, String[] chords, int tempo, String bassStyle, String drumsStyle, OutputStream output) throws Exception
+    static String[] generateSwing(String[] chords, int tempo, String variation, String bassStyle, String drumsStyle, OutputStream output) throws Exception
+    {
+        WebServices.install();
+        var rhythm = WebJJSwing.rhythm();
+        if (!RP_SYS_Variation.getVariationRp(rhythm).isValidValue(variation))
+        {
+            throw new IllegalArgumentException("Unsupported jjSwing variation: " + variation);
+        }
+        return generate(rhythm, chords, tempo, variation, bassStyle, drumsStyle, output);
+    }
+
+    private static String[] generate(Rhythm rhythm, String[] chords, int tempo, String variation, String bassStyle, String drumsStyle, OutputStream output) throws Exception
     {
         if (chords.length == 0)
         {
@@ -52,6 +63,10 @@ final class MidiGeneration
         var part = structure.createSongPart(rhythm, "A", 0, leadSheet.getSection(0), false);
         // The rhythm is already selected, so generation does not need a shared rhythm catalog.
         structure.performWriteAPImethodThrowing(structure.addSongPartsOperation(List.of(part)));
+        if (variation != null)
+        {
+            structure.setRhythmParameterValue(part, RP_SYS_Variation.getVariationRp(rhythm), variation);
+        }
         if (bassStyle != null)
         {
             structure.setRhythmParameterValue(part, RP_BassStyle.get(rhythm), bassStyle);

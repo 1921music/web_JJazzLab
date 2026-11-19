@@ -60,11 +60,16 @@
         check(api.synth_load(pointer, sfBytes.byteLength, 48000), "Compatibility SF2 load failed"); api.free(pointer);
         const presets = new Set(), unsupported = new Set(), rendered = new Set();
         api.synth_part(0); api.synth_part(1);
-        const cases = Array.from(swingDrums.options, option => ({ drums: option.value, bass: "walking", tempo: 120 }));
+        const cases = Array.from(swingDrums.options).filter(option => option.value !== "auto").map(option => ({ drums: option.value, bass: "walking", tempo: 120 }));
         console.log("JJAZZ_SWING_STAGE=compatibility-cases");
         for (const tempo of [60, 240]) for (const drums of ["brushes 1", "ride 1", "shuffle 1"]) cases.push({ drums, bass: "walking", tempo });
         for (const bass of ["2-feel", "double-note", "double-time"]) cases.push({ drums: bass === "double-time" ? "double 1" : "brushes 1", bass, tempo: 120 });
+        const variations = Array.from(engine.exports.getSwingVariations());
+        check(variations.length === 17 && JSON.stringify(variations) === JSON.stringify(Array.from(swingVariation.options, o => o.value)), "Variation UI and engine disagree");
+        for (const variation of variations) cases.push({ variation, drums: "auto", bass: "auto", tempo: 120 });
+        cases.push({ variation: "Main E-2", drums: "brushes 1", bass: "2-feel", tempo: 120 });
         for (const test of cases) {
+            swingVariation.value = test.variation || "Main A-1";
             swingBass.value = test.bass; swingDrums.value = test.drums; tempoInput.value = test.tempo;
             form.requestSubmit(); await until(() => !generating, JSON.stringify(test));
             check(song && !status.hasAttribute("data-error"), "Generation failed: " + JSON.stringify(test) + " / " + status.textContent);
@@ -103,6 +108,12 @@
         report.presets = [...presets]; report.unsupported = [...unsupported]; report.audibleNotes = rendered.size;
         check(!unsupported.size, "TimGM6mb does not contain: " + [...unsupported].join(", "));
         check(report.cases.find(c => c.bass === "double-time").bassNotes > report.cases[0].bassNotes, "Double-time did not increase bass density");
+        const automatic = variation => report.cases.find(c => c.variation === variation && c.bass === "auto");
+        check(automatic("Main E-2").bassNotes > automatic("Main A-1").bassNotes, "Auto bass ignored the selected variation");
+        check(report.cases.at(-1).bassNotes < automatic("Main E-2").bassNotes, "Manual bass override was ignored");
+        let rejected = false;
+        try { engine.exports.generateSwingMidiWithVariation(["C"], 120, "Invalid", "auto", "auto"); } catch { rejected = true; }
+        check(rejected, "Invalid variations must be rejected");
         check(downloads === 1, "jjSwing regeneration downloaded SF2 again");
         chordInput.value = "NotAChord";
         console.log("JJAZZ_SWING_STAGE=invalid-chord-recovery");

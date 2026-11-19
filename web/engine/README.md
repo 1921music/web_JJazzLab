@@ -25,7 +25,7 @@ TeaVMの診断や成果物の生成だけを行う場合は、`-SkipTests` で�
 
 `-Engine` で生成される Windows 側の `WSL_image/midi-demo.html` を、PC版ChromeまたはEdgeで開きます。HTML単体を `file://` で開いてコード進行を入力すると、MIDIの生成・ダウンロードとSoundFontによるリアルタイム再生ができます。リズムエンジンで「Yamahaスタイル」または「jjSwing」を選びます。Yamahaスタイルは同梱の8Beatか、選択したスタイルファイルを使います。
 
-jjSwingは4/4専用で、未指定テンポは120です。ベースはWalking／2-feel／Double-note／Double-time、ドラムはBrushes・Hi-hat・Ride・Shuffle等の11奏法から選べます。Double-timeは両方を揃えると自然です。基本バリエーションはMain A-1固定で、Intro／Ending・他のMainバリエーションは現在の画面では扱いません。ベース／ドラムのMIDIフレーズDBとベーススタイルはWasmへ同梱するので、SF2以外の追加ダウンロードはありません。
+jjSwingは4/4専用で、未指定テンポは120です。Main A〜Eの各1/2、Fill 5種類、Intro、Endingの計17バリエーションから選べます。既定のAutoでは、バリエーションに従ってベースとドラムの奏法が切り替わります。ベースはWalking／2-feel／Double-note／Double-time、ドラムはBrushes・Hi-hat・Ride・Shuffle等の11奏法を手動指定することもできます。Double-timeを手動指定する場合は両方を揃えると自然です。選択したバリエーションはコード進行の全小節に適用し、小節ごとの切り替えは行いません。ベース／ドラムのMIDIフレーズDBとベーススタイルはWasmへ同梱するので、SF2以外の追加ダウンロードはありません。
 
 Yamahaモードの「公開スタイル集を読み込む」で、[公式のスタイル集](https://www.jjazzlab.org/en/resources/)と同一のZIP（約2.4MB）を遅延取得できます。公式サーバーにはCORS許可がないため、このリポジトリにミラーしたZIPを固定コミットのGitHub raw URLから取得します。ZIPと選択したスタイルはブラウザのメモリだけで保持し、ZIPファイルの保存や展開先フォルダーの作成、永続ストレージへの書き込みは行いません。ページを開いている間は再取得せず、必要なファイルだけを展開します。カテゴリー／名前で絞り込め、ローカルファイルやjjSwingへの切り替えも可能です。
 
@@ -50,8 +50,10 @@ const { exports } = await TeaVM.wasmGC.load("./engine.wasm");
 const midi = exports.generateMidi(new Int8Array(await styleFile.arrayBuffer()),
                                   styleFile.name, ["C", "Am7", "Dm7", "G7"], 120);
 // jjSwing uses its own generators, without an uploaded style file.
-const swing = exports.generateSwingMidi(["Cmaj7", "Am7", "Dm7", "G7"], 120,
-                                       "walking", "brushes 1");
+const variations = exports.getSwingVariations();
+const swing = exports.generateSwingMidiWithVariation(
+    ["Cmaj7", "Am7", "Dm7", "G7"], 120, "Main C-1", "auto", "auto");
+// The existing four-argument generateSwingMidi API defaults to Main A-1.
 ```
 
 エンジンは生のYamahaスタイルからGM音色の標準MIDIファイルを生成します。`generateMidi` の戻り値はスタイル由来のパート別チャンネルを保持しており、ブラウザ再生にはそのまま使用します。初期の呼び出し口は1小節につき1コードを受け取り、テンポに `0` を指定するとスタイルの既定値を使います。

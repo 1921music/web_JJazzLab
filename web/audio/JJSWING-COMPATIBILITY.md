@@ -2,8 +2,10 @@
 
 The Web engine uses the original jjSwing walking-bass and drum generators,
 including the bundled phrase databases and tempo-dependent swing adjustments.
-The UI fixes the main variation to Main A-1, exposes four bass styles and eleven
-drum styles, and supports 4/4 only.
+The UI exposes all 17 jjSwing variations (ten Main A–E variations, five fills,
+Intro and Ending), applied to the whole progression. Auto bass/drums follow the
+selected variation; four bass styles and eleven drum styles can also be chosen
+manually. The engine supports 4/4 only.
 
 ## Presets
 
@@ -16,7 +18,7 @@ below are zero-based, as they are in MIDI messages and TinySoundFont.
 | Bass | 0 | 32 | Acoustic Bass |
 | Chord1 | 0 | 0 | Piano 1 |
 | Chord2 | 0 | 26 | Jazz Guitar |
-| Phrase1, when used by a future variation | 0 | 73 | Flute TB |
+| Phrase1 | 0 | 73 | Flute TB |
 
 Initial part levels/pans follow the upstream jjSwing mix. Browser controls still
 multiply/offset them. TinySoundFont does not implement reverb/chorus sends, so
@@ -61,8 +63,11 @@ built Wasm and pinned SF2 as documented in README.md.
 In PowerShell, set `$env:JJAZZ_SMOKE_SUITE='jjswing'`, then run
 `node web/audio/test/browser-smoke.cjs WSL_image/midi-demo.html`.
 The isolated headless Chrome test uses file://, the real SF2 download and actual
-AudioWorklet playback. Twenty cases cover all eleven drum styles, four bass
-styles and tempos 60/120/240 BPM. Every generated note is checked against the
+AudioWorklet playback. Thirty-eight cases cover all eleven drum styles, four bass
+styles, tempos 60/120/240 BPM, all 17 variations with Auto bass/drums, and a
+manual override on Main E-2. The test verifies the exported variation list matches
+the UI, rejects unknown variations, and checks that Auto and manual overrides
+change bass density. Every generated note is checked against the
 actual velocity layers, and every distinct preset/key pair is rendered. The
 test also checks looping, mixer persistence, MIDI export and SF2 reuse.
 

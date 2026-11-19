@@ -8,6 +8,7 @@ const tempoInput = document.querySelector("#tempo");
 const rhythmEngine = document.querySelector("#rhythm-engine");
 const swingBass = document.querySelector("#swing-bass");
 const swingDrums = document.querySelector("#swing-drums");
+const swingVariation = document.querySelector("#swing-variation");
 const status = document.querySelector("#status");
 const download = document.querySelector("#download");
 const bundledStyle = "8Beat.T160.STY";
@@ -294,7 +295,7 @@ form.addEventListener("submit", async (event) => {
         let midi;
         try {
             midi = swing
-                ? engine.exports.generateSwingMidi(chords, tempo, swingBass.value, swingDrums.value)
+                ? engine.exports.generateSwingMidiWithVariation(chords, tempo, swingVariation.value, swingBass.value, swingDrums.value)
                 : engine.exports.generateMidi(style.bytes, style.name, chords, tempo);
         } catch (error) {
             console.error(error);

@@ -20,6 +20,7 @@ const match = remote.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+)
 if (!match) throw new Error("origin must be a GitHub HTTPS or SSH repository");
 const [, owner, repository] = match;
 const sourceCommit = git("rev-parse", "HEAD");
+const sourceUrl = "https://github.com/" + owner + "/" + repository + "/tree/" + sourceCommit;
 const readSource = file => fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n/gu, "\n");
 let html = fs.readFileSync(path.resolve(input), "utf8").replace(/\r\n/gu, "\n");
 if (!/^<!doctype html>/iu.test(html) || html.includes("JJAZZ_SMOKE_RESULT")) throw new Error("Expected a production demo HTML, without test instrumentation");
@@ -31,6 +32,8 @@ const worklet = JSON.parse(html.match(/const embeddedWorklet = (.*);/u)?.[1] || 
 if (worklet !== readSource("web/engine/demo/synth-worklet.js")) throw new Error("Build is stale: synth-worklet.js");
 const marker = '<meta name="jjazzlab-source-commit" content="' + sourceCommit + '">';
 html = html.replace(/<meta name="jjazzlab-source-commit"[^>]*>\s*/gu, "").replace(/<\/head>/iu, marker + "\n</head>");
+if (!html.includes("<!-- SOURCE_REVISION -->")) throw new Error("Build is stale: source revision placeholder is missing");
+html = html.replace("<!-- SOURCE_REVISION -->", '<p id="source-revision" class="hint">ソース: <a href="' + sourceUrl + '" target="_blank" rel="noopener noreferrer" title="' + sourceCommit + '"><code>' + sourceCommit.slice(0, 9) + '</code></a></p>');
 const checksum = createHash("sha256").update(html).digest("hex");
 console.log(JSON.stringify({ repository: owner + "/" + repository, sourceCommit, bytes: Buffer.byteLength(html), sha256: checksum, branch: "gh-pages", publish }));
 if (!publish) process.exit(0);
@@ -68,7 +71,8 @@ const current = await api("/git/ref/heads/gh-pages", "GET", undefined, true);
 const parent = current ? await api("/git/commits/" + current.object.sha) : null;
 const files = [
     ["index.html", html], [".nojekyll", ""],
-    ["deployment.json", JSON.stringify({ sourceCommit, htmlSha256: checksum }, null, 2) + "\n"]
+    ["deployment.json", JSON.stringify({ sourceCommit, sourceUrl, htmlSha256: checksum }, null, 2) + "\n"],
+    ["README.md", "# Published browser demo\n\nSource commit: [" + sourceCommit + "](" + sourceUrl + ")\n"]
 ];
 const tree = [];
 for (const [name, content] of files) {

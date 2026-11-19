@@ -9,7 +9,7 @@ This fork adds an experimental browser engine for [JJazzLab](https://github.com/
 
 - Generate an accompaniment from a raw Yamaha style (`.sty`, `.sst`, or `.prs`) or the built-in jjSwing engine with its dedicated walking-bass and drums generators. The current API takes one chord per bar.
 - The Web module in [`web/engine`](web/engine) supplies browser-compatible services and TeaVM substitutions for desktop dependencies. jjSwing has a small dependency-injection factory for standalone initialization; its music-generation algorithms are preserved.
-- A standalone HTML demo lets you edit chords, play with TinySoundFont and TimGM6mb, loop bars, mix parts and download MIDI. It includes 8Beat and jjSwing; jjSwing exposes bass/drums playing styles and adapts XG drum articulations to available TimGM6mb sounds.
+- A standalone HTML demo lets you edit chords, play with TinySoundFont and TimGM6mb, loop bars, mix parts and download MIDI. It includes 8Beat and jjSwing; jjSwing exposes all 17 variations (Main A–E, fills, intro and ending), automatic or manual bass/drums playing styles and adapts XG drum articulations to available TimGM6mb sounds.
 - In Yamaha mode, load the public JJazzLab style collection on demand and choose by category or name. The ZIP is processed entirely in browser memory. The collection contains 189 files; 186 are usable in the current engine and three malformed source files are marked unavailable.
 
 From the repository root on Windows, run the following commands in PowerShell 7 with WSL 2 available.
@@ -32,6 +32,8 @@ node scripts/publish-pages.mjs --publish WSL_image/midi-demo.html
 
 Omit `--publish` for a dry run. The script updates the `gh-pages` branch, enables
 GitHub Pages, and waits until the public HTML matches the deployed SHA-256.
+The page footer links to its source commit; the same full hash and link are
+recorded in the publishing branch’s README and deployment metadata.
 
 ## JJazzLab desktop application
 
