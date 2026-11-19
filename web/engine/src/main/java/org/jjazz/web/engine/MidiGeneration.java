@@ -32,8 +32,13 @@ final class MidiGeneration
 
     static String[] generate(File styleFile, String[] chords, int tempo, OutputStream output) throws Exception
     {
+        return generateExtended(styleFile, null, chords, tempo, null, output);
+    }
+
+    static String[] generateExtended(File styleFile, File extension, String[] chords, int tempo, String variation, OutputStream output) throws Exception
+    {
         WebServices.install();
-        return generate(new YamJJazzRhythmImpl(styleFile), chords, tempo, null, null, null, output);
+        return generate(createYamahaRhythm(styleFile, extension), chords, tempo, variation, null, null, output);
     }
 
     static String[] generateSwing(String[] chords, int tempo, String bassStyle, String drumsStyle, OutputStream output) throws Exception
@@ -52,17 +57,22 @@ final class MidiGeneration
         return generate(rhythm, chords, tempo, variation, bassStyle, drumsStyle, output);
     }
 
-    static Result generateSong(File[] styleFiles, int[] partSources, SongInput input, String[] mix, OutputStream output) throws Exception
+    static Result generateSong(File[] styleFiles, File[] extensions, int[] partSources, SongInput input, String[] mix, OutputStream output) throws Exception
     {
         WebServices.install();
         var rhythms = new Rhythm[styleFiles.length];
         for (int index = 0; index < styleFiles.length; index++)
         {
             var file = styleFiles[index];
-            rhythms[index] = file == null ? WebJJSwing.rhythm() : new YamJJazzRhythmImpl(file);
+            rhythms[index] = file == null ? WebJJSwing.rhythm() : createYamahaRhythm(file, extensions[index]);
             rhythms[index].loadResources();
         }
         return render(Arrays.asList(rhythms), input.createSong(rhythms, partSources), mix, output);
+    }
+
+    static YamJJazzRhythmImpl createYamahaRhythm(File style, File extension) throws Exception
+    {
+        return extension == null ? new YamJJazzRhythmImpl(style) : new YamJJazzRhythmImpl(style, extension);
     }
 
     private static String[] generate(Rhythm rhythm, String[] chords, int tempo, String variation, String bassStyle, String drumsStyle, OutputStream output) throws Exception

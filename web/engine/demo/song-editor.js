@@ -333,11 +333,14 @@ class SongEditor {
             if (!this.renderedMix) throw new Error("伴奏を生成してから書き出してください。");
             const stem = this.fileStem();
             const desktopMix = this.renderedMix.map(track => ({ ...track, channel: track.sourceChannel ?? track.channel }));
-            const files = [[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)], [`${stem}.mix`, DesktopSongFiles.writeMix(desktopMix)]];
+            const files = new Map([[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)], [`${stem}.mix`, DesktopSongFiles.writeMix(desktopMix)]]);
             for (const style of this.attachedStyles) {
-                if (style.data) files.push([`styles/${style.name}`, Uint8Array.from(style.data)]);
+                // JJazzLab looks for an exact basename and a lowercase base extension on case-sensitive filesystems.
+                const baseName = style.extensionData ? `${style.name.slice(0, -4)}.${style.baseName.split(".").at(-1).toLowerCase()}` : style.name;
+                if (style.data) files.set(`styles/${baseName}`, Uint8Array.from(style.data));
+                if (style.extensionData) files.set(`styles/${style.name}`, Uint8Array.from(style.extensionData));
             }
-            downloadSongFile(`${stem}.zip`, packageSongFiles(files), "application/zip");
+            downloadSongFile(`${stem}.zip`, packageSongFiles([...files]), "application/zip");
         } catch (error) { this.notify(error.message, true); }
     }
 }

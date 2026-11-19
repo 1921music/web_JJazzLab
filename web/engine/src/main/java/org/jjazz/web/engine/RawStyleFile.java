@@ -12,12 +12,28 @@ final class RawStyleFile implements AutoCloseable
 
     RawStyleFile(byte[] bytes, String name) throws IOException
     {
+        this(bytes, name, false);
+    }
+
+    static RawStyleFile extension(byte[] bytes, String name) throws IOException
+    {
+        return new RawStyleFile(bytes, name, true);
+    }
+
+    private RawStyleFile(byte[] bytes, String name, boolean extension) throws IOException
+    {
         if (name.isEmpty() || name.equals(".") || name.equals("..")
                 || name.indexOf('/') >= 0 || name.indexOf('\\') >= 0 || name.indexOf(':') >= 0)
         {
             throw new IllegalArgumentException("A style filename without a path is required");
         }
-        SmfReader.validateStyleLayout(bytes);
+        if (extension)
+        {
+            SmfReader.read(bytes, null);  // .yjz is a multi-track SMF; CASM comes from the Yamaha file.
+        } else
+        {
+            SmfReader.validateStyleLayout(bytes);
+        }
         directory = File.createTempFile("jjazzlab-", ".input");
         if (!directory.delete() || !directory.mkdir())
         {

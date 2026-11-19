@@ -44,9 +44,18 @@ def package(engine_dir, output):
         style = encode_gzip(styles.read("8Beat.T160.STY"))
         jazz_waltz = encode_gzip(styles.read("JazzWaltzMed.S351.sst"))
         disco_house = encode_gzip(styles.read("DiscoHouse.S145.prs"))
+    with ZipFile(STYLE_ARCHIVE.with_name("YamJJazzDefaultFiles.zip")) as source:
+        names = set(source.namelist())
+        extended_styles = {}
+        for name in sorted(names):
+            if not name.endswith(".yjz"):
+                continue
+            base = next(name[:-3] + ext for ext in ("sty", "prs", "bcs", "sst") if name[:-3] + ext in names)
+            extended_styles[name] = {"baseName": base, "base": encode_gzip(source.read(base)), "extension": encode_gzip(source.read(name))}
     data = f'const embeddedWasm = "{wasm}";\nconst embeddedStyle = "{style}";'
     data += f'\nconst embeddedJazzWaltz = "{jazz_waltz}";'
     data += f'\nconst embeddedDiscoHouse = "{disco_house}";'
+    data += f'\nconst embeddedExtendedStyles = {json.dumps(extended_styles)};'
     data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])

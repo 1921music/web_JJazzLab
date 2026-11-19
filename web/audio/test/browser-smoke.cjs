@@ -28,6 +28,11 @@ const smokePath = path.join(scratch, "smoke.html");
 const songFiles = path.resolve(__dirname, "../../../model/SongImpl/src/test/resources/org/jjazz/song");
 const repertoire = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.env.JJAZZ_REPERTOIRE_FIXTURES;
 const multiStyle = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.env.JJAZZ_MULTI_STYLE_FIXTURES;
+const yjz = process.env.JJAZZ_SMOKE_SUITE === "yjz";
+const yjzDirectory = process.env.JJAZZ_YJZ_FIXTURES;
+const yjzFixtures = yjz && yjzDirectory ? ["casa-forte", "ponteio", "across-the-universe"].map(name => ({ name,
+    song: fs.readFileSync(path.join(yjzDirectory, `${name}.sng`), "utf8")
+})) : [];
 const songFixture = process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
     song: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.sng"), "utf8"),
     mix: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.mix"), "utf8"),
@@ -44,6 +49,7 @@ const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
     ? "const styleFixtureUrl = " + JSON.stringify(fixtureUrl) + ";\n" + fs.readFileSync(path.join(__dirname, "style-library-browser-script.js"), "utf8")
     : process.env.JJAZZ_SMOKE_SUITE === "jjswing"
     ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8")
+    : yjz ? `const yjzFixtures = ${JSON.stringify(yjzFixtures).replaceAll("<", "\\u003c")};\n` + fs.readFileSync(path.join(__dirname, "yjz-browser-script.js"), "utf8")
     : songFixture ? `const desktopFixture = ${songFixture};\n` + fs.readFileSync(path.join(__dirname, "song-editor-browser-script.js"), "utf8") : `
 (async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };

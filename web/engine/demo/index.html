@@ -57,7 +57,7 @@
                     <label for="rhythm-engine">リズムエンジン</label>
                     <select id="rhythm-engine">
                         <option value="song" hidden>曲ファイルの指定どおり</option>
-                        <option value="yamaha" selected>Yamahaスタイル</option>
+                        <option value="yamaha" selected>Yamaha / YamJJazzスタイル</option>
                         <option value="jjswing">jjSwing — ジャズのスウィング（4/4）</option>
                     </select>
                 </div>
@@ -104,9 +104,15 @@
                 <div class="settings">
                     <div class="field" id="style-field">
                         <label for="style">スタイル</label>
-                        <input id="style" type="file" accept=".sty,.sst,.prs,.bcs"
+                        <input id="style" type="file" accept=".sty,.sst,.prs,.bcs,.yjz" multiple
                                aria-describedby="style-help">
-                        <small id="style-help">ファイルまたは公開スタイル集から選べます。未選択の場合は同梱の 8Beat を使用します。</small>
+                        <small id="style-help"><code>.yjz</code> を使う場合は、同じ名前の元スタイル（.sty / .prs / .bcs / .sst）も一緒に選びます。</small>
+                        <label for="bundled-extension">同梱のYamJJazzスタイル</label>
+                        <select id="bundled-extension"><option value="">選択なし</option></select>
+                        <div id="extended-variation-field" class="field" hidden>
+                            <label for="extended-variation">バリエーション</label>
+                            <select id="extended-variation"></select>
+                        </div>
                         <button id="load-style-pack" type="button" class="secondary">公開スタイル集を読み込む</button>
                         <small><a href="https://www.jjazzlab.org/en/resources/" target="_blank" rel="noopener noreferrer">JJazzLab公開スタイル集</a>を約2.4MB取得します。ファイル保存は不要です。</small>
                         <p id="style-pack-status" class="hint" role="status"></p>

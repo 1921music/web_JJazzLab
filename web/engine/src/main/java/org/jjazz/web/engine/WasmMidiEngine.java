@@ -3,7 +3,7 @@ package org.jjazz.web.engine;
 import java.io.ByteArrayOutputStream;
 import java.util.Arrays;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
-import org.jjazz.yamjjazz.rhythm.YamJJazzRhythmImpl;
+import java.io.File;
 import org.teavm.jso.JSExport;
 
 /** JavaScript entry point for generating a General MIDI accompaniment. */
@@ -24,6 +24,19 @@ public final class WasmMidiEngine
         {
             var midi = new ByteArrayOutputStream();
             partMetadata = MidiGeneration.generate(style.file(), chords, tempo, midi);
+            return midi.toByteArray();
+        }
+    }
+
+    @JSExport
+    public static byte[] generateExtendedMidi(byte[] styleBytes, String styleName, byte[] extensionBytes, String extensionName,
+                                              String[] chords, int tempo, String variation) throws Exception
+    {
+        partMetadata = new String[0];
+        try (var style = new RawStyleFile(styleBytes, styleName); var extension = RawStyleFile.extension(extensionBytes, extensionName))
+        {
+            var midi = new ByteArrayOutputStream();
+            partMetadata = MidiGeneration.generateExtended(style.file(), extension.file(), chords, tempo, variation, midi);
             return midi.toByteArray();
         }
     }
@@ -79,18 +92,34 @@ public final class WasmMidiEngine
                                                     String[] partNames, int[] partSections, String[] partParameters,
                                                     String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
     {
+        return generateSongMidiWithStylePairs(styleBytes, styleNames, styleLengths, new String[styleNames.length], new int[styleNames.length],
+                partSources, title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats, partNames,
+                partSections, partParameters, userTrackNames, userPhrases, mix);
+    }
+
+    /** A style's base bytes are followed immediately by its optional extension bytes. */
+    @JSExport
+    public static byte[] generateSongMidiWithStylePairs(byte[] styleBytes, String[] styleNames, int[] styleLengths,
+                                                       String[] extensionNames, int[] extensionLengths, int[] partSources,
+                                                       String title, int tempo, int bars, String[] sectionNames, int[] sectionBars,
+                                                       String[] sectionMeters, String[] chords, int[] chordBars, float[] chordBeats,
+                                                       String[] partNames, int[] partSections, String[] partParameters,
+                                                       String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
+    {
         partMetadata = new String[0];
         songMix = new String[0];
         importedMixApplied = false;
-        if (styleNames.length == 0 || styleNames.length != styleLengths.length)
+        if (styleNames.length == 0 || styleNames.length != styleLengths.length
+                || styleNames.length != extensionNames.length || styleNames.length != extensionLengths.length)
         {
             throw new IllegalArgumentException("Invalid song style columns");
         }
         var song = new SongInput(title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats,
                 partNames, partSections, partParameters, userTrackNames, userPhrases);
         var midi = new ByteArrayOutputStream();
-        var staged = new RawStyleFile[styleNames.length];
-        var files = new java.io.File[styleNames.length];
+        var staged = new RawStyleFile[styleNames.length * 2];
+        var files = new File[styleNames.length];
+        var extensions = new File[styleNames.length];
         MidiGeneration.Result result;
         int offset = 0;
         try
@@ -101,13 +130,22 @@ public final class WasmMidiEngine
                 if (length < 0 || length > styleBytes.length - offset) throw new IllegalArgumentException("Invalid style length");
                 if (!styleNames[index].isEmpty())
                 {
-                    staged[index] = new RawStyleFile(Arrays.copyOfRange(styleBytes, offset, offset + length), styleNames[index]);
-                    files[index] = staged[index].file();
+                    staged[2 * index] = new RawStyleFile(Arrays.copyOfRange(styleBytes, offset, offset + length), styleNames[index]);
+                    files[index] = staged[2 * index].file();
                 }
                 offset += length;
+                int extensionLength = extensionLengths[index];
+                if (extensionLength < 0 || extensionLength > styleBytes.length - offset) throw new IllegalArgumentException("Invalid extension length");
+                if (extensionLength > 0)
+                {
+                    if (files[index] == null) throw new IllegalArgumentException("Missing Yamaha base style");
+                    staged[2 * index + 1] = RawStyleFile.extension(Arrays.copyOfRange(styleBytes, offset, offset + extensionLength), extensionNames[index]);
+                    extensions[index] = staged[2 * index + 1].file();
+                }
+                offset += extensionLength;
             }
             if (offset != styleBytes.length) throw new IllegalArgumentException("Invalid packed song styles");
-            result = MidiGeneration.generateSong(files, partSources, song, mix, midi);
+            result = MidiGeneration.generateSong(files, extensions, partSources, song, mix, midi);
         } finally
         {
             for (var style : staged)
@@ -145,16 +183,30 @@ public final class WasmMidiEngine
     @JSExport
     public static String[] getYamahaStyleInfo(byte[] bytes, String name) throws Exception
     {
-        WebServices.install();
         try (var style = new RawStyleFile(bytes, name))
         {
-            var rhythm = new YamJJazzRhythmImpl(style.file());
-            var variations = RP_SYS_Variation.getVariationRp(rhythm).getPossibleValues();
-            var result = new String[variations.size() + 1];
-            result[0] = rhythm.getTimeSignature().name();
-            for (int i = 0; i < variations.size(); i++) result[i + 1] = variations.get(i);
-            return result;
+            return getStyleInfo(style.file(), null);
         }
+    }
+
+    @JSExport
+    public static String[] getExtendedYamahaStyleInfo(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        try (var style = new RawStyleFile(bytes, name); var extension = RawStyleFile.extension(extensionBytes, extensionName))
+        {
+            return getStyleInfo(style.file(), extension.file());
+        }
+    }
+
+    private static String[] getStyleInfo(File style, File extension) throws Exception
+    {
+        WebServices.install();
+        var rhythm = MidiGeneration.createYamahaRhythm(style, extension);
+        var variations = RP_SYS_Variation.getVariationRp(rhythm).getPossibleValues();
+        var result = new String[variations.size() + 1];
+        result[0] = rhythm.getTimeSignature().name();
+        for (int i = 0; i < variations.size(); i++) result[i + 1] = variations.get(i);
+        return result;
     }
 
     /** Track-indexed entries: drums|melodic, a tab, then the rhythm voice name. */

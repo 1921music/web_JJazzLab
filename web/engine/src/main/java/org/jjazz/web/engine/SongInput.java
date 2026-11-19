@@ -16,6 +16,7 @@ import org.jjazz.songstructure.SongStructureImpl;
 import org.jjazz.songstructure.api.SongPart;
 import org.jjazz.yamjjazz.rhythm.YamJJazzAdaptedRhythmImpl;
 import org.jjazz.yamjjazz.rhythm.api.YamJJazzRhythm;
+import org.jjazz.yamjjazz.rhythm.api.YamJJazzRhythmProvider;
 import org.jjazz.yamjjazz.rhythm.api.YamahaRhythmProvider;
 
 /** Columns in the browser-to-Wasm song input. Bar and beat positions are zero based. */
@@ -66,7 +67,8 @@ record SongInput(String title, int tempo, int bars,
                 {
                     throw new IllegalArgumentException("The selected rhythm cannot be adapted to " + meter);
                 }
-                partRhythm = new YamJJazzAdaptedRhythmImpl(YamahaRhythmProvider.RP_ID, yamaha, meter);
+                var provider = yamaha.isExtendedRhythm() ? YamJJazzRhythmProvider.RP_ID : YamahaRhythmProvider.RP_ID;
+                partRhythm = new YamJJazzAdaptedRhythmImpl(provider, yamaha, meter);
                 partRhythm.loadResources();
                 rhythms.put(meter, partRhythm);
             }

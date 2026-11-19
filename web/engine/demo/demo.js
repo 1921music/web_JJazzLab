@@ -4,6 +4,10 @@ const form = document.querySelector("#midi-form");
 const options = document.querySelector("#options");
 const chordInput = document.querySelector("#chords");
 const styleInput = document.querySelector("#style");
+const bundledExtension = document.querySelector("#bundled-extension");
+const extendedVariation = document.querySelector("#extended-variation");
+const extendedVariationField = document.querySelector("#extended-variation-field");
+for (const name of Object.keys(embeddedExtendedStyles)) bundledExtension.add(new Option(name, name));
 const tempoInput = document.querySelector("#tempo");
 const rhythmEngine = document.querySelector("#rhythm-engine");
 const swingBass = document.querySelector("#swing-bass");
@@ -93,17 +97,25 @@ libraryStyle.addEventListener("change", () => {
     const selected = styleArchive.entries.find(entry => entry.path === libraryStyle.value);
     if (selected && styleIssue(selected)) { showStylePackStatus(styleIssue(selected), true); renderStyleChoices(); return; }
     selectedLibraryStyle = selected;
-    if (selectedLibraryStyle) styleInput.value = "";
+    if (selectedLibraryStyle) { styleInput.value = ""; bundledExtension.value = ""; }
+    extendedVariationField.hidden = true;
     if (song) showStatus("スタイルを変更しました。「伴奏を生成」で新しい伴奏を作ります。");
 });
-styleInput.addEventListener("change", () => { selectedLibraryStyle = undefined; libraryStyle.value = ""; });
+styleInput.addEventListener("change", () => {
+    selectedLibraryStyle = undefined; libraryStyle.value = ""; bundledExtension.value = "";
+    extendedVariationField.hidden = true;
+});
+bundledExtension.addEventListener("change", () => {
+    if (bundledExtension.value) { selectedLibraryStyle = undefined; libraryStyle.value = ""; styleInput.value = ""; }
+    extendedVariationField.hidden = true;
+});
 
 rhythmEngine.addEventListener("change", () => {
     const swing = rhythmEngine.value === "jjswing";
     document.querySelector("#swing-settings").hidden = !swing || Boolean(editor.project);
     document.querySelector("#style-field").hidden = swing;
     styleInput.disabled = swing;
-    styleInput.multiple = rhythmEngine.value === "song";
+    if (swing || editor.project) extendedVariationField.hidden = true;
     tempoInput.placeholder = swing ? "120" : "スタイルの既定値";
 });
 let song;
@@ -266,12 +278,33 @@ function showStatus(message, error = false) {
 }
 
 async function readStyle() {
+    if (bundledExtension.value) return readBundledExtendedStyle(bundledExtension.value);
     if (selectedLibraryStyle) return { name: selectedLibraryStyle.name, bytes: new Int8Array(await styleArchive.read(selectedLibraryStyle)) };
-    const file = styleInput.files[0];
-    if (file) {
-        return { name: file.name, bytes: new Int8Array(await file.arrayBuffer()) };
-    }
+    const files = Array.from(styleInput.files);
+    const file = files.find(file => /\.yjz$/iu.test(file.name)) ?? files[0];
+    if (file) return readLocalStyle(file, files);
     return { name: bundledStyle, bytes: new Int8Array(await decompress(embeddedStyle)) };
+}
+
+async function readLocalStyle(file, files) {
+    const name = file.name;
+    const id = `${name}-ID`;
+    if (!/\.yjz$/iu.test(name)) return { name, id, bytes: new Int8Array(await file.arrayBuffer()), attach: true };
+    const stem = name.slice(0, -4).toLowerCase();
+    const base = ["sty", "prs", "bcs", "sst"].map(ext => files.find(candidate => candidate.name.toLowerCase() === `${stem}.${ext}`)).find(Boolean);
+    if (!base) throw new Error(`「${name}」と同じ名前の元スタイル（.sty / .prs / .bcs / .sst）も一緒に選んでください。`);
+    return { name, id, baseName: base.name, bytes: new Int8Array(await base.arrayBuffer()), extension: new Int8Array(await file.arrayBuffer()), attach: true };
+}
+
+async function readBundledExtendedStyle(name) {
+    const data = embeddedExtendedStyles[name];
+    return { name, id: `${name}-ID`, baseName: data.baseName, bytes: new Int8Array(await decompress(data.base)),
+        extension: new Int8Array(await decompress(data.extension)) };
+}
+
+function restoreAttachedStyle(style) {
+    return { ...style, bytes: Int8Array.from(style.data),
+        ...(style.extensionData ? { extension: Int8Array.from(style.extensionData) } : {}), attach: true };
 }
 
 let activeProject;
@@ -281,6 +314,7 @@ const editor = new SongEditor((opened) => {
     activeProject = undefined;
     selectedLibraryStyle = undefined;
     libraryStyle.value = "";
+    bundledExtension.value = "";
     styleInput.value = "";
     tempoInput.value = opened.project.tempo;
     const sources = new Set(opened.project.parts.map(part => DesktopSongFiles.sourceStyleId(part.styleId)));
@@ -321,13 +355,13 @@ async function readBundledArrangementStyle(name) {
 async function readArrangementStyle(project, requestedSwing, meter) {
     if (requestedSwing && meter === "FOUR_FOUR") return { name: "jjSwing", id: "jjSwing-ID", bytes: new Int8Array() };
     if (requestedSwing) return defaultArrangementStyle(meter);
-    if (styleInput.files.length || selectedLibraryStyle) {
+    if (styleInput.files.length || selectedLibraryStyle || bundledExtension.value) {
         const style = await readStyle();
-        return { ...style, id: `${style.name}-ID`, attach: styleInput.files.length > 0 };
+        return { ...style, id: `${style.name}-ID` };
     }
     if (editor.attachedStyles.length === 1) {
         const attached = editor.attachedStyles[0];
-        return { ...attached, bytes: Int8Array.from(attached.data), attach: true };
+        return restoreAttachedStyle(attached);
     }
     if (project.parts[0].styleId === "jjSwing-ID") return defaultArrangementStyle(meter);
     return readSavedStyle(DesktopSongFiles.sourceStyleId(project.parts[0].styleId), meter);
@@ -337,10 +371,13 @@ async function readSavedStyle(id, meter) {
     if (id === "jjSwing-ID" && meter === "FOUR_FOUR") return { name: "jjSwing", id, bytes: new Int8Array() };
     const wanted = id.replace(/-ID$/u, "");
     if (id === "jjSwing-ID") return defaultArrangementStyle(meter, wanted);
-    const file = Array.from(styleInput.files).find(file => file.name.toLowerCase() === wanted.toLowerCase());
-    if (file) return { name: file.name, id: `${file.name}-ID`, bytes: new Int8Array(await file.arrayBuffer()), attach: true };
+    const files = Array.from(styleInput.files);
+    const file = files.find(file => file.name.toLowerCase() === wanted.toLowerCase());
+    if (file) return readLocalStyle(file, files);
     const attached = editor.attachedStyles.find(style => style.id === id);
-    if (attached) return { ...attached, bytes: Int8Array.from(attached.data), attach: true };
+    if (attached) return restoreAttachedStyle(attached);
+    const extension = Object.keys(embeddedExtendedStyles).find(name => name.toLowerCase() === wanted.toLowerCase());
+    if (extension) return readBundledExtendedStyle(extension);
     const bundled = [...bundledStyles.keys()].find(name => name.toLowerCase() === wanted.toLowerCase());
     if (bundled) return readBundledArrangementStyle(bundled);
     await loadStylePack();
@@ -351,7 +388,10 @@ async function readSavedStyle(id, meter) {
 
 function describeStyle(style) {
     if (style.id === "jjSwing-ID") return { ...style, meter: "FOUR_FOUR", variations: Array.from(engine.exports.getSwingVariations()) };
-    const [meter, ...variations] = Array.from(engine.exports.getYamahaStyleInfo(style.bytes, style.name));
+    const info = style.extension
+        ? engine.exports.getExtendedYamahaStyleInfo(style.bytes, style.baseName, style.extension, style.name)
+        : engine.exports.getYamahaStyleInfo(style.bytes, style.name);
+    const [meter, ...variations] = Array.from(info);
     return { ...style, meter, variations };
 }
 
@@ -362,7 +402,8 @@ function arrangePart(part, style, partMeter) {
     }
     if (partMeter === style.meter) return { ...part, styleId: style.id, styleName: style.name, parameters };
     const label = DesktopSongFiles.meters[partMeter][0];
-    return { ...part, styleId: `YamahaRhythmProviderID___${style.id}___${label}`, styleName: `[${label}]${style.name}`, parameters };
+    const provider = style.extension ? "YamJJazzRhythmProviderID" : "YamahaRhythmProviderID";
+    return { ...part, styleId: `${provider}___${style.id}___${label}`, styleName: `[${label}]${style.name}`, parameters };
 }
 
 function selectVariation(saved, available) {
@@ -464,7 +505,7 @@ form.addEventListener("submit", async (event) => {
             const arrangementChanged = parts.some((part, index) => part.styleId !== project.parts[index].styleId
                 || part.parameters.rpVariationID !== project.parts[index].parameters.rpVariationID);
             const arrangement = { ...project, tempo: tempo || project.tempo, parts };
-            midi = engine.exports.generateSongMidiWithStyles(...DesktopSongFiles.multiStyleEngineArgs(arrangement, styles, sources, editor.mix));
+            midi = engine.exports.generateSongMidiWithStylePairs(...DesktopSongFiles.multiStyleEngineArgs(arrangement, styles, sources, editor.mix));
             const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
             const applied = engine.exports.wasImportedMixApplied();
             const original = new Map(editor.mix.map(track => [`${track.rhythmId}\t${track.name}`, track]));
@@ -488,19 +529,31 @@ form.addEventListener("submit", async (event) => {
             editor.project.parts = arrangement.parts;
             editor.project.tempo = arrangement.tempo;
             if (arrangementChanged) editor.render();
-            editor.style = styles.filter(style => style.attach).map(style => ({ name: style.name, id: style.id, data: Array.from(new Uint8Array(style.bytes.buffer)) }));
+            editor.style = styles.filter(style => style.attach).map(style => ({ name: style.name, id: style.id,
+                data: Array.from(new Uint8Array(style.bytes.buffer)), ...(style.extension ? { baseName: style.baseName,
+                    extensionData: Array.from(new Uint8Array(style.extension.buffer)) } : {}) }));
             editor.exportButton.disabled = false;
             activeProject = project;
             barBeats = DesktopSongFiles.barBeats(arrangement);
             bars = barBeats.length;
         } else try {
             style = requestedSwing ? { name: "jjSwing" } : await readStyle();
-            midi = requestedSwing
-                ? engine.exports.generateSwingMidiWithVariation(chords, tempo, swingVariation.value, swingBass.value, swingDrums.value)
-                : engine.exports.generateMidi(style.bytes, style.name, chords, tempo);
+            if (requestedSwing) {
+                midi = engine.exports.generateSwingMidiWithVariation(chords, tempo, swingVariation.value, swingBass.value, swingDrums.value);
+            } else if (style.extension) {
+                const { variations } = describeStyle(style);
+                const variation = extendedVariation.dataset.style === style.name ? selectVariation(extendedVariation.value, variations) : variations[0];
+                extendedVariation.replaceChildren(...variations.map(value => new Option(value, value)));
+                extendedVariation.dataset.style = style.name;
+                extendedVariation.value = variation;
+                extendedVariationField.hidden = false;
+                midi = engine.exports.generateExtendedMidi(style.bytes, style.baseName, style.extension, style.name, chords, tempo, variation);
+            } else {
+                midi = engine.exports.generateMidi(style.bytes, style.name, chords, tempo);
+            }
         } catch (error) {
             console.error(error);
-            throw new Error(requestedSwing ? "jjSwingの伴奏を生成できませんでした。コード表記を確認してください。" : "MIDIを生成できませんでした。コード表記とスタイルファイルを確認してください。");
+            throw new Error(requestedSwing ? "jjSwingの伴奏を生成できませんでした。コード表記を確認してください。" : error.message);
         }
         const metadata = engine.exports.getPartMetadata();
         song = parseMidi(midi, bars, metadata, barBeats);

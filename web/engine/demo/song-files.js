@@ -8,7 +8,7 @@ const DesktopSongFiles = (() => {
         FIVE_FOUR: ["5/4", 5], SIX_FOUR: ["6/4", 6], SEVEN_FOUR: ["7/4", 7], SIX_EIGHT: ["6/8", 2], TWELVE_EIGHT: ["12/8", 4] });
 
     function sourceStyleId(id) {
-        return /^YamahaRhythmProviderID___(.+)___\d+\/\d+$/u.exec(id)?.[1] ?? id;
+        return /^(?:Yamaha|YamJJazz)RhythmProviderID___(.+)___\d+\/\d+$/u.exec(id)?.[1] ?? id;
     }
 
     function barBeats(song) {
@@ -78,7 +78,8 @@ const DesktopSongFiles = (() => {
             const features = resolve(child(rendering, "enum-set"))?.textContent.trim() ?? "";
             const scale = resolve(child(rendering, "StdScaleInstance"));
             const originalName = attr(chord, "spOriginalName");
-            return { name: attr(chord, "spName") || originalName, bar: Number(match[1] ?? 0), beat: Number(match[2].replace(",", ".")),
+            const name = attr(chord, "resolves-to") === "NCExtChordSymbolSP" ? "NC" : attr(chord, "spName") || originalName;
+            return { name, bar: Number(match[1] ?? 0), beat: Number(match[2].replace(",", ".")),
                 ...(originalName && originalName !== attr(chord, "spName") ? { originalName } : {}),
                 ...(features ? { features } : {}), ...(scale ? { scale: { index: attr(scale, "spStdScaleIndex"), pitch: attr(scale, "spStartNotePitch") } } : {}) };
         });
@@ -180,14 +181,20 @@ const DesktopSongFiles = (() => {
 
     function multiStyleEngineArgs(song, styles, sources, mix) {
         const lengths = Int32Array.from(styles, style => style.bytes.length);
-        const bytes = new Int8Array(lengths.reduce((total, length) => total + length, 0));
+        const extensions = Int32Array.from(styles, style => style.extension?.length ?? 0);
+        const bytes = new Int8Array(styles.reduce((total, style, index) => total + lengths[index] + extensions[index], 0));
         let offset = 0;
         for (const style of styles) {
             bytes.set(style.bytes, offset);
             offset += style.bytes.length;
+            if (style.extension) {
+                bytes.set(style.extension, offset);
+                offset += style.extension.length;
+            }
         }
         const columns = engineArgs(song, bytes, "", mix);
-        return [bytes, styles.map(style => style.id === "jjSwing-ID" ? "" : style.name), lengths, Int32Array.from(sources), ...columns.slice(2)];
+        return [bytes, styles.map(style => style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name), lengths,
+            styles.map(style => style.extension ? style.name : ""), extensions, Int32Array.from(sources), ...columns.slice(2)];
     }
 
     const escape = value => String(value ?? "").replace(/[&<>"\r\n\t]/gu, char => ({
@@ -200,7 +207,7 @@ const DesktopSongFiles = (() => {
             `<CLI__SectionImpl resolves-to="CLI_SectionImplSP" spName="${escape(section.name)}" spTs="${escape(section.meter)}" spBarIndex="${section.bar}">`
             + '<spVERSION>4</spVERSION><spClientProperties><owner class="CLI_SectionImpl" reference="../.."/></spClientProperties></CLI__SectionImpl>' }));
         const chords = song.chords.map(chord => {
-            const start = chord.name === "NC" ? '<spChord resolves-to="NCExtChordSymbolSP" spVERSION="2" spName="NC">'
+            const start = chord.name === "NC" ? '<spChord class="NCExtChordSymbol" resolves-to="NCExtChordSymbolSP" spVERSION="2" spName="NCExtChordSymbol">'
                 : `<spChord resolves-to="ExtChordSymbolSP" spName="${escape(chord.name)}" spOriginalName="${escape(chord.originalName ?? chord.name)}"><spVERSION>3</spVERSION>`;
             const scale = chord.scale
                 ? `<StdScaleInstance resolves-to="StdScaleInstanceSP" spVERSION="2" spStdScaleIndex="${escape(chord.scale.index)}" spStartNotePitch="${escape(chord.scale.pitch)}"/>`

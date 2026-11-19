@@ -23,7 +23,9 @@ TeaVMの診断や成果物の生成だけを行う場合は、`-SkipTests` で�
 
 ## ブラウザから呼び出す
 
-「曲エディター」の「新規作成」で、小節ごとのコード、セクションと演奏順を編集できます。たとえば `Cmaj7 3:G7` で、小節の先頭に Cmaj7、3拍目に G7 を置きます。「曲を開く」では、本家の `.sng`（曲の保存形式 v4）と、必要に応じて同名の `.mix`（v5）をまとめて選択します。複数スタイルの曲は「曲ファイルの指定どおり」が既定です。標準YamahaスタイルとjjSwingを区間ごとに切り替え、Yamahaの拍子変換と組み合わせて演奏・ループできます。各スタイルのミックスは本家と同じMIDIチャンネル数の範囲で割り当てられ、ユーザートラックの音符は曲頭からの拍位置を保持します。
+「曲エディター」の「新規作成」で、小節ごとのコード、セクションと演奏順を編集できます。たとえば `Cmaj7 3:G7` で、小節の先頭に Cmaj7、3拍目に G7 を置きます。「曲を開く」では、本家の `.sng`（曲の保存形式 v4）と、必要に応じて同名の `.mix`（v5）をまとめて選択します。複数スタイルの曲は「曲ファイルの指定どおり」が既定です。標準Yamahaスタイル・YamJJazzの `.yjz`・jjSwingを区間ごとに切り替え、Yamaha／YamJJazzの拍子変換と組み合わせて演奏・ループできます。各スタイルのミックスは本家と同じMIDIチャンネル数の範囲で割り当てられ、ユーザートラックの音符は曲頭からの拍位置を保持します。
+
+本家に同梱されている5組の `.yjz` は、「同梱のYamJJazzスタイル」から選べます。これらを参照する `.sng` は対応するペアを自動で読み込みます。手持ちの `.yjz` を使う場合は、名前が同じ元スタイル（`.sty`／`.prs`／`.bcs`／`.sst`）と一緒に選んでください。Web用の保存ファイルと本家向けZIPの両方に、取り込んだペアを収録します。簡易入力では、初回の生成後にその `.yjz` が提供するバリエーションを選べます。
 
 曲ファイルのバリエーションは演奏区間ごとに読み込まれ、「演奏順」で編集できます。4/4の曲でjjSwingを選ぶと、たとえば `Main B-1` はそのまま使い、jjSwingにない `Intro C-1` は `Intro A-1` に置き換えます。元の曲で複数の4/4スタイルを使っていても、曲全体をjjSwingで演奏できます。3/4の曲でjjSwingを選ぶか、曲と拍子が合わないスタイルを指定すると、同じ拍子の同梱スタイルで演奏します。3/4の代替スタイルは `JazzWaltzMed.S351.sst` です。
 
@@ -32,6 +34,8 @@ TeaVMの診断や成果物の生成だけを行う場合は、`-SkipTests` で�
 曲エディターのChrome検証は、ビルド後に PowerShell で `$env:JJAZZ_SMOKE_SUITE = 'song-editor'` を指定して `node web/audio/test/browser-smoke.cjs WSL_image/midi-demo.html` を実行します。
 公式Pop曲集から展開した `africa.sng` のパスを環境変数 `JJAZZ_AFRICA_FIXTURE` に指定すると、4/4と2/4の切り替え、および11〜13小節のループも確認します。
 `JJAZZ_MULTI_STYLE_FIXTURES` に [jjazz-repertoire](https://github.com/CapoShiva/jjazz-repertoire) の `Repertoire` フォルダーを指定すると、`ANightinTunisia-Eb-Theme`、`Django-Fm-Theme`、`PetiteFleur-Dm-Theme2-Tango` の `.sng`／`.mix` を使い、スタイル・拍子の切り替えとループ、および本家形式の書き出しを確認します。
+
+YamJJazz専用の検証は `JJAZZ_SMOKE_SUITE` を `yjz` に設定します。`JJAZZ_YJZ_FIXTURES` に公式曲集の `casa-forte.sng`、`ponteio.sng`、`across-the-universe.sng` を置いたフォルダーを指定すると、曲ファイルからの参照、拍子変更のループ、他のスタイルとの併用も確認します。
 
 `-Engine` で生成される Windows 側の `WSL_image/midi-demo.html` を、PC版ChromeまたはEdgeで開きます。HTML単体を `file://` で開いてコード進行を入力すると、MIDIの生成・ダウンロードとSoundFontによるリアルタイム再生ができます。リズムエンジンで「Yamahaスタイル」または「jjSwing」を選びます。Yamahaスタイルは同梱の8Beatか、選択したスタイルファイルを使います。
 
