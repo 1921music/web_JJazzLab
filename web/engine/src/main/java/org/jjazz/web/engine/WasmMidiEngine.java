@@ -41,6 +41,30 @@ public final class WasmMidiEngine
         return midi.toByteArray();
     }
 
+    /** Generate a complete arrangement. Empty styleName selects jjSwing. */
+    @JSExport
+    public static byte[] generateSongMidi(byte[] styleBytes, String styleName, String title, String meter, int tempo, int bars,
+                                          String[] sectionNames, int[] sectionBars, String[] chords, int[] chordBars, float[] chordBeats,
+                                          String[] partNames, int[] partSections, String[] partParameters,
+                                          String[] userTrackNames, String[] userPhrases) throws Exception
+    {
+        partMetadata = new String[0];
+        var song = new SongInput(title, meter, tempo, bars, sectionNames, sectionBars, chords, chordBars, chordBeats,
+                partNames, partSections, partParameters, userTrackNames, userPhrases);
+        var midi = new ByteArrayOutputStream();
+        if (styleName.isEmpty())
+        {
+            partMetadata = MidiGeneration.generateSong(null, song, midi);
+        } else
+        {
+            try (var style = new RawStyleFile(styleBytes, styleName))
+            {
+                partMetadata = MidiGeneration.generateSong(style.file(), song, midi);
+            }
+        }
+        return midi.toByteArray();
+    }
+
     /** Available values come from the original jjSwing rhythm parameter. */
     @JSExport
     public static String[] getSwingVariations() throws Exception

@@ -1,5 +1,7 @@
 "use strict";
 
+const isDrumMetadata = (info) => /^(?:(?:user|rhythm)-)?drums\t/u.test(info ?? "");
+
 // Parse the generated SMF without relying on browser MIDI devices. Tracks retain
 // their identity even when several rhythm voices share the MIDI drum channel.
 function parseMidi(input, barCount, metadata = []) {
@@ -61,7 +63,10 @@ function parseMidi(input, barCount, metadata = []) {
                 const part = parts.length;
                 const info = metadata[track]?.split("\t");
                 const label = info?.slice(1).join("\t") || name.replace(/-channel\d+\/16$/u, "") || `パート ${part + 1}`;
-                parts.push({ id: `${label}:${channel}`, name: label, channel, drum: info ? info[0] === "drums" : channel === 9 });
+                const match = /^(user|rhythm)-(drums|melodic)$/u.exec(info?.[0] ?? "");
+                const drum = info ? isDrumMetadata(metadata[track]) : channel === 9;
+                parts.push(match ? { id: `${match[1]}:${label}`, name: label, channel, drum, source: match[1] }
+                    : { id: `${label}:${channel}`, name: label, channel, drum });
                 for (const e of trackEvents) if (e.channel === channel) events.push({ ...e, part });
             }
         }
@@ -152,7 +157,7 @@ function midiVariableLength(value) {
 function exportGmMidi(input, metadata = []) {
     const { header, tracks } = readMidiForExport(input);
     const isDrum = (event, track) => event.status < 0xf0 &&
-        (metadata[track] ? metadata[track].startsWith("drums\t") : (event.status & 15) === 9);
+        (metadata[track] ? isDrumMetadata(metadata[track]) : (event.status & 15) === 9);
     let primary;
     tracks.forEach((events, track) => {
         for (const event of events) {
@@ -175,7 +180,7 @@ function exportGmMidi(input, metadata = []) {
                 // part. CC/program/channel pressure/pitch bend are shared.
                 if (!owner && ![0x80, 0x90, 0xa0].includes(type)) continue;
                 data = data.slice(); data[0] = type | 9;
-            } else if (event.meta === 3 && metadata[track]?.startsWith("drums\t")) {
+            } else if (event.meta === 3 && isDrumMetadata(metadata[track])) {
                 // Keep the exported track-name channel annotation accurate.
                 let offset = 2;
                 while (data[offset++] & 128) { /* skip the original name length */ }
