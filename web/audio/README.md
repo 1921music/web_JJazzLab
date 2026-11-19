@@ -35,6 +35,10 @@ contribute notes and polyphonic key pressure, without overriding those settings.
 Original note timing and velocities are preserved; separate drum volume/pan and
 browser mixer settings are not baked into the downloaded file.
 
+The built-in jjSwing engine selects TimGM6mb presets explicitly and adapts XG
+drum articulations. See [JJSWING-COMPATIBILITY.md](JJSWING-COMPATIBILITY.md) for
+the mapping, approximation limits and real-SF2 browser test procedure.
+
 Build with `bash web/audio/build.sh` in the repository's dedicated WSL distro
 (Emscripten is installed by `scripts/wsl-dev.ps1`). The standard
 `scripts/wsl-build.ps1 -Engine` builds both engines and packages the HTML under

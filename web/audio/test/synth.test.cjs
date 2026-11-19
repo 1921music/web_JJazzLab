@@ -39,3 +39,36 @@ test("real Wasm synthesizes melodic and percussion parts, shares samples and res
     assert.equal(api.synth_part(0), -1);
     assert.equal(api.memory.buffer.byteLength, 64 * 1024 * 1024);
 });
+
+test("TimGM6mb contains jjSwing melodic presets and audible compatible Brush-kit notes", {
+    skip: !fs.existsSync(wasmPath) || !fs.existsSync(sfPath) ? "Requires built Wasm and pinned SF2" : false
+}, async () => {
+    const { exports: api } = await WebAssembly.instantiate(new WebAssembly.Module(fs.readFileSync(wasmPath)));
+    api._initialize();
+    const sf = fs.readFileSync(sfPath), pointer = api.malloc(sf.length);
+    new Uint8Array(api.memory.buffer, pointer, sf.length).set(sf);
+    assert.equal(api.synth_load(pointer, sf.length, 48000), 1); api.free(pointer);
+    api.synth_part(0); api.synth_part(1);
+    const pcm = new Float32Array(api.memory.buffer);
+    const audible = (part, program, key, velocity) => {
+        api.synth_reset(part); api.synth_event(part, 0xc0, program, 0); api.synth_event(part, 0x90, key, velocity);
+        let power = 0;
+        for (let block = 0; block < 24; block++) {
+            const start = api.synth_render(128) / 4 + part * 256;
+            for (let i = 0; i < 256; i++) { const sample = pcm[start + i]; assert.ok(Number.isFinite(sample)); power += sample * sample; }
+        }
+        assert.ok(power > 1e-12, `Silent part=${part} program=${program} key=${key} velocity=${velocity}`);
+    };
+    for (const program of [0, 26, 32, 73]) for (const key of [28, 36, 48, 60, 72]) {
+        assert.equal(api.synth_note_supported(0, program, key, 64), 1);
+        audible(0, program, key, 64);
+    }
+    assert.equal(api.synth_note_supported(128, 40, 25, 90), 0, "Original XG Brush Tap is absent");
+    assert.equal(api.synth_note_supported(128, 40, 26, 90), 0, "Original XG Brush Swirl is absent");
+    for (const key of [31, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 51, 55, 57, 59, 85]) {
+        for (const velocity of [30, 90, 120]) {
+            assert.equal(api.synth_note_supported(128, 40, key, velocity), 1, `Missing drum key ${key}`);
+            audible(1, 40, key, velocity);
+        }
+    }
+});

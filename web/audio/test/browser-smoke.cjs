@@ -9,7 +9,8 @@ const htmlPath = path.resolve(process.argv[2] || "WSL_image/midi-demo.html");
 const chrome = process.env.CHROME_BIN || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const scratch = fs.mkdtempSync(path.join(path.dirname(htmlPath), "soundfont-smoke-"));
 const smokePath = path.join(scratch, "smoke.html");
-const harness = `
+const harness = process.env.JJAZZ_SMOKE_SUITE === "jjswing"
+    ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8") : `
 (async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));

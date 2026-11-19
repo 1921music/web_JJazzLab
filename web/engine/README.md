@@ -2,6 +2,8 @@
 
 [JJazzLabの `cd1944afd`](https://github.com/jjazzboss/JJazzLab/commit/cd1944afdf8a18b659cdbf63538b6df625a515ec)（5.2.1リリース直後）をベースにしています。Javaの伴奏生成は上流版を使い、Web向けの差し替えとDIはこのモジュールに置いています。
 
+jjSwingには、選択済みのベースリズムを受け取る `JJSwingRhythm.fromBaseRhythm` を追加しています。既存の初期化はカタログ・一時ファイル展開・スレッド実行と結び付いており、Web用のSPIがないため、この入口だけを上流クラスに追加しました。デスクトップの遅延初期化と伴奏生成アルゴリズムは維持しています。
+
 ## ビルド
 
 WindowsのリポジトリルートからPowerShell 7で実行します。
@@ -21,7 +23,9 @@ TeaVMの診断や成果物の生成だけを行う場合は、`-SkipTests` で�
 
 ## ブラウザから呼び出す
 
-`-Engine` で生成される Windows 側の `WSL_image/midi-demo.html` を、PC版ChromeまたはEdgeで開きます。HTML単体を `file://` で開いてコード進行を入力すると、MIDIの生成・ダウンロードとSoundFontによるリアルタイム再生ができます。スタイルは同梱の8Beatか、選択したYamahaスタイルファイルを使います。
+`-Engine` で生成される Windows 側の `WSL_image/midi-demo.html` を、PC版ChromeまたはEdgeで開きます。HTML単体を `file://` で開いてコード進行を入力すると、MIDIの生成・ダウンロードとSoundFontによるリアルタイム再生ができます。リズムエンジンで「Yamahaスタイル」または「jjSwing」を選びます。Yamahaスタイルは同梱の8Beatか、選択したスタイルファイルを使います。
+
+jjSwingは4/4専用で、未指定テンポは120です。ベースはWalking／2-feel／Double-note／Double-time、ドラムはBrushes・Hi-hat・Ride・Shuffle等の11奏法から選べます。Double-timeは両方を揃えると自然です。基本バリエーションはMain A-1固定で、Intro／Ending・他のMainバリエーションは現在の画面では扱いません。ベース／ドラムのMIDIフレーズDBとベーススタイルはWasmへ同梱するので、SF2以外の追加ダウンロードはありません。
 
 音源のTinySoundFont WasmとAudioWorkletのコードもHTMLへ埋め込みます。初回の再生操作でのみ、固定リビジョンのTimGM6mb.sf2（約6MB）をHTTPSで取得します。初回はネット接続が必要です。取得失敗後は再生ボタンで再試行できます。SF2はページ内で再利用し、ページを閉じた後の永続キャッシュは実装していません。配信元のCORS許可が必要です。ビルド環境にEmscriptenがない場合は `scripts/wsl-dev.ps1` を再実行してください。
 
@@ -39,6 +43,9 @@ TeaVMの診断や成果物の生成だけを行う場合は、`-SkipTests` で�
 const { exports } = await TeaVM.wasmGC.load("./engine.wasm");
 const midi = exports.generateMidi(new Int8Array(await styleFile.arrayBuffer()),
                                   styleFile.name, ["C", "Am7", "Dm7", "G7"], 120);
+// jjSwing uses its own generators, without an uploaded style file.
+const swing = exports.generateSwingMidi(["Cmaj7", "Am7", "Dm7", "G7"], 120,
+                                       "walking", "brushes 1");
 ```
 
 エンジンは生のYamahaスタイルからGM音色の標準MIDIファイルを生成します。`generateMidi` の戻り値はスタイル由来のパート別チャンネルを保持しており、ブラウザ再生にはそのまま使用します。初期の呼び出し口は1小節につき1コードを受け取り、テンポに `0` を指定するとスタイルの既定値を使います。
@@ -48,6 +55,8 @@ const midi = exports.generateMidi(new Int8Array(await styleFile.arrayBuffer()),
 `exports.getPartMetadata()` は直前に生成したMIDIのトラック番号順で、`"drums\tパート名"` または `"melodic\tパート名"` を返します。メタ情報用トラックは `null` です。チャンネル10以外の打楽器パートも、この情報で識別できます。音源・ビルド・検証の詳細は [`../audio/README.md`](../audio/README.md) を参照してください。
 
 ## 診断と上流の追跡
+
+jjSwingの音色はTimGM6mb向けにAcoustic Bass／Piano／Jazz Guitar／Brushキットを明示設定します。元のXG打楽器配置ではノート25・26が未収録、27〜34の一部が効果音になるため、Web版jjSwingの生成結果だけにノート変換を適用します。対応表・近似の制限・検証手順は [`../audio/JJSWING-COMPATIBILITY.md`](../audio/JJSWING-COMPATIBILITY.md) を参照してください。Yamahaスタイルのノートは変換しません。
 
 `./scripts/wsl-build.ps1 -StyleIO` は、生のスタイルから標準MIDIのイベントとCASMを読む部分をWasmGCにコンパイルします。WSLの作業コピー内の `web/engine/target/wasm-diagnostics/` にWasmとローダーが出力されます。調査用の `countStyleNotes` と `countStyleParts` は、スタイルのバイト列を `Int8Array` で受け取り、Note OnとCASMのスタイルパートを数えます。
 

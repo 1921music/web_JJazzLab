@@ -22,8 +22,36 @@
                               aria-describedby="chord-help">C | Am7 | Dm7 | G7</textarea>
                     <small id="chord-help">1小節に1コード。空白、改行、カンマ、または | で区切ります。</small>
                 </div>
-                <div class="settings">
+                <div class="field rhythm-choice">
+                    <label for="rhythm-engine">リズムエンジン</label>
+                    <select id="rhythm-engine">
+                        <option value="yamaha">Yamahaスタイル</option>
+                        <option value="jjswing">jjSwing — ジャズのスウィング（4/4）</option>
+                    </select>
+                </div>
+                <div id="swing-settings" class="settings" hidden>
                     <div class="field">
+                        <label for="swing-bass">ベースの奏法</label>
+                        <select id="swing-bass">
+                            <option value="walking">Walking</option><option value="2-feel">2-feel</option>
+                            <option value="double-note">Double-note</option><option value="double-time">Double-time</option>
+                        </select>
+                    </div>
+                    <div class="field">
+                        <label for="swing-drums">ドラムの奏法</label>
+                        <select id="swing-drums">
+                            <option value="brushes 1">Brushes 1</option><option value="brushes 2">Brushes 2</option>
+                            <option value="hi hat 1">Hi-hat 1</option><option value="hi hat 2">Hi-hat 2</option>
+                            <option value="ride 1">Ride 1</option><option value="ride 2">Ride 2</option>
+                            <option value="ride 3">Ride 3</option><option value="ride 4">Ride 4</option>
+                            <option value="shuffle 1">Shuffle 1</option><option value="shuffle 2">Shuffle 2</option>
+                            <option value="double 1">Double-time</option>
+                        </select>
+                    </div>
+                    <small class="swing-help">ベースとドラムを個別に選べます。Double-timeは両方を揃えると自然に演奏できます。ブラシなど一部の打楽器は、収録音に合わせた近似音です。</small>
+                </div>
+                <div class="settings">
+                    <div class="field" id="style-field">
                         <label for="style">スタイル</label>
                         <input id="style" type="file" accept=".sty,.sst,.prs,.bcs"
                                aria-describedby="style-help">

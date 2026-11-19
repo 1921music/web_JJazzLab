@@ -85,9 +85,9 @@ public class JJSwingRhythm implements YamJJazzRhythm
 {
 
     @StaticResource(relative = true)
-    private final String YJZ_RESOURCE = "psBase.yjz";
+    private static final String YJZ_RESOURCE = "psBase.yjz";
     @StaticResource(relative = true)
-    private final String STY_RESOURCE = "psBase.sst";
+    private static final String STY_RESOURCE = "psBase.sst";
 
     private final String uniqueId;
     private final String name;
@@ -108,11 +108,31 @@ public class JJSwingRhythm implements YamJJazzRhythm
 
     public JJSwingRhythm() throws IOException
     {
+        this(loadBaseRhythm());
+        // Defer on desktop to avoid reentering the rhythm database constructor.
+        SharedExecutorServices.getScheduledExecutor().submit(() -> musicGenerator = new CompositeMusicGenerator(this, buildRvMapper()));
+    }
+
+    /** Create a standalone rhythm using an already selected base, without a catalog or executor. */
+    public static JJSwingRhythm fromBaseRhythm(YamJJazzRhythm baseRhythm)
+    {
+        var rhythm = new JJSwingRhythm(Objects.requireNonNull(baseRhythm));
+        rhythm.musicGenerator = new CompositeMusicGenerator(rhythm, rhythm.buildRvMapper());
+        return rhythm;
+    }
+
+    private static YamJJazzRhythm loadBaseRhythm() throws IOException
+    {
+        return (YamJJazzRhythm) YamJJazzRhythmProvider.getInstance().readFast(extractFiles());
+    }
+
+    private JJSwingRhythm(YamJJazzRhythm suppliedBase)
+    {
         name = "jjSwing";
         uniqueId = name + "-ID";
         author = "-";
         version = "1";
-        baseRhythm = null;
+        baseRhythm = suppliedBase;
         timeSignature = TimeSignature.FOUR_FOUR;
         description = "JJazzLab premium Swing style";
 
@@ -122,14 +142,8 @@ public class JJSwingRhythm implements YamJJazzRhythm
 
 
         // Initialize the base rhythm
-        var yjrProvider = YamJJazzRhythmProvider.getInstance();
-        var yjzFile = extractFiles();       // throw IOException
-        baseRhythm = (YamJJazzRhythm) yjrProvider.readFast(yjzFile);    // throw IOException
         rhythmVoices = buildRhythmVoices(baseRhythm);
         rhythmParameters = buildRhythmParameters(baseRhythm);
-
-        // Need task to avoid endless loop with the RhythmDatabase constructor
-        SharedExecutorServices.getScheduledExecutor().submit(() -> musicGenerator = new CompositeMusicGenerator(this, buildRvMapper()));
     }
 
     @Override
@@ -473,7 +487,7 @@ public class JJSwingRhythm implements YamJJazzRhythm
      * @return The YJZ file
      * @throws java.io.IOException
      */
-    private File extractFiles() throws IOException
+    private static File extractFiles() throws IOException
     {
         Path yjzPath = Files.createTempFile("psBase", ".yjz");
         File yjzFile = yjzPath.toFile();
@@ -482,8 +496,8 @@ public class JJSwingRhythm implements YamJJazzRhythm
         Path styPath = Utilities.replaceExtension(yjzFile, ".sst").toPath();
         styPath.toFile().deleteOnExit();
 
-        Utilities.copyResource(getClass(), STY_RESOURCE, styPath);
-        Utilities.copyResource(getClass(), YJZ_RESOURCE, yjzPath);
+        Utilities.copyResource(JJSwingRhythm.class, STY_RESOURCE, styPath);
+        Utilities.copyResource(JJSwingRhythm.class, YJZ_RESOURCE, yjzPath);
 
         return yjzPath.toFile();
     }

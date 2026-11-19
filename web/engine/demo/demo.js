@@ -5,12 +5,23 @@ const options = document.querySelector("#options");
 const chordInput = document.querySelector("#chords");
 const styleInput = document.querySelector("#style");
 const tempoInput = document.querySelector("#tempo");
+const rhythmEngine = document.querySelector("#rhythm-engine");
+const swingBass = document.querySelector("#swing-bass");
+const swingDrums = document.querySelector("#swing-drums");
 const status = document.querySelector("#status");
 const download = document.querySelector("#download");
 const bundledStyle = "8Beat.T160.STY";
 
 let engine;
 let downloadUrl;
+
+rhythmEngine.addEventListener("change", () => {
+    const swing = rhythmEngine.value === "jjswing";
+    document.querySelector("#swing-settings").hidden = !swing;
+    document.querySelector("#style-field").hidden = swing;
+    styleInput.disabled = swing;
+    tempoInput.placeholder = swing ? "120" : "スタイルの既定値";
+});
 let song;
 let generating = false;
 let starting = false;
@@ -197,12 +208,16 @@ form.addEventListener("submit", async (event) => {
                 throw new Error("Wasmを読み込めませんでした。WasmGCとgzip展開に対応したブラウザで開いてください。");
             }
         }
-        const style = await readStyle();
+        const swing = rhythmEngine.value === "jjswing";
+        const style = swing ? { name: "jjSwing" } : await readStyle();
         let midi;
         try {
-            midi = engine.exports.generateMidi(style.bytes, style.name, chords, tempo);
-        } catch {
-            throw new Error("MIDIを生成できませんでした。コード表記とスタイルファイルを確認してください。");
+            midi = swing
+                ? engine.exports.generateSwingMidi(chords, tempo, swingBass.value, swingDrums.value)
+                : engine.exports.generateMidi(style.bytes, style.name, chords, tempo);
+        } catch (error) {
+            console.error(error);
+            throw new Error(swing ? "jjSwingの伴奏を生成できませんでした。コード表記を確認してください。" : "MIDIを生成できませんでした。コード表記とスタイルファイルを確認してください。");
         }
         const metadata = engine.exports.getPartMetadata();
         song = parseMidi(midi, chords.length, metadata);

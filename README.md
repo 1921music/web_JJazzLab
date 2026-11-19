@@ -5,9 +5,9 @@
 
 This fork adds an experimental browser engine for [JJazzLab](https://github.com/jjazzboss/JJazzLab). It uses TeaVM 0.16.0 to compile the accompaniment generator to WebAssembly GC. The port starts from JJazzLab [`cd1944afd`](https://github.com/jjazzboss/JJazzLab/commit/cd1944afdf8a18b659cdbf63538b6df625a515ec), a commit after the 5.2.1 release.
 
-- Read a raw Yamaha style (`.sty`, `.sst`, or `.prs`) and generate a General MIDI file from a chord progression. The current API takes one chord per bar.
-- The Web module in [`web/engine`](web/engine) supplies the browser-compatible services and TeaVM substitutions for desktop dependencies. The upstream Java sources match the base commit.
-- A standalone HTML demo lets you edit chords and download MIDI. It includes an 8Beat style and accepts your own style files.
+- Generate an accompaniment from a raw Yamaha style (`.sty`, `.sst`, or `.prs`) or the built-in jjSwing engine with its dedicated walking-bass and drums generators. The current API takes one chord per bar.
+- The Web module in [`web/engine`](web/engine) supplies browser-compatible services and TeaVM substitutions for desktop dependencies. jjSwing has a small dependency-injection factory for standalone initialization; its music-generation algorithms are preserved.
+- A standalone HTML demo lets you edit chords, play with TinySoundFont and TimGM6mb, loop bars, mix parts and download MIDI. It includes 8Beat and jjSwing; jjSwing exposes bass/drums playing styles and adapts XG drum articulations to available TimGM6mb sounds.
 
 From the repository root on Windows, run the following commands in PowerShell 7 with WSL 2 available.
 
