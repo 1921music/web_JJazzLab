@@ -148,6 +148,55 @@
                 report.blueBossaSwingVariations = [...new Set(mapped)];
             }
         }
+        if (desktopFixture.africa) {
+            const file = new DataTransfer();
+            file.items.add(new File([desktopFixture.africa], "africa.sng"));
+            open.files = file.files;
+            await editor.openFiles(open);
+            check(editor.meter.selectedOptions[0].textContent === "曲中で変化", "Africa did not display mixed meter");
+            await generate();
+            const beats = DesktopSongFiles.barBeats(editor.project);
+            const shortBars = beats.flatMap((beat, bar) => beat === 2 ? [bar + 1] : []);
+            check(beats.length === 102 && shortBars.join() === "12,17,22,44,49,71,76", `Unexpected Africa meters: ${shortBars}`);
+            const expectedChanges = [];
+            let tick = 0;
+            for (const [index, beat] of beats.entries()) {
+                if (!index || beats[index - 1] !== beat) expectedChanges.push({ tick, numerator: beat, denominator: 4 });
+                tick += beat * 960;
+            }
+            check(JSON.stringify(song.meterChanges) === JSON.stringify(expectedChanges), "Africa MIDI meter changes do not match the .sng");
+            check(editor.project.parts[0].styleName === "DiscoHouse.S145.prs", "Africa did not use its original Yamaha style");
+            check(editor.project.parts.some(part => part.styleId === "YamahaRhythmProviderID___DiscoHouse.S145.prs-ID___2/4"),
+                "Africa lost its adapted style identifier");
+            const beatSeconds = 60 / editor.project.tempo;
+            for (let index = 0; index < beats.length; index++) {
+                check(Math.abs(song.barTimes[index + 1] - song.barTimes[index] - beats[index] * beatSeconds) < 0.00001,
+                    `Africa playback time for bar ${index + 1} does not match its meter`);
+            }
+            loopStart.value = 11;
+            loopEnd.value = 13;
+            loopEnabled.checked = true;
+            const loop = readLoop();
+            check(Math.abs(loop.end - loop.start - 10 * beatSeconds) < 0.00002, "Africa loop length must be 4+2+4 beats");
+            await player.initialize(showPlayStatus);
+            const positions = [];
+            const originalPosition = player.onPosition;
+            player.onPosition = data => { if (data.playing) positions.push(data.seconds); originalPosition(data); };
+            try {
+                await player.play(song, loop, mixerParts, 0.8);
+                for (let i = 0; i < 220 && !positions.some((value, index) => index && value < positions[index - 1]); i++) {
+                    await new Promise(resolve => setTimeout(resolve, 50));
+                }
+                const wrap = positions.findIndex((value, index) => index && value < positions[index - 1]);
+                check(wrap > 0 && positions[wrap] < loop.start + 0.25, "Africa loop did not return to bar 11");
+                check(positions.every(seconds => seconds >= loop.start - 0.01 && seconds <= loop.end + 0.01), "Playback escaped the Africa loop");
+                check(positions.some(seconds => seconds >= song.barTimes[11] && seconds < song.barTimes[12]), "Playback skipped bar 12 in 2/4");
+                report.africa = { bars: beats.length, shortBars, loopBars: [11, 13], loopSeconds: loop.end - loop.start, wraps: 1 };
+            } finally {
+                player.onPosition = originalPosition;
+                await player.stop();
+            }
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

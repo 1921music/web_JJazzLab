@@ -30,6 +30,7 @@ const repertoire = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.en
 const songFixture = process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
     song: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.sng"), "utf8"),
     mix: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.mix"), "utf8"),
+    africa: process.env.JJAZZ_AFRICA_FIXTURE ? fs.readFileSync(process.env.JJAZZ_AFRICA_FIXTURE, "utf8") : null,
     styles: repertoire ? fs.readFileSync(path.resolve(__dirname, "../../engine/demo/assets/jjazzlab_user_styles.zip"), "base64") : null,
     repertoire: repertoire ? ["BlueBossa-Cm-Theme", "AllBlues-G-Theme"].map(name => ({ name,
         song: fs.readFileSync(path.join(repertoire, `${name}.sng`), "utf8"), mix: fs.readFileSync(path.join(repertoire, `${name}.mix`), "utf8")

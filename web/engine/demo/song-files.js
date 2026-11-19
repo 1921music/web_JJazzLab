@@ -3,6 +3,21 @@
 // The supported desktop formats are the XStream XML written by JJazzLab 5.2.1.
 // Resolve references within the parsed document without instantiating Java objects.
 const DesktopSongFiles = (() => {
+    // JJazzLab measures compound meters in natural beats (dotted quarters).
+    const meters = Object.freeze({ TWO_FOUR: ["2/4", 2], THREE_FOUR: ["3/4", 3], FOUR_FOUR: ["4/4", 4],
+        FIVE_FOUR: ["5/4", 5], SIX_FOUR: ["6/4", 6], SEVEN_FOUR: ["7/4", 7], SIX_EIGHT: ["6/8", 2], TWELVE_EIGHT: ["12/8", 4] });
+
+    function sourceStyleId(id) {
+        return /^YamahaRhythmProviderID___(.+)___\d+\/\d+$/u.exec(id)?.[1] ?? id;
+    }
+
+    function barBeats(song) {
+        return song.parts.flatMap(part => {
+            const section = song.sections[part.section];
+            const end = song.sections[part.section + 1]?.bar ?? song.bars;
+            return Array(end - section.bar).fill(meters[section.meter][1]);
+        });
+    }
     const child = (node, name) => Array.from(node?.children ?? []).find(element => element.localName === name);
     const content = (node, name) => child(node, name)?.textContent ?? "";
     const attr = (node, name) => node?.getAttribute(name) ?? "";
@@ -92,7 +107,7 @@ const DesktopSongFiles = (() => {
         if (!song || typeof song.title !== "string" || !Number.isInteger(song.bars) || song.bars < 1 || song.bars > 1024
             || !Number.isInteger(song.tempo) || song.tempo < 20 || song.tempo > 400
             || !Array.isArray(song.sections) || song.sections[0]?.bar !== 0
-            || !song.sections.every((section, index) => section && typeof section.name === "string" && typeof section.meter === "string"
+            || !song.sections.every((section, index) => section && typeof section.name === "string" && Object.hasOwn(meters, section.meter)
                 && Number.isInteger(section.bar) && section.bar < song.bars && (index === 0 || section.bar > song.sections[index - 1].bar))
             || !Array.isArray(song.parts) || !song.parts.length || !song.parts.every(part => part && song.sections[part.section]
                 && Number.isInteger(part.section) && typeof part.name === "string" && typeof part.styleId === "string"
@@ -151,12 +166,9 @@ const DesktopSongFiles = (() => {
 
     function engineArgs(song, styleBytes = new Int8Array(), styleFilename = "", mix = []) {
         validateSong(song);
-        const meter = song.sections[0].meter;
-        if (song.sections.some(section => section.meter !== meter)) throw new Error("曲中の拍子変更には対応していません。");
-        if (!["FOUR_FOUR", "THREE_FOUR"].includes(meter)) throw new Error("再生は4/4と3/4に対応しています。");
-        if (new Set(song.parts.map(part => part.styleId)).size > 1) throw new Error("曲中のスタイル変更には対応していません。");
-        return [styleBytes, styleFilename, song.title, meter, song.tempo, song.bars,
+        return [styleBytes, styleFilename, song.title, song.tempo, song.bars,
             song.sections.map(section => section.name), Int32Array.from(song.sections, section => section.bar),
+            song.sections.map(section => section.meter),
             song.chords.map(chord => chord.name), Int32Array.from(song.chords, chord => chord.bar),
             Float32Array.from(song.chords, chord => chord.beat), song.parts.map(part => part.name),
             Int32Array.from(song.parts, part => part.section), song.parts.map(part => Object.entries(part.parameters)
@@ -244,5 +256,5 @@ const DesktopSongFiles = (() => {
             + `<spInsMixes>\n${settings.join("\n")}\n</spInsMixes><spKeys>\n${keys.join("\n")}\n</spKeys></MidiMix>\n`;
     }
 
-    return { readSong, readMix, writeSong, writeMix, engineArgs, decodeEngineMix, validateSong };
+    return { readSong, readMix, writeSong, writeMix, engineArgs, decodeEngineMix, validateSong, meters, sourceStyleId, barBeats };
 })();

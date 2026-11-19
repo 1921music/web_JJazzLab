@@ -2,6 +2,7 @@ package org.jjazz.web.engine;
 
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.EnumMap;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
 import org.jjazz.harmony.api.Position;
 import org.jjazz.harmony.api.TimeSignature;
@@ -12,17 +13,20 @@ import org.jjazz.song.api.Song;
 import org.jjazz.song.spi.SongFactory;
 import org.jjazz.songstructure.SongStructureImpl;
 import org.jjazz.songstructure.api.SongPart;
+import org.jjazz.yamjjazz.rhythm.YamJJazzAdaptedRhythmImpl;
+import org.jjazz.yamjjazz.rhythm.api.YamJJazzRhythm;
+import org.jjazz.yamjjazz.rhythm.api.YamahaRhythmProvider;
 
 /** Columns in the browser-to-Wasm song input. Bar and beat positions are zero based. */
-record SongInput(String title, String meter, int tempo, int bars,
-                 String[] sectionNames, int[] sectionBars,
+record SongInput(String title, int tempo, int bars,
+                 String[] sectionNames, int[] sectionBars, String[] sectionMeters,
                  String[] chords, int[] chordBars, float[] chordBeats,
                  String[] partNames, int[] partSections, String[] partParameters,
                  String[] userTrackNames, String[] userPhrases)
 {
     Song createSong(Rhythm rhythm) throws Exception
     {
-        if (sectionNames.length == 0 || sectionNames.length != sectionBars.length || sectionBars[0] != 0
+        if (sectionNames.length == 0 || sectionNames.length != sectionBars.length || sectionNames.length != sectionMeters.length || sectionBars[0] != 0
                 || partNames.length == 0 || partNames.length != partSections.length || partNames.length != partParameters.length
                 || chords.length != chordBars.length || chords.length != chordBeats.length
                 || userTrackNames.length != userPhrases.length)
@@ -30,18 +34,12 @@ record SongInput(String title, String meter, int tempo, int bars,
             throw new IllegalArgumentException("Invalid song input columns");
         }
 
-        var timeSignature = TimeSignature.valueOf(meter);
-        if (timeSignature != rhythm.getTimeSignature())
-        {
-            throw new IllegalArgumentException("The selected rhythm uses a different time signature");
-        }
-
         var factory = SongFactory.getDefault();
         var chordFactory = CLI_Factory.getDefault();
-        var leadSheet = factory.createEmptyChordLeadSheet(sectionNames[0], timeSignature, bars, null);
+        var leadSheet = factory.createEmptyChordLeadSheet(sectionNames[0], TimeSignature.valueOf(sectionMeters[0]), bars, null);
         for (int i = 1; i < sectionNames.length; i++)
         {
-            leadSheet.addSection(chordFactory.createSection(sectionNames[i], timeSignature, sectionBars[i], leadSheet));
+            leadSheet.addSection(chordFactory.createSection(sectionNames[i], TimeSignature.valueOf(sectionMeters[i]), sectionBars[i], leadSheet));
         }
         for (int i = 0; i < chords.length; i++)
         {
@@ -50,11 +48,25 @@ record SongInput(String title, String meter, int tempo, int bars,
 
         var structure = new SongStructureImpl(leadSheet);
         var parts = new ArrayList<SongPart>();
+        var rhythms = new EnumMap<TimeSignature, Rhythm>(TimeSignature.class);
+        rhythms.put(rhythm.getTimeSignature(), rhythm);
         int startBar = 0;
         for (int i = 0; i < partNames.length; i++)
         {
             var section = leadSheet.getSection(sectionBars[partSections[i]]);
-            var part = structure.createSongPart(rhythm, partNames[i], startBar, section, false);
+            var meter = section.getData().getTimeSignature();
+            var partRhythm = rhythms.get(meter);
+            if (partRhythm == null)
+            {
+                if (!(rhythm instanceof YamJJazzRhythm yamaha))
+                {
+                    throw new IllegalArgumentException("The selected rhythm cannot be adapted to " + meter);
+                }
+                partRhythm = new YamJJazzAdaptedRhythmImpl(YamahaRhythmProvider.RP_ID, yamaha, meter);
+                partRhythm.loadResources();
+                rhythms.put(meter, partRhythm);
+            }
+            var part = structure.createSongPart(partRhythm, partNames[i], startBar, section, false);
             parts.add(part);
             startBar += part.getNbBars();
         }
@@ -68,7 +80,7 @@ record SongInput(String title, String meter, int tempo, int bars,
                 if (separator < 1) throw new IllegalArgumentException("Invalid rhythm parameter entry");
                 String id = entry.substring(0, separator);
                 String value = entry.substring(separator + 1);
-                for (var parameter : rhythm.getRhythmParameters())
+                for (var parameter : parts.get(i).getRhythm().getRhythmParameters())
                 {
                     if (parameter.getId().equals(id))
                     {

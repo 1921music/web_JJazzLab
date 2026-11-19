@@ -4,7 +4,7 @@ const isDrumMetadata = (info) => /^(?:(?:user|rhythm)-)?drums\t/u.test(info ?? "
 
 // Parse the generated SMF without relying on browser MIDI devices. Tracks retain
 // their identity even when several rhythm voices share the MIDI drum channel.
-function parseMidi(input, barCount, metadata = []) {
+function parseMidi(input, barCount, metadata = [], barBeats) {
     const bytes = new Uint8Array(input);
     const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let pos = 0;
@@ -24,7 +24,7 @@ function parseMidi(input, barCount, metadata = []) {
     const format = u16(), tracks = u16(), ppq = u16();
     if (format > 1 || !tracks || !ppq || ppq & 0x8000) throw new Error("未対応のMIDI形式です。");
     need(headerSize - 6); pos += headerSize - 6;
-    const events = [], parts = [];
+    const events = [], parts = [], meterChanges = [];
     let lastTick = 0, serial = 0, numerator = 4, denominator = 4;
     for (let track = 0; track < tracks; track++) {
         if (tag() !== "MTrk") throw new Error("MIDIトラックが不正です。");
@@ -39,7 +39,12 @@ function parseMidi(input, barCount, metadata = []) {
                 const type = u8(), size = vlq(); need(size);
                 if (type === 3) name = new TextDecoder().decode(bytes.subarray(pos, pos + size));
                 if (type === 0x51 && size === 3) events.push({ tick, tempo: bytes[pos] * 65536 + bytes[pos + 1] * 256 + bytes[pos + 2], order: serial++ });
-                if (type === 0x58 && size >= 2 && tick === 0) { numerator = bytes[pos]; denominator = 2 ** bytes[pos + 1]; }
+                if (type === 0x58 && size >= 2) {
+                    const meter = { tick, numerator: bytes[pos], denominator: 2 ** bytes[pos + 1] };
+                    if (!meter.numerator || bytes[pos + 1] > 7) throw new Error("MIDIの拍子が不正です。");
+                    meterChanges.push(meter);
+                    if (tick === 0) { numerator = meter.numerator; denominator = meter.denominator; }
+                }
                 pos += size;
             } else if (status === 0xf0 || status === 0xf7) {
                 const size = vlq(); need(size); pos += size; running = 0;
@@ -75,8 +80,14 @@ function parseMidi(input, barCount, metadata = []) {
     events.sort((a, b) => a.tick - b.tick || a.order - b.order);
     const ticksPerBar = ppq * numerator * 4 / denominator;
     // Use the requested song length, not a final end-of-track padding tick.
-    const endTick = barCount ? ticksPerBar * barCount : lastTick;
-    const bars = Array.from({ length: (barCount || Math.ceil(endTick / ticksPerBar)) + 1 }, (_, i) => ({ tick: i * ticksPerBar, bar: i }));
+    let barTick = 0;
+    const bars = [{ tick: 0, bar: 0 }];
+    const count = barBeats?.length ?? (barCount || Math.ceil(lastTick / ticksPerBar));
+    for (let index = 0; index < count; index++) {
+        barTick += barBeats ? barBeats[index] * ppq : ticksPerBar;
+        bars.push({ tick: barTick, bar: index + 1 });
+    }
+    const endTick = barBeats || barCount ? barTick : lastTick;
     const timeline = [...events, ...bars].sort((a, b) => a.tick - b.tick || (a.order ?? -1) - (b.order ?? -1));
     let tempo = 500000, tick = 0, seconds = 0;
     const barTimes = [], playable = [];
@@ -86,7 +97,7 @@ function parseMidi(input, barCount, metadata = []) {
         else if (e.bar !== undefined) barTimes[e.bar] = seconds;
         else if (e.tick <= endTick) playable.push({ ...e, seconds });
     }
-    return { parts, events: playable, barTimes, duration: barTimes.at(-1) };
+    return { parts, events: playable, barTimes, duration: barTimes.at(-1), meterChanges };
 }
 
 // Read event bytes for an export-only rewrite. Expand running status so a

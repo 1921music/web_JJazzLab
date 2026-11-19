@@ -53,6 +53,9 @@ class SongEditor {
         this.parts = document.querySelector("#song-parts");
         this.title = document.querySelector("#project-title");
         this.meter = document.querySelector("#project-meter");
+        const mixedMeter = new Option("曲中で変化", "");
+        mixedMeter.disabled = true;
+        this.meter.replaceChildren(mixedMeter, ...Object.entries(DesktopSongFiles.meters).map(([id, [label]]) => new Option(label, id)));
         this.status = document.querySelector("#project-status");
         this.exportButton = document.querySelector("#export-project");
         document.querySelector("#new-project").onclick = () => this.open({
@@ -194,14 +197,15 @@ class SongEditor {
     render() {
         const { title, sections, chords, parts, bars, userTracks } = this.project;
         this.title.value = title;
-        this.meter.value = sections[0].meter;
+        this.meter.value = sections.some(section => section.meter !== sections[0].meter) ? "" : sections[0].meter;
         this.removeBar.disabled = bars < 2 || sections.at(-1).bar === bars - 1;
         this.grid.replaceChildren();
         this.inputs = [];
         for (let bar = 0; bar < bars; bar++) {
             const cell = document.createElement("div");
             const section = sections.find(item => item.bar === bar);
-            const heading = this.button(`${bar + 1}小節${section ? ` · ${section.name}` : ""}`, () => this.chooseBar(bar, this.selectedPart));
+            const heading = this.button(`${bar + 1}小節${section ? ` · ${section.name} · ${DesktopSongFiles.meters[section.meter][0]}` : ""}`,
+                () => this.chooseBar(bar, this.selectedPart));
             const input = document.createElement("input");
             input.setAttribute("aria-label", `${bar + 1}小節のコード`);
             input.spellcheck = false;
@@ -222,7 +226,7 @@ class SongEditor {
                     const insert = index < 0 ? sections.length : index;
                     let suffix = 1;
                     while (sections.some(item => item.name === `S${suffix}`)) suffix++;
-                    sections.splice(insert, 0, { name: `S${suffix}`, bar, meter: sections[0].meter });
+                    sections.splice(insert, 0, { name: `S${suffix}`, bar, meter: sections[insert - 1].meter });
                     for (const part of parts) if (part.section >= insert) part.section++;
                     this.changed(); this.render();
                 } catch (error) { this.notify(error.message, true); }
@@ -299,7 +303,7 @@ class SongEditor {
                 const match = /^(?:(\d+(?:\.\d+)?):)?(.+)$/u.exec(token);
                 const beat = Number(match[1] ?? 1) - 1;
                 const section = this.project.sections.findLast(item => item.bar <= bar);
-                if (beat < 0 || beat >= (section.meter === "THREE_FOUR" ? 3 : 4) || beats.has(beat)) {
+                if (beat < 0 || beat >= DesktopSongFiles.meters[section.meter][1] || beats.has(beat)) {
                     throw new Error(`${bar + 1}小節のコードの拍位置を確認してください。`);
                 }
                 beats.add(beat);

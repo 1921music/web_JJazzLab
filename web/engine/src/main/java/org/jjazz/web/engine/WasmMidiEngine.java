@@ -1,6 +1,7 @@
 package org.jjazz.web.engine;
 
 import java.io.ByteArrayOutputStream;
+import java.util.Arrays;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.jjazz.yamjjazz.rhythm.YamJJazzRhythmImpl;
 import org.teavm.jso.JSExport;
@@ -51,10 +52,24 @@ public final class WasmMidiEngine
                                           String[] partNames, int[] partSections, String[] partParameters,
                                           String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
     {
+        var meters = new String[sectionNames.length];
+        Arrays.fill(meters, meter);
+        return generateSongMidiWithMeters(styleBytes, styleName, title, tempo, bars, sectionNames, sectionBars, meters,
+                chords, chordBars, chordBeats, partNames, partSections, partParameters, userTrackNames, userPhrases, mix);
+    }
+
+    /** Generate a song with an individual meter for each lead-sheet section. */
+    @JSExport
+    public static byte[] generateSongMidiWithMeters(byte[] styleBytes, String styleName, String title, int tempo, int bars,
+                                                    String[] sectionNames, int[] sectionBars, String[] sectionMeters,
+                                                    String[] chords, int[] chordBars, float[] chordBeats, String[] partNames,
+                                                    int[] partSections, String[] partParameters, String[] userTrackNames,
+                                                    String[] userPhrases, String[] mix) throws Exception
+    {
         partMetadata = new String[0];
         songMix = new String[0];
         importedMixApplied = false;
-        var song = new SongInput(title, meter, tempo, bars, sectionNames, sectionBars, chords, chordBars, chordBeats,
+        var song = new SongInput(title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats,
                 partNames, partSections, partParameters, userTrackNames, userPhrases);
         var midi = new ByteArrayOutputStream();
         MidiGeneration.Result result;
