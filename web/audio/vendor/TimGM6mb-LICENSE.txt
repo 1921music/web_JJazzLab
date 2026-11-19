@@ -1,0 +1,20 @@
+TimGM6mb SoundFont
+
+Copyright 2004 Tim Brechbill
+Copyright 2010 David Bolton (MuseScore distribution)
+License: GNU General Public License version 2 (GPL-2.0-only).
+
+This soundfont is free software; you can redistribute it and/or modify it
+under the terms of the GNU General Public License version 2.
+It is distributed without any warranty. See GPL-2.0.txt for the license.
+
+The HTML does not embed the SoundFont. It downloads the unmodified file from:
+https://raw.githubusercontent.com/craffel/pretty-midi/0df351ff2949ef80e788343e952fe15e473f0cde/pretty_midi/TimGM6mb.sf2
+SHA-256: 82475b91a76de15cb28a104707d3247ba932e228bada3f47bba63c6b31aaf7a1
+
+License provenance:
+https://sources.debian.org/src/timgm6mb-soundfont/1.3-5/debian/copyright/
+https://github.com/musescore/musescore-old/commit/90c33ef9d87b3f5ff92efd3b07d89eb455fb1fef
+
+TinySoundFont has its own MIT license in LICENSE. The pretty-midi Python
+package's MIT license should not be substituted for the SoundFont license.

@@ -11,7 +11,7 @@
 body { margin: 0; }
 
 main {
-    width: min(100% - 2rem, 46rem);
+    width: min(100% - 2rem, 58rem);
     margin: clamp(1.5rem, 7vw, 5rem) auto;
 }
 
@@ -104,9 +104,42 @@ button:disabled { opacity: .7; cursor: wait; }
 #status { margin: 1rem 0 .35rem; }
 #status:empty { margin: 0; }
 #status[data-error] { color: #a12828; }
+#play-status[data-error], #loop-status[data-error] { color: #a12828; }
 a { color: #135d42; }
+
+[hidden] { display: none !important; }
+.panel { margin-top: 1.25rem; padding: clamp(1.25rem, 4vw, 2rem); background: white; border: 1px solid #cddbd0; border-radius: 1.25rem; }
+h2 { margin: 0 0 1rem; font-size: 1.3rem; }
+.transport, .section-heading { display: flex; align-items: center; gap: .75rem; flex-wrap: wrap; }
+.section-heading { justify-content: space-between; margin-bottom: 1rem; }
+.section-heading h2 { margin: 0; }
+.secondary { background: #e4eee7; color: #143a31; }
+.secondary:hover { background: #cfdfd3; }
+.loop-controls { display: flex; gap: 1rem; flex-wrap: wrap; margin-top: 1.5rem; }
+.loop-controls legend { font-weight: 700; margin-bottom: .5rem; }
+.loop-controls label { display: flex; align-items: center; gap: .5rem; }
+.loop-controls input[type="number"] { width: 5rem; padding: .4rem; }
+.check input { width: auto; }
+.hint, footer { color: #4e645a; font-size: .9rem; }
+.master { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+input[type="range"] { width: 9rem; padding: 0; accent-color: #176548; }
+.master input { flex: 1; min-width: 8rem; }
+.strip { display: grid; grid-template-columns: minmax(9rem, 1fr) auto minmax(8rem, 1fr) minmax(8rem, 1fr); gap: 1rem; align-items: center; padding: 1rem 0; border-top: 1px solid #dce5dd; }
+.part-name { font-weight: 700; overflow-wrap: anywhere; }
+.part-name small { display: block; font-weight: 400; }
+.strip-buttons { display: flex; gap: .35rem; }
+.strip button { padding: .5rem .7rem; }
+.strip button[aria-pressed="true"] { background: #815127; color: white; }
+.strip label { display: grid; gap: .3rem; font-size: .9rem; }
+.strip input { width: 100%; }
+.strip output { font-weight: 400; margin-left: .4rem; font-variant-numeric: tabular-nums; }
+footer { margin: 1.5rem 0; }
+footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow-y: auto; font-size: .85rem; }
 
 @media (max-width: 34rem) {
     .settings { grid-template-columns: minmax(0, 1fr); }
     button { width: 100%; }
+    .transport button, .section-heading button, .strip button { width: auto; }
+    .strip { grid-template-columns: 1fr 1fr; }
+    .strip-buttons { justify-content: flex-end; }
 }

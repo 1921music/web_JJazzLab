@@ -2,6 +2,8 @@
 
 import base64
 import gzip
+import html as html_lib
+import json
 import re
 import sys
 from pathlib import Path
@@ -31,12 +33,19 @@ def package(engine_dir, output):
     runtime = (engine_dir / "engine.wasm-runtime.js").read_text(encoding="utf-8")
     demo = (DEMO / "demo.js").read_text(encoding="utf-8")
     wasm = encode_gzip((engine_dir / "engine.wasm").read_bytes())
+    synth = encode_gzip((DEMO.parents[1] / "audio/target/synth.wasm").read_bytes())
+    worklet = (DEMO / "synth-worklet.js").read_text(encoding="utf-8")
+    player = (DEMO / "player.js").read_text(encoding="utf-8")
+    midi = (DEMO / "midi.js").read_text(encoding="utf-8")
     with ZipFile(STYLE_ARCHIVE) as styles:
         style = encode_gzip(styles.read("8Beat.T160.STY"))
     data = f'const embeddedWasm = "{wasm}";\nconst embeddedStyle = "{style}";'
+    data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
+    licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
+                           ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script(data + "\n" + demo)
-    )
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script(data + "\n" + midi + "\n" + player + "\n" + demo)
+    ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:
         temporary = Path(staged.name)

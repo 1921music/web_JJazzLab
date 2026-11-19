@@ -5,6 +5,7 @@ param(
     [Parameter(ParameterSetName = 'Broad')] [switch] $Broad,
     [Parameter(ParameterSetName = 'Style')] [switch] $StyleIO,
     [Parameter(ParameterSetName = 'Engine')] [switch] $Engine,
+    [Parameter(ParameterSetName = 'Demo')] [switch] $DemoOnly,
     [switch] $SkipTests
 )
 
@@ -31,6 +32,12 @@ fi
 test_mode="$2"
 build_mode="$1"
 cd -- "$workspace"
+if [ "$build_mode" = demo ]; then
+    bash web/audio/build.sh
+    python3 web/engine/demo/package-demo.py web/engine/target/wasm-diagnostics \
+        "$windows_checkout/WSL_image/midi-demo.html"
+    exit 0
+fi
 if [ "$1" = broad ]; then
     classes=$(
         find model/{Harmony,Midi,Phrase,Rhythm,Song,SongImpl}/src/main/java \
@@ -60,12 +67,13 @@ if [ "$build_mode" != engine ]; then
     exec mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 fi
 
+bash web/audio/build.sh
 mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 python3 web/engine/demo/package-demo.py web/engine/target/wasm-diagnostics \
     "$windows_checkout/WSL_image/midi-demo.html"
 '@
 $command = $command -replace "`r`n", "`n"
-$action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } elseif ($Engine) { 'engine' } else { 'build' }
+$action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } elseif ($Engine) { 'engine' } elseif ($DemoOnly) { 'demo' } else { 'build' }
 $testMode = if ($SkipTests) { 'skip' } else { 'run' }
 $launcher = @'
 set -euo pipefail
