@@ -73,8 +73,28 @@
             check(engine.exports.wasImportedMixApplied(), `${fixture.name} did not keep its desktop mix`);
             if (fixture.name.startsWith("AllBlues")) {
                 check(mixerParts.filter(part => part.source === "rhythm").every(part => part.mute), "All Blues lost its accompaniment mutes");
-                check(mixerParts.some(part => part.id === "user:Drums" && part.drum && !part.mute),
+                const drums = mixerParts.find(part => part.id === "user:Drums" && part.drum && !part.mute);
+                check(drums,
                     `The independent user drums cannot play: ${JSON.stringify(mixerParts.map(({ id, channel, drum, mute }) => ({ id, channel, drum, mute })))}`);
+                await player.initialize(showPlayStatus);
+                const analyser = player.context.createAnalyser();
+                player.compressor.connect(analyser);
+                const samples = new Float32Array(analyser.fftSize);
+                try {
+                    const drumsOnly = mixerParts.map(part => ({ ...part, solo: part === drums }));
+                    await player.play(song, { enabled: true, start: 0, end: song.barTimes[2] }, drumsOnly, 0.8);
+                    let peak = 0;
+                    for (let i = 0; i < 25 && peak < 0.002; i++) {
+                        await new Promise(resolve => setTimeout(resolve, 60));
+                        analyser.getFloatTimeDomainData(samples);
+                        peak = Math.max(peak, ...samples.map(Math.abs));
+                    }
+                    check(peak >= 0.002, "Soloed user drums did not produce audible samples");
+                    report.userDrumPeak = peak;
+                } finally {
+                    await player.stop();
+                    player.compressor.disconnect(analyser);
+                }
             }
             report.repertoire.push({ title: fixture.name, bars: song.barTimes.length - 1 });
         }
