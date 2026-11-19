@@ -55,7 +55,11 @@ async function api(endpoint, method = "GET", body, allow404 = false) {
     });
     const text = await response.text(), result = text ? JSON.parse(text) : null;
     if (allow404 && response.status === 404) return null;
-    if (!response.ok) throw new Error("GitHub " + response.status + ": " + result?.message);
+    if (!response.ok) {
+        const error = new Error("GitHub " + response.status + ": " + result?.message);
+        error.status = response.status;
+        throw error;
+    }
     return result;
 }
 
@@ -80,8 +84,16 @@ console.log("Published artifact commit: " + commit.sha);
 
 let pages = await api("/pages", "GET", undefined, true);
 const source = { branch: "gh-pages", path: "/" };
-if (!pages) pages = await api("/pages", "POST", { build_type: "legacy", source });
-else if (pages.build_type !== "legacy" || pages.source?.branch !== source.branch || pages.source?.path !== source.path) {
+if (!pages) {
+    try { pages = await api("/pages", "POST", { build_type: "legacy", source }); }
+    catch (error) {
+        // Creating gh-pages can automatically enable Pages between the GET and
+        // POST. Reuse that site instead of failing a successful publication.
+        if (error.status !== 409) throw error;
+        pages = await api("/pages");
+    }
+}
+if (pages.build_type !== "legacy" || pages.source?.branch !== source.branch || pages.source?.path !== source.path) {
     await api("/pages", "PUT", { build_type: "legacy", source });
     pages = await api("/pages");
 }
@@ -90,7 +102,8 @@ const url = pages.html_url.replace(/^http:/u, "https:");
 console.log("GitHub Pages URL: " + url);
 // Creating the site normally queues a build. An explicit build also covers
 // updates made with Git's REST endpoints without relying on a push event.
-await api("/pages/builds", "POST", {});
+const pendingBuild = await api("/pages/builds/latest", "GET", undefined, true);
+if (pendingBuild?.commit !== commit.sha || pendingBuild.status === "errored") await api("/pages/builds", "POST", {});
 let previous = "", lastError = "";
 for (let attempt = 0; attempt < 40; attempt++) {
     const build = await api("/pages/builds/latest", "GET", undefined, true);
