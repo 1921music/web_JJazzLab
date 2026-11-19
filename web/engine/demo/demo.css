@@ -154,3 +154,23 @@ footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; 
     .strip { grid-template-columns: 1fr 1fr; }
     .strip-buttons { justify-content: flex-end; }
 }
+.lead-sheet {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+    gap: .6rem;
+    margin-block: .75rem;
+}
+
+.lead-sheet > div, .song-parts > li {
+    min-width: 0;
+    border: 1px solid #7776;
+    border-radius: .5rem;
+    padding: .55rem;
+}
+
+.lead-sheet input { width: 100%; box-sizing: border-box; }
+.lead-sheet button { margin-bottom: .35rem; }
+.lead-sheet > .playing-bar, .song-parts > .playing-bar { outline: 2px solid currentColor; outline-offset: -2px; }
+.song-parts { display: grid; gap: .45rem; padding-inline-start: 1.6rem; }
+.song-parts > li > div { display: flex; gap: .45rem; flex-wrap: wrap; align-items: center; }
+#project-status:empty { display: none; }

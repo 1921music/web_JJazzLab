@@ -37,6 +37,8 @@ def package(engine_dir, output):
     worklet = (DEMO / "synth-worklet.js").read_text(encoding="utf-8")
     player = (DEMO / "player.js").read_text(encoding="utf-8")
     midi = (DEMO / "midi.js").read_text(encoding="utf-8")
+    song_files = (DEMO / "song-files.js").read_text(encoding="utf-8")
+    song_editor = (DEMO / "song-editor.js").read_text(encoding="utf-8")
     archive = (DEMO / "style-archive.js").read_text(encoding="utf-8")
     with ZipFile(STYLE_ARCHIVE) as styles:
         style = encode_gzip(styles.read("8Beat.T160.STY"))
@@ -45,7 +47,7 @@ def package(engine_dir, output):
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script(data + "\n" + midi + "\n" + archive + "\n" + player + "\n" + demo)
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, midi, song_files, archive, player, song_editor, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:

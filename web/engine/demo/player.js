@@ -88,11 +88,11 @@ class AccompanimentPlayer {
         });
     }
 
-    async play(song, loop, parts, master) {
+    async play(song, loop, parts, master, startFromSelection = false) {
         if (this.loadedSong !== song) { await this.send("song", { song, loop }); this.loadedSong = song; }
         await this.send("loop", { loop });
         await this.send("mix", { parts, master });
-        await this.send("play");
+        await this.send("play", { startFromSelection });
     }
 
     async stop() { if (this.ready) await this.send("stop"); }

@@ -23,6 +23,12 @@ TeaVMの診断や成果物の生成だけを行う場合は、`-SkipTests` で�
 
 ## ブラウザから呼び出す
 
+「曲エディター」の「新規作成」で、小節ごとのコード、セクションと演奏順を編集できます。たとえば `Cmaj7 3:G7` で、小節の先頭に Cmaj7、3拍目に G7 を置きます。「曲を開く」では、本家の `.sng`（曲の保存形式 v4）と、必要に応じて同名の `.mix`（v5）をまとめて選択します。曲全体で同じ 4/4 または 3/4 の拍子・スタイルを使う曲が対象です。ユーザートラックの音符は曲頭からの拍位置を保持します。
+
+「Web用に保存」は `.jjazzweb` を保存します。「JJazzLab形式で書き出す」は、生成後に同名の `.sng` と `.mix` を入れたZIPを作ります。解凍後、必要に応じて同梱のスタイルを登録し、JJazzLab 5.2.1 で `.sng` を開きます。ブラウザでは音色を内蔵音源に合わせて再生します。指定された専用音色、リバーブ、コーラスの設定は、適用されたミックスから書き出すファイルにも引き継がれます。
+
+曲エディターのChrome検証は、ビルド後に PowerShell で `$env:JJAZZ_SMOKE_SUITE = 'song-editor'` を指定して `node web/audio/test/browser-smoke.cjs WSL_image/midi-demo.html` を実行します。
+
 `-Engine` で生成される Windows 側の `WSL_image/midi-demo.html` を、PC版ChromeまたはEdgeで開きます。HTML単体を `file://` で開いてコード進行を入力すると、MIDIの生成・ダウンロードとSoundFontによるリアルタイム再生ができます。リズムエンジンで「Yamahaスタイル」または「jjSwing」を選びます。Yamahaスタイルは同梱の8Beatか、選択したスタイルファイルを使います。
 
 jjSwingは4/4専用で、未指定テンポは120です。Main A〜Eの各1/2、Fill 5種類、Intro、Endingの計17バリエーションから選べます。既定のAutoでは、バリエーションに従ってベースとドラムの奏法が切り替わります。ベースはWalking／2-feel／Double-note／Double-time、ドラムはBrushes・Hi-hat・Ride・Shuffle等の11奏法を手動指定することもできます。Double-timeを手動指定する場合は両方を揃えると自然です。選択したバリエーションはコード進行の全小節に適用し、小節ごとの切り替えは行いません。ベース／ドラムのMIDIフレーズDBとベーススタイルはWasmへ同梱するので、SF2以外の追加ダウンロードはありません。

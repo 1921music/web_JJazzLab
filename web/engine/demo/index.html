@@ -14,9 +14,39 @@
             <p>コード進行とスタイルから、ブラウザで伴奏を生成します。</p>
         </header>
 
+        <section id="song-editor" class="panel" aria-labelledby="song-editor-title">
+            <h2 id="song-editor-title">曲エディター</h2>
+            <div class="transport">
+                <button id="new-project" type="button">新規作成</button>
+                <label class="field">曲を開く (.sng / .mix / .jjazzweb)
+                    <input id="open-project" type="file" accept=".sng,.mix,.jjazzweb" multiple>
+                </label>
+            </div>
+            <p id="project-status" role="status"></p>
+            <div id="project-editor" hidden>
+                <div class="transport">
+                    <label class="field">曲名 <input id="project-title" type="text"></label>
+                    <label class="field">拍子 <select id="project-meter"><option value="FOUR_FOUR">4/4</option><option value="THREE_FOUR">3/4</option></select></label>
+                    <button id="save-project" type="button" class="secondary">Web用に保存</button>
+                    <button id="export-project" type="button" class="secondary">JJazzLab形式で書き出す</button>
+                </div>
+                <h3>コード譜</h3>
+                <p class="hint">複数コードは「Cmaj7 3:G7」のように、コードの前に拍位置を指定できます。</p>
+                <div id="lead-sheet" class="lead-sheet"></div>
+                <div class="transport">
+                    <button id="add-bar" type="button" class="secondary">小節を追加</button>
+                    <button id="remove-bar" type="button" class="secondary">末尾の小節を削除</button>
+                </div>
+                <h3>演奏順</h3>
+                <ol id="song-parts" class="song-parts"></ol>
+                <button id="add-song-part" type="button" class="secondary">演奏区間を追加</button>
+                <p id="user-track-summary" class="hint"></p>
+            </div>
+        </section>
+
         <form id="midi-form">
             <fieldset id="options">
-                <div class="field">
+                <div class="field" id="quick-chords">
                     <label for="chords">コード進行</label>
                     <textarea id="chords" rows="3" required spellcheck="false"
                               aria-describedby="chord-help">C | Am7 | Dm7 | G7</textarea>

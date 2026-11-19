@@ -61,7 +61,7 @@ function renderStyleChoices() {
     document.querySelector("#style-count").textContent = `（${available}件利用可 / 表示${entries.length}件）`;
 }
 
-loadStylePackButton.addEventListener("click", async () => {
+async function loadStylePack() {
     if (loadingStylePack || styleArchive) return;
     loadingStylePack = true; loadStylePackButton.disabled = true;
     showStylePackStatus("公開スタイル集を取得しています…");
@@ -82,7 +82,8 @@ loadStylePackButton.addEventListener("click", async () => {
         loadStylePackButton.textContent = "公開スタイル集を再試行";
         showStylePackStatus(error.message, true);
     } finally { loadingStylePack = false; loadStylePackButton.disabled = Boolean(styleArchive); }
-});
+}
+loadStylePackButton.addEventListener("click", loadStylePack);
 
 styleSearch.addEventListener("input", () => { if (styleArchive) renderStyleChoices(); });
 styleCategory.addEventListener("change", () => { if (styleArchive) renderStyleChoices(); });
@@ -137,6 +138,7 @@ function updatePosition(position) {
     let bar = song.barTimes.findIndex(time => time > position.seconds);
     if (bar < 0) bar = song.barTimes.length - 1;
     document.querySelector("#position").textContent = `${Math.max(1, bar)}小節 / ${song.barTimes.length - 1}小節`;
+    if (editor.project) editor.showPlayingBar(playing ? bar : 0);
     updateButtons();
     if (!playing) showPlayStatus("停止中");
 }
@@ -150,7 +152,16 @@ function readLoop() {
 }
 
 function applyMix() {
-    mixerParts.forEach(part => savedMix.set(part.id, { volume: part.volume, pan: part.pan, mute: part.mute, solo: part.solo }));
+    if (activeProject === editor.project && editor.baseMix) {
+        const limit = value => Math.max(0, Math.min(127, Math.round(value)));
+        editor.mix = editor.baseMix.map(track => {
+            const part = mixerParts.find(part => part.channel === track.channel);
+            return part ? { ...track, volume: limit(track.volume * part.volume), pan: limit(track.pan + part.pan * 64), mute: part.mute } : track;
+        });
+        if (editor.renderedMix) editor.renderedMix = editor.mix;
+    } else {
+        mixerParts.forEach(part => savedMix.set(part.id, { volume: part.volume, pan: part.pan, mute: part.mute, solo: part.solo }));
+    }
     player.mix(mixerParts, Number(masterInput.value) / 100);
 }
 
@@ -190,7 +201,7 @@ playButton.addEventListener("click", async () => {
     try {
         const loop = readLoop();
         await player.initialize(showPlayStatus);
-        await player.play(song, loop, mixerParts, Number(masterInput.value) / 100);
+        await player.play(song, loop, mixerParts, Number(masterInput.value) / 100, Boolean(editor.project));
         playing = true;
         showPlayStatus("演奏中");
     } catch (error) { showPlayStatus(error.message, true); }
@@ -258,16 +269,87 @@ async function readStyle() {
     return { name: bundledStyle, bytes: new Int8Array(await decompress(embeddedStyle)) };
 }
 
+let activeProject;
+let chosenRange;
+const editor = new SongEditor((opened) => {
+    chosenRange = null;
+    activeProject = undefined;
+    selectedLibraryStyle = undefined;
+    libraryStyle.value = "";
+    styleInput.value = "";
+    tempoInput.value = opened.project.tempo;
+    rhythmEngine.value = opened.project.parts[0].styleId === "jjSwing-ID" ? "jjswing" : "yamaha";
+    rhythmEngine.dispatchEvent(new Event("change"));
+    player.stop().catch(error => showPlayStatus(error.message, true));
+    playing = false;
+    song = null;
+    document.querySelector("#player").hidden = true;
+    document.querySelector("#mixer").hidden = true;
+    clearDownload();
+    updateButtons();
+}, (range) => {
+    chosenRange = range;
+    if (song && range.to < song.barTimes.length) {
+        loopStart.value = range.from;
+        loopEnd.value = range.to;
+        loopStart.dispatchEvent(new Event("input", { bubbles: true }));
+    }
+});
+editor.onMeterChange = meter => {
+    if (meter === "THREE_FOUR" && rhythmEngine.value === "jjswing") {
+        rhythmEngine.value = "yamaha";
+        rhythmEngine.dispatchEvent(new Event("change"));
+    }
+};
+
+async function readArrangementStyle(project, swing) {
+    if (swing) return { name: "jjSwing", id: "jjSwing-ID", bytes: new Int8Array() };
+    if (styleInput.files.length || selectedLibraryStyle) {
+        const style = await readStyle();
+        return { ...style, id: `${style.name}-ID`, attach: styleInput.files.length > 0 };
+    }
+    if (editor.style?.data) {
+        return { name: editor.style.name, id: editor.style.id, bytes: Int8Array.from(editor.style.data), attach: true };
+    }
+    const wanted = project.parts[0].styleId.replace(/-ID$/u, "");
+    const meter = project.sections[0].meter;
+    if (wanted.toLowerCase() === bundledStyle.toLowerCase() || (wanted === "jjSwing" && meter === "FOUR_FOUR")) {
+        const style = await readStyle();
+        return { ...style, id: `${style.name}-ID` };
+    }
+    await loadStylePack();
+    const entry = styleArchive?.entries.find(entry => entry.name.toLowerCase() === wanted.toLowerCase() && !styleIssue(entry));
+    if (entry) return { name: entry.name, id: project.parts[0].styleId, bytes: new Int8Array(await styleArchive.read(entry)) };
+    if (meter === "FOUR_FOUR") {
+        const style = await readStyle();
+        return { ...style, id: `${style.name}-ID`, replaced: wanted };
+    }
+    const waltz = styleArchive?.entries.find(entry => entry.name === "JazzWaltzSlow.S423.prs");
+    if (meter === "THREE_FOUR" && waltz) {
+        return { name: waltz.name, id: `${waltz.name}-ID`, bytes: new Int8Array(await styleArchive.read(waltz)), replaced: wanted };
+    }
+    throw new Error(`スタイル「${wanted}」を選ぶか、同じ拍子の代替スタイルを指定してください。`);
+}
+
+function updateProjectVariation(part, useDefault) {
+    if (useDefault || !part.parameters.rpVariationID) delete part.parameters.rpVariationID;
+}
+
 form.addEventListener("input", (event) => {
     if (event.target === styleSearch || event.target === styleCategory) return;
     if (song) showStatus("入力を変更しました。「伴奏を生成」で現在の演奏を停止し、新しい伴奏を作ります。");
+    if (editor.project) {
+        if (event.target === tempoInput) editor.project.tempo = tempoInput.valueAsNumber || 120;
+        editor.changed();
+    }
 });
 
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
     clearDownload();
+    const project = editor.project;
     const chords = chordInput.value.split(/[\s,|]+/u).filter(Boolean);
-    if (!chords.length) {
+    if (!project && !chords.length) {
         showStatus("コードを1つ以上入力してください。", true);
         chordInput.focus();
         return;
@@ -276,6 +358,7 @@ form.addEventListener("submit", async (event) => {
     const tempo = tempoInput.valueAsNumber || 0;
     generating = true; updateButtons();
     options.disabled = true;
+    document.querySelector("#song-editor").inert = true;
     showStatus("MIDIを生成しています…");
     try {
         await player.stop();
@@ -291,9 +374,47 @@ form.addEventListener("submit", async (event) => {
             }
         }
         const swing = rhythmEngine.value === "jjswing";
-        const style = swing ? { name: "jjSwing" } : await readStyle();
+        let style, bars = chords.length;
         let midi;
-        try {
+        if (project) {
+            editor.readChords();
+            if (!project.chords.length) throw new Error("コードを1つ以上入力してください。");
+            if (new Set(project.parts.map(part => part.styleId)).size > 1) throw new Error("曲中のスタイル変更には対応していません。");
+            style = await readArrangementStyle(project, swing);
+            const styleChanged = project.parts[0].styleId !== style.id;
+            const arrangement = { ...project, tempo: tempo || project.tempo, parts: project.parts.map(part => ({
+                ...part, styleId: style.id, styleName: style.name, parameters: { ...part.parameters }
+            })) };
+            arrangement.parts.forEach(part => updateProjectVariation(part, styleChanged));
+            if (styleChanged && swing) {
+                for (const part of arrangement.parts) part.parameters.rpVariationID = swingVariation.value;
+            }
+            midi = engine.exports.generateSongMidi(...DesktopSongFiles.engineArgs(arrangement, style.bytes, swing ? "" : style.name, editor.mix));
+            const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
+            const applied = engine.exports.wasImportedMixApplied();
+            const original = new Map(editor.mix.map(track => [`${track.rhythmId}\t${track.name}`, track]));
+            const completeMix = defaults.map(track => {
+                if (!applied) return track;
+                const source = original.get(`${track.rhythmId}\t${track.name}`);
+                return { ...source, sourceChannel: source.sourceChannel ?? source.channel, channel: track.channel };
+            });
+            const notices = [];
+            if (style.replaced) notices.push(`「${style.replaced}」の代わりに「${style.name}」を使用しました。`);
+            if (editor.mix.length && !applied) notices.push("スタイルやトラックが異なるため、既定ミックスを使用しました。");
+            const substitutes = defaults.filter((track, index) => track.patch !== completeMix[index].patch).map(track => track.name);
+            if (substitutes.length) notices.push(`Web音源で音色を代替: ${substitutes.join("、")}。`);
+            editor.notify(notices.join(" "));
+            editor.baseMix = editor.renderedMix = editor.mix = completeMix;
+            editor.project.parts = arrangement.parts;
+            editor.project.tempo = arrangement.tempo;
+            if (styleChanged) editor.render();
+            editor.style = style.attach ? { name: style.name, id: style.id, data: Array.from(new Uint8Array(style.bytes.buffer)) } : null;
+            editor.exportButton.disabled = false;
+            activeProject = project;
+            bars = arrangement.parts.reduce((total, part) => total + (arrangement.sections[part.section + 1]?.bar ?? arrangement.bars)
+                - arrangement.sections[part.section].bar, 0);
+        } else try {
+            style = swing ? { name: "jjSwing" } : await readStyle();
             midi = swing
                 ? engine.exports.generateSwingMidiWithVariation(chords, tempo, swingVariation.value, swingBass.value, swingDrums.value)
                 : engine.exports.generateMidi(style.bytes, style.name, chords, tempo);
@@ -302,15 +423,18 @@ form.addEventListener("submit", async (event) => {
             throw new Error(swing ? "jjSwingの伴奏を生成できませんでした。コード表記を確認してください。" : "MIDIを生成できませんでした。コード表記とスタイルファイルを確認してください。");
         }
         const metadata = engine.exports.getPartMetadata();
-        song = parseMidi(midi, chords.length, metadata);
+        song = parseMidi(midi, bars, metadata);
         const exportedMidi = exportGmMidi(midi, metadata);
         downloadUrl = URL.createObjectURL(new Blob([exportedMidi], { type: "audio/midi" }));
         download.href = downloadUrl;
         download.download = style.name.replace(/\.[^.]+$/u, "") + "-accompaniment.mid";
         download.hidden = false;
-        mixerParts = song.parts.map(part => ({ ...part, volume: 1, pan: 0, mute: false, solo: false, ...savedMix.get(part.id) }));
-        loopStart.value = 1; loopEnd.value = chords.length;
-        loopStart.max = loopEnd.max = chords.length;
+        mixerParts = song.parts.map(part => ({ ...part, volume: 1, pan: 0, solo: false,
+            mute: project ? editor.baseMix.find(track => track.channel === part.channel)?.mute ?? false : false,
+            ...(!project ? savedMix.get(part.id) : null) }));
+        loopStart.value = chosenRange?.to <= bars ? chosenRange.from : 1;
+        loopEnd.value = chosenRange?.to <= bars ? chosenRange.to : bars;
+        loopStart.max = loopEnd.max = bars;
         loopStatus.textContent = "終了小節を含めて繰り返します。"; loopStatus.removeAttribute("data-error");
         renderMixer();
         // Do not send settings to the previous song's worklet parts while stopped.
@@ -318,11 +442,12 @@ form.addEventListener("submit", async (event) => {
         document.querySelector("#player").hidden = false;
         document.querySelector("#mixer").hidden = false;
         updatePosition({ seconds: 0, playing: false });
-        showStatus(`${chords.length}小節・${song.parts.length}パートの伴奏を生成しました。`);
+        showStatus(`${bars}小節・${song.parts.length}パートの伴奏を生成しました。`);
     } catch (error) {
         showStatus(error.message, true);
     } finally {
         options.disabled = false;
+        document.querySelector("#song-editor").inert = false;
         generating = false; updateButtons();
     }
 });

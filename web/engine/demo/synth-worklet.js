@@ -56,7 +56,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 else this.loop = loop;
             } else if (type === "play") {
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
-                this.seek(this.loop.enabled ? this.loop.start : 0);
+                this.seek(this.loop.enabled || message.startFromSelection ? this.loop.start : 0);
                 this.playing = true;
                 this.reportPosition();
             } else if (type === "stop") {

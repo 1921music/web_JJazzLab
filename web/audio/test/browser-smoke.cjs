@@ -25,10 +25,21 @@ const htmlPath = path.resolve(process.argv[2] || "WSL_image/midi-demo.html");
 const chrome = process.env.CHROME_BIN || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const scratch = fs.mkdtempSync(path.join(path.dirname(htmlPath), "soundfont-smoke-"));
 const smokePath = path.join(scratch, "smoke.html");
+const songFiles = path.resolve(__dirname, "../../../model/SongImpl/src/test/resources/org/jjazz/song");
+const repertoire = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.env.JJAZZ_REPERTOIRE_FIXTURES;
+const songFixture = process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
+    song: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.sng"), "utf8"),
+    mix: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.mix"), "utf8"),
+    styles: repertoire ? fs.readFileSync(path.resolve(__dirname, "../../engine/demo/assets/jjazzlab_user_styles.zip"), "base64") : null,
+    repertoire: repertoire ? ["BlueBossa-Cm-Theme", "AllBlues-G-Theme"].map(name => ({ name,
+        song: fs.readFileSync(path.join(repertoire, `${name}.sng`), "utf8"), mix: fs.readFileSync(path.join(repertoire, `${name}.mix`), "utf8")
+    })) : []
+}).replaceAll("<", "\\u003c") : null;
 const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
     ? "const styleFixtureUrl = " + JSON.stringify(fixtureUrl) + ";\n" + fs.readFileSync(path.join(__dirname, "style-library-browser-script.js"), "utf8")
     : process.env.JJAZZ_SMOKE_SUITE === "jjswing"
-    ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8") : `
+    ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8")
+    : songFixture ? `const desktopFixture = ${songFixture};\n` + fs.readFileSync(path.join(__dirname, "song-editor-browser-script.js"), "utf8") : `
 (async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
