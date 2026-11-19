@@ -60,6 +60,7 @@ fieldset {
 
 .settings {
     display: grid;
+    align-items: start;
     grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
     gap: 1.25rem;
     margin: 1.5rem 0;
@@ -109,6 +110,11 @@ button:disabled { opacity: .7; cursor: wait; }
 #status:empty { margin: 0; }
 #status[data-error] { color: #a12828; }
 #play-status[data-error], #loop-status[data-error] { color: #a12828; }
+#style-pack-status[data-error] { color: #a12828; }
+#style-pack-status { margin: .25rem 0; }
+#style-pack-status:empty { display: none; }
+#style-library { margin-top: .5rem; gap: .4rem; }
+#style-library label { margin-top: .5rem; }
 a { color: #135d42; }
 
 [hidden] { display: none !important; }

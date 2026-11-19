@@ -3,11 +3,14 @@
 
 ## Web MIDI engine
 
+**[Open the browser demo](https://1921music.github.io/web_JJazzLab/)** — hosted on GitHub Pages.
+
 This fork adds an experimental browser engine for [JJazzLab](https://github.com/jjazzboss/JJazzLab). It uses TeaVM 0.16.0 to compile the accompaniment generator to WebAssembly GC. The port starts from JJazzLab [`cd1944afd`](https://github.com/jjazzboss/JJazzLab/commit/cd1944afdf8a18b659cdbf63538b6df625a515ec), a commit after the 5.2.1 release.
 
 - Generate an accompaniment from a raw Yamaha style (`.sty`, `.sst`, or `.prs`) or the built-in jjSwing engine with its dedicated walking-bass and drums generators. The current API takes one chord per bar.
 - The Web module in [`web/engine`](web/engine) supplies browser-compatible services and TeaVM substitutions for desktop dependencies. jjSwing has a small dependency-injection factory for standalone initialization; its music-generation algorithms are preserved.
 - A standalone HTML demo lets you edit chords, play with TinySoundFont and TimGM6mb, loop bars, mix parts and download MIDI. It includes 8Beat and jjSwing; jjSwing exposes bass/drums playing styles and adapts XG drum articulations to available TimGM6mb sounds.
+- In Yamaha mode, load the public JJazzLab style collection on demand and choose by category or name. The ZIP is processed entirely in browser memory. The collection contains 189 files; 186 are usable in the current engine and three malformed source files are marked unavailable.
 
 From the repository root on Windows, run the following commands in PowerShell 7 with WSL 2 available.
 
@@ -19,6 +22,16 @@ From the repository root on Windows, run the following commands in PowerShell 7 
 The setup script provisions a dedicated Ubuntu 24.04 distribution with JDK 25, Maven, and Python 3. Edit and commit in the Windows checkout. The build script syncs the source to WSL and writes `engine.wasm` and `engine.wasm-runtime.js` to `web/engine/target/wasm-diagnostics/` inside the WSL checkout. Open the generated `WSL_image/midi-demo.html` in a browser with WasmGC support. The demo embeds the compressed engine and works from `file://`.
 
 See the [build and API guide](web/engine/README.md) and the [design notes](docs/wasm-engine-design.md) for details in Japanese. See [LICENSE](LICENSE) for the upstream license text.
+
+After rebuilding, testing, committing and pushing the source, publish the reviewed
+HTML with Node.js and the repository's existing GitHub credentials:
+
+```powershell
+node scripts/publish-pages.mjs --publish WSL_image/midi-demo.html
+```
+
+Omit `--publish` for a dry run. The script updates the `gh-pages` branch, enables
+GitHub Pages, and waits until the public HTML matches the deployed SHA-256.
 
 ## JJazzLab desktop application
 

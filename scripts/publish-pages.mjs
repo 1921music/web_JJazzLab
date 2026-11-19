@@ -1,0 +1,113 @@
+/**
+ * Publish a reviewed single-file build to GitHub Pages without switching the
+ * development checkout. Dry run: node scripts/publish-pages.mjs <built.html>
+ * Publish: build/test/commit/push, then add --publish to the same command.
+ * Git's existing credential helper is used in memory; no token is persisted.
+ */
+import fs from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { createHash } from "node:crypto";
+import { execFileSync } from "node:child_process";
+
+const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const publish = process.argv.includes("--publish");
+const input = process.argv.slice(2).find(value => value !== "--publish");
+if (!input) throw new Error("Usage: node scripts/publish-pages.mjs [--publish] <built.html>");
+const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+const remote = git("remote", "get-url", "origin");
+const match = remote.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?$/u);
+if (!match) throw new Error("origin must be a GitHub HTTPS or SSH repository");
+const [, owner, repository] = match;
+const sourceCommit = git("rev-parse", "HEAD");
+const readSource = file => fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n/gu, "\n");
+let html = fs.readFileSync(path.resolve(input), "utf8").replace(/\r\n/gu, "\n");
+if (!/^<!doctype html>/iu.test(html) || html.includes("JJAZZ_SMOKE_RESULT")) throw new Error("Expected a production demo HTML, without test instrumentation");
+for (const file of ["demo.js", "midi.js", "style-archive.js", "player.js"]) {
+    const expected = readSource("web/engine/demo/" + file).trim().replace(/<\/script/giu, "<\\/script");
+    if (!html.includes(expected)) throw new Error("Build is stale: " + file + ". Rebuild and test before publishing.");
+}
+const worklet = JSON.parse(html.match(/const embeddedWorklet = (.*);/u)?.[1] || "null");
+if (worklet !== readSource("web/engine/demo/synth-worklet.js")) throw new Error("Build is stale: synth-worklet.js");
+const marker = '<meta name="jjazzlab-source-commit" content="' + sourceCommit + '">';
+html = html.replace(/<meta name="jjazzlab-source-commit"[^>]*>\s*/gu, "").replace(/<\/head>/iu, marker + "\n</head>");
+const checksum = createHash("sha256").update(html).digest("hex");
+console.log(JSON.stringify({ repository: owner + "/" + repository, sourceCommit, bytes: Buffer.byteLength(html), sha256: checksum, branch: "gh-pages", publish }));
+if (!publish) process.exit(0);
+if (git("status", "--porcelain")) throw new Error("Commit all source changes before publishing");
+
+let credential;
+try {
+    credential = execFileSync("git", ["-c", "credential.interactive=false", "credential", "fill"], {
+        cwd: root, input: "protocol=https\nhost=github.com\n\n", encoding: "utf8",
+        env: { ...process.env, GIT_TERMINAL_PROMPT: "0" }, stdio: ["pipe", "pipe", "pipe"]
+    });
+} catch { throw new Error("GitHub credential unavailable from Git's credential helper"); }
+const token = credential.split(/\r?\n/u).find(line => line.startsWith("password="))?.slice(9);
+if (!token) throw new Error("GitHub credential unavailable");
+credential = undefined;
+const base = "https://api.github.com/repos/" + owner + "/" + repository;
+async function api(endpoint, method = "GET", body, allow404 = false) {
+    const response = await fetch(base + endpoint, {
+        method, signal: AbortSignal.timeout(30000),
+        headers: { Authorization: "Bearer " + token, Accept: "application/vnd.github+json", "X-GitHub-Api-Version": "2022-11-28", "Content-Type": "application/json" },
+        body: body === undefined ? undefined : JSON.stringify(body)
+    });
+    const text = await response.text(), result = text ? JSON.parse(text) : null;
+    if (allow404 && response.status === 404) return null;
+    if (!response.ok) throw new Error("GitHub " + response.status + ": " + result?.message);
+    return result;
+}
+
+await api("/commits/" + sourceCommit); // Source must already be pushed.
+const current = await api("/git/ref/heads/gh-pages", "GET", undefined, true);
+const parent = current ? await api("/git/commits/" + current.object.sha) : null;
+const files = [
+    ["index.html", html], [".nojekyll", ""],
+    ["deployment.json", JSON.stringify({ sourceCommit, htmlSha256: checksum }, null, 2) + "\n"]
+];
+const tree = [];
+for (const [name, content] of files) {
+    const blob = await api("/git/blobs", "POST", { content: Buffer.from(content).toString("base64"), encoding: "base64" });
+    tree.push({ path: name, mode: "100644", type: "blob", sha: blob.sha });
+}
+// Preserve any existing custom files (for example CNAME) on the publishing branch.
+const nextTree = await api("/git/trees", "POST", { ...(parent ? { base_tree: parent.tree.sha } : {}), tree });
+const commit = await api("/git/commits", "POST", { message: "Publish browser demo from " + sourceCommit.slice(0, 9), tree: nextTree.sha, parents: current ? [current.object.sha] : [] });
+if (current) await api("/git/refs/heads/gh-pages", "PATCH", { sha: commit.sha, force: false });
+else await api("/git/refs", "POST", { ref: "refs/heads/gh-pages", sha: commit.sha });
+console.log("Published artifact commit: " + commit.sha);
+
+let pages = await api("/pages", "GET", undefined, true);
+const source = { branch: "gh-pages", path: "/" };
+if (!pages) pages = await api("/pages", "POST", { build_type: "legacy", source });
+else if (pages.build_type !== "legacy" || pages.source?.branch !== source.branch || pages.source?.path !== source.path) {
+    await api("/pages", "PUT", { build_type: "legacy", source });
+    pages = await api("/pages");
+}
+if (!pages.https_enforced) await api("/pages", "PUT", { https_enforced: true });
+const url = pages.html_url.replace(/^http:/u, "https:");
+console.log("GitHub Pages URL: " + url);
+// Creating the site normally queues a build. An explicit build also covers
+// updates made with Git's REST endpoints without relying on a push event.
+await api("/pages/builds", "POST", {});
+let previous = "", lastError = "";
+for (let attempt = 0; attempt < 40; attempt++) {
+    const build = await api("/pages/builds/latest", "GET", undefined, true);
+    const state = build ? build.status + " " + build.commit : "queued";
+    if (state !== previous) { console.log("Pages build: " + state); previous = state; }
+    if (build?.commit === commit.sha && build.status === "errored") throw new Error(build.error?.message || "Pages build failed");
+    if (build?.commit === commit.sha && build.status === "built") {
+        try {
+            const response = await fetch(url + (url.includes("?") ? "&" : "?") + "v=" + sourceCommit, { cache: "no-store", signal: AbortSignal.timeout(15000) });
+            const published = await response.text();
+            if (response.ok && published.includes(marker) && createHash("sha256").update(published).digest("hex") === checksum) {
+                console.log(JSON.stringify({ published: true, url, sourceCommit, pagesCommit: commit.sha, verifiedHtmlSha256: checksum }));
+                process.exit(0);
+            }
+            lastError = "HTTP " + response.status + ": waiting for the deployed HTML";
+        } catch (error) { lastError = error.message; }
+    }
+    await new Promise(resolve => setTimeout(resolve, 15000));
+}
+throw new Error("Pages deployment verification timed out: " + lastError);

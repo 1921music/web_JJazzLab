@@ -55,7 +55,19 @@
                         <label for="style">スタイル</label>
                         <input id="style" type="file" accept=".sty,.sst,.prs,.bcs"
                                aria-describedby="style-help">
-                        <small id="style-help">未選択の場合は同梱の 8Beat を使用します。</small>
+                        <small id="style-help">ファイルまたは公開スタイル集から選べます。未選択の場合は同梱の 8Beat を使用します。</small>
+                        <button id="load-style-pack" type="button" class="secondary">公開スタイル集を読み込む</button>
+                        <small><a href="https://www.jjazzlab.org/en/resources/" target="_blank" rel="noopener noreferrer">JJazzLab公開スタイル集</a>を約2.4MB取得します。ファイル保存は不要です。</small>
+                        <p id="style-pack-status" class="hint" role="status"></p>
+                        <div id="style-library" class="field" hidden>
+                            <label for="style-category">カテゴリー</label>
+                            <select id="style-category"><option value="">すべて</option></select>
+                            <label for="style-search">スタイル名で検索</label>
+                            <input id="style-search" type="search" placeholder="Jazz、Bossa、Waltz…" autocomplete="off">
+                            <label for="library-style">公開スタイル <span id="style-count"></span></label>
+                            <select id="library-style"><option value="">選択なし（ファイルまたは8Beat）</option></select>
+                            <small>元データに問題があるスタイルは「利用不可」と表示します。</small>
+                        </div>
                     </div>
                     <div class="field">
                         <label for="tempo">テンポ <span>(BPM)</span></label>

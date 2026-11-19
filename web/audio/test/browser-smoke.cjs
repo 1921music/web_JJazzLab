@@ -5,11 +5,29 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 
+let fixtureServer;
+(async () => {
+let fixtureUrl = null;
+if (process.env.JJAZZ_SMOKE_SUITE === "style-library" && process.env.JJAZZ_STYLE_FIXTURE === "1") {
+    // Test-only CORS-enabled server. The real official ZIP stays in RAM.
+    const response = await fetch("https://www.jjazzlab.org/pkg/jjazzlab_user_styles.zip");
+    if (!response.ok) throw new Error("Official ZIP fixture fetch: " + response.status);
+    const bytes = Buffer.from(await response.arrayBuffer());
+    fixtureServer = require("node:http").createServer((request, reply) => {
+        reply.writeHead(200, { "Access-Control-Allow-Origin": "*", "Content-Type": "application/zip", "Content-Length": bytes.length, "Cache-Control": "no-store" });
+        reply.end(bytes);
+    });
+    await new Promise(resolve => fixtureServer.listen(0, "127.0.0.1", resolve));
+    fixtureUrl = "http://127.0.0.1:" + fixtureServer.address().port + "/styles.zip";
+}
+
 const htmlPath = path.resolve(process.argv[2] || "WSL_image/midi-demo.html");
 const chrome = process.env.CHROME_BIN || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const scratch = fs.mkdtempSync(path.join(path.dirname(htmlPath), "soundfont-smoke-"));
 const smokePath = path.join(scratch, "smoke.html");
-const harness = process.env.JJAZZ_SMOKE_SUITE === "jjswing"
+const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
+    ? "const styleFixtureUrl = " + JSON.stringify(fixtureUrl) + ";\n" + fs.readFileSync(path.join(__dirname, "style-library-browser-script.js"), "utf8")
+    : process.env.JJAZZ_SMOKE_SUITE === "jjswing"
     ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8") : `
 (async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };
@@ -110,6 +128,7 @@ const timeout = setTimeout(() => finish({ ok: false, error: "Headless Chrome smo
 function finish(result) {
     if (finished) return; finished = true;
     clearTimeout(timeout); child.kill(); log.end();
+    fixtureServer?.close();
     console.log(JSON.stringify(result, null, 2));
     process.exitCode = result.ok ? 0 : 1;
 }
@@ -124,3 +143,4 @@ function read(data) {
 child.stderr.on("data", read); child.stdout.on("data", read);
 child.on("error", error => finish({ ok: false, error: error.message }));
 child.on("exit", code => { if (!finished) finish({ ok: false, error: "Chrome exited before reporting: " + code, scratch }); });
+})().catch(error => { fixtureServer?.close(); console.error(error.message); process.exitCode = 1; });

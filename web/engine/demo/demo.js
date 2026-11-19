@@ -11,9 +11,88 @@ const swingDrums = document.querySelector("#swing-drums");
 const status = document.querySelector("#status");
 const download = document.querySelector("#download");
 const bundledStyle = "8Beat.T160.STY";
+const stylePackUrl = "https://raw.githubusercontent.com/1921music/web_JJazzLab/923ed5dd8b6d426722bacdd951b268a049a6638a/web/engine/demo/assets/jjazzlab_user_styles.zip";
+const loadStylePackButton = document.querySelector("#load-style-pack");
+const stylePackStatus = document.querySelector("#style-pack-status");
+const libraryStyle = document.querySelector("#library-style");
+const styleCategory = document.querySelector("#style-category");
+const styleSearch = document.querySelector("#style-search");
+let styleArchive;
+let selectedLibraryStyle;
+let loadingStylePack = false;
+// Tested failures in the published collection. Match the CRC as well as the
+// filename so a repaired upstream file automatically becomes selectable.
+const knownStyleIssues = new Map([
+    ["J-PopHit1_TyPrems.S851.STY:942392629", "元ファイルのMIDIデータが不正です。"],
+    ["JazzBluesSimple.S740.sty:66474411", "元ファイルのMIDIデータが不正です。"],
+    ["JazzGtrTrio184 9K.s460.sty:2366308981", "元ファイルに空のスタイル区間があり、エンジンが読み込めません。"]
+]);
+const styleIssue = entry => knownStyleIssues.get(`${entry.name}:${entry.crc}`);
 
 let engine;
 let downloadUrl;
+
+function showStylePackStatus(message, error = false) {
+    stylePackStatus.textContent = message;
+    stylePackStatus.toggleAttribute("data-error", error);
+}
+
+function renderStyleChoices() {
+    const words = styleSearch.value.normalize("NFKC").toLowerCase().split(/\s+/u).filter(Boolean);
+    const entries = styleArchive.entries.filter(entry => (!styleCategory.value || entry.category === styleCategory.value)
+        && words.every(word => `${entry.category} ${entry.name}`.normalize("NFKC").toLowerCase().includes(word)));
+    libraryStyle.replaceChildren();
+    const option = (value, text) => { const node = document.createElement("option"); node.value = value; node.textContent = text; return node; };
+    libraryStyle.append(option("", "選択なし（ファイルまたは8Beat）"));
+    if (selectedLibraryStyle && !entries.includes(selectedLibraryStyle))
+        libraryStyle.append(option(selectedLibraryStyle.path, `選択中: ${selectedLibraryStyle.category} / ${selectedLibraryStyle.name}`));
+    let group;
+    for (const entry of entries) {
+        if (!group || group.label !== entry.category) {
+            group = document.createElement("optgroup"); group.label = entry.category; libraryStyle.append(group);
+        }
+        const item = option(entry.path, entry.name + (styleIssue(entry) ? "（利用不可）" : ""));
+        item.disabled = Boolean(styleIssue(entry)); item.title = styleIssue(entry) || entry.name;
+        group.append(item);
+    }
+    libraryStyle.value = selectedLibraryStyle?.path || "";
+    const available = entries.filter(entry => !styleIssue(entry)).length;
+    document.querySelector("#style-count").textContent = `（${available}件利用可 / 表示${entries.length}件）`;
+}
+
+loadStylePackButton.addEventListener("click", async () => {
+    if (loadingStylePack || styleArchive) return;
+    loadingStylePack = true; loadStylePackButton.disabled = true;
+    showStylePackStatus("公開スタイル集を取得しています…");
+    try {
+        styleArchive = await fetchStyleArchive(stylePackUrl, (bytes, total) => {
+            showStylePackStatus(total ? `公開スタイル集を取得しています… ${Math.min(100, Math.round(bytes / total * 100))}%` : `公開スタイル集を取得しています… ${(bytes / 1024 / 1024).toFixed(1)}MB`);
+        });
+        const categories = [...new Set(styleArchive.entries.map(entry => entry.category))];
+        for (const category of categories) {
+            const option = document.createElement("option"); option.value = option.textContent = category; styleCategory.append(option);
+        }
+        renderStyleChoices(); document.querySelector("#style-library").hidden = false;
+        loadStylePackButton.textContent = "公開スタイル集を読み込み済み";
+        const available = styleArchive.entries.filter(entry => !styleIssue(entry)).length;
+        showStylePackStatus(`${styleArchive.entries.length}件を読み込みました（${available}件利用可）。ページを開いている間は再取得しません。`);
+        libraryStyle.focus();
+    } catch (error) {
+        loadStylePackButton.textContent = "公開スタイル集を再試行";
+        showStylePackStatus(error.message, true);
+    } finally { loadingStylePack = false; loadStylePackButton.disabled = Boolean(styleArchive); }
+});
+
+styleSearch.addEventListener("input", () => { if (styleArchive) renderStyleChoices(); });
+styleCategory.addEventListener("change", () => { if (styleArchive) renderStyleChoices(); });
+libraryStyle.addEventListener("change", () => {
+    const selected = styleArchive.entries.find(entry => entry.path === libraryStyle.value);
+    if (selected && styleIssue(selected)) { showStylePackStatus(styleIssue(selected), true); renderStyleChoices(); return; }
+    selectedLibraryStyle = selected;
+    if (selectedLibraryStyle) styleInput.value = "";
+    if (song) showStatus("スタイルを変更しました。「伴奏を生成」で新しい伴奏を作ります。");
+});
+styleInput.addEventListener("change", () => { selectedLibraryStyle = undefined; libraryStyle.value = ""; });
 
 rhythmEngine.addEventListener("change", () => {
     const swing = rhythmEngine.value === "jjswing";
@@ -170,6 +249,7 @@ function showStatus(message, error = false) {
 }
 
 async function readStyle() {
+    if (selectedLibraryStyle) return { name: selectedLibraryStyle.name, bytes: new Int8Array(await styleArchive.read(selectedLibraryStyle)) };
     const file = styleInput.files[0];
     if (file) {
         return { name: file.name, bytes: new Int8Array(await file.arrayBuffer()) };
@@ -177,7 +257,8 @@ async function readStyle() {
     return { name: bundledStyle, bytes: new Int8Array(await decompress(embeddedStyle)) };
 }
 
-form.addEventListener("input", () => {
+form.addEventListener("input", (event) => {
+    if (event.target === styleSearch || event.target === styleCategory) return;
     if (song) showStatus("入力を変更しました。「伴奏を生成」で現在の演奏を停止し、新しい伴奏を作ります。");
 });
 

@@ -87,7 +87,7 @@ test("fetch streams the archive to memory without persistent caching and reports
         assert.equal(archive.entries.length, 1);
         assert.deepEqual(progress.at(-1), [bytes.length, bytes.length]);
         global.fetch = async () => { throw new TypeError("Failed to fetch"); };
-        await assert.rejects(fetchStyleArchive("https://example.test/styles.zip"), /CORS/);
+        await assert.rejects(fetchStyleArchive("https://example.test/styles.zip"), /再試行/);
         global.fetch = async () => new Response("not found", { status: 404 });
         await assert.rejects(fetchStyleArchive("https://example.test/styles.zip"), /404/);
         global.fetch = async () => new Response(bytes, { headers: { "content-length": "999999999" } });

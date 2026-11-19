@@ -124,7 +124,7 @@ async function fetchStyleArchive(url, onProgress = () => {}) {
         return new MemoryStyleArchive(bytes);
     } catch (error) {
         if (error instanceof TypeError || error.name === "AbortError")
-            throw new Error("スタイル集を取得できませんでした。接続または配信元のCORS設定を確認して再試行してください。");
+            throw new Error("スタイル集を取得できませんでした。接続を確認して再試行してください。");
         throw error;
     } finally { clearTimeout(timeout); }
 }
