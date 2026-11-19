@@ -23,6 +23,16 @@ public final class WasmMidiEngine
         }
     }
 
+    /** Generate using jjSwing's dedicated bass and drums generators. */
+    @JSExport
+    public static byte[] generateSwingMidi(String[] chords, int tempo, String bassStyle, String drumsStyle) throws Exception
+    {
+        partMetadata = new String[0];
+        var midi = new ByteArrayOutputStream();
+        partMetadata = MidiGeneration.generateSwing(chords, tempo, bassStyle, drumsStyle, midi);
+        return midi.toByteArray();
+    }
+
     /** Track-indexed entries: drums|melodic, a tab, then the rhythm voice name. */
     @JSExport
     public static String[] getPartMetadata()

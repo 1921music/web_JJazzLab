@@ -22,6 +22,11 @@
     <dependencies>
         <dependency>
             <groupId>org.jjazzlab.plugins</groupId>
+            <artifactId>jjswing</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jjazzlab.plugins</groupId>
             <artifactId>yamjjazz</artifactId>
             <version>${project.version}</version>
         </dependency>

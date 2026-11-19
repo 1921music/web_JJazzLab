@@ -14,6 +14,13 @@ public final class EngineResources implements ResourcesPolicy
         }
         return new String[]{
             "org/jjazz/yamjjazz/resources/YamahaRefSynth.ins",
+            "org/jjazz/jjswing/api/psBase.sst",
+            "org/jjazz/jjswing/api/psBase.yjz",
+            "org/jjazz/jjswing/bass/db/WalkingBassMidiDB.mid",
+            "org/jjazz/jjswing/bass/db/WalkingBass2feelAMidiDB.mid",
+            "org/jjazz/jjswing/bass/db/WalkingBass2feelBMidiDB.mid",
+            "org/jjazz/jjswing/drums/db/drums44DB.mid",
+            "org/jjazz/jjswing/Bundle.properties",
             "org/jjazz/rhythmparametersimpl/api/Bundle.properties",
             "org/jjazz/rhythmmusicgeneration/api/Bundle.properties",
             "org/jjazz/rhythm/api/Bundle.properties",

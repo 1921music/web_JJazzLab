@@ -6,6 +6,9 @@ import java.util.List;
 import javax.sound.midi.MidiSystem;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
 import org.jjazz.harmony.api.Position;
+import org.jjazz.jjswing.api.RP_BassStyle;
+import org.jjazz.jjswing.api.RP_DrumsStyle;
+import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.midimix.spi.MidiMixManager;
 import org.jjazz.rhythmmusicgeneration.api.SongSequenceBuilder;
 import org.jjazz.song.spi.SongContextFactory;
@@ -21,12 +24,22 @@ final class MidiGeneration
 
     static String[] generate(File styleFile, String[] chords, int tempo, OutputStream output) throws Exception
     {
+        WebServices.install();
+        return generate(new YamJJazzRhythmImpl(styleFile), chords, tempo, null, null, output);
+    }
+
+    static String[] generateSwing(String[] chords, int tempo, String bassStyle, String drumsStyle, OutputStream output) throws Exception
+    {
+        WebServices.install();
+        return generate(WebJJSwing.rhythm(), chords, tempo, bassStyle, drumsStyle, output);
+    }
+
+    private static String[] generate(Rhythm rhythm, String[] chords, int tempo, String bassStyle, String drumsStyle, OutputStream output) throws Exception
+    {
         if (chords.length == 0)
         {
             throw new IllegalArgumentException("At least one chord is required");
         }
-        WebServices.install();
-        var rhythm = new YamJJazzRhythmImpl(styleFile);
         rhythm.loadResources();
         var factory = SongFactory.getDefault();
         var leadSheet = factory.createEmptyChordLeadSheet("A", rhythm.getTimeSignature(), chords.length, null);
@@ -39,12 +52,19 @@ final class MidiGeneration
         var part = structure.createSongPart(rhythm, "A", 0, leadSheet.getSection(0), false);
         // The rhythm is already selected, so generation does not need a shared rhythm catalog.
         structure.performWriteAPImethodThrowing(structure.addSongPartsOperation(List.of(part)));
+        if (bassStyle != null)
+        {
+            structure.setRhythmParameterValue(part, RP_BassStyle.get(rhythm), bassStyle);
+            structure.setRhythmParameterValue(part, RP_DrumsStyle.get(rhythm), drumsStyle);
+        }
         var song = factory.createSong("Web accompaniment", structure, true);
         song.setTempo(tempo == 0 ? rhythm.getPreferredTempo() : tempo);
         var mix = MidiMixManager.getDefault().createMix(rhythm);
+        if (bassStyle != null) WebJJSwing.configureMix(rhythm, mix);
         var builder = new SongSequenceBuilder(SongContextFactory.getDefault().of(song, mix));
         var result = builder.buildAll(true);
         builder.makeSequenceExportable(result, false);
+        if (bassStyle != null) WebJJSwing.adaptDrumNotes(result);
         MidiSystem.write(result.sequence, 1, output);
         // Track-indexed metadata keeps percussion outside channel 10 identifiable
         // without changing the exported Standard MIDI File.

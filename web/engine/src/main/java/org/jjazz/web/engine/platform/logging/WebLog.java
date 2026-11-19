@@ -64,6 +64,12 @@ public final class WebLog
         log(Level.SEVERE, message);
     }
 
+    public static void severe(Supplier<String> message) { log(Level.SEVERE, message); }
+    public static void warning(Supplier<String> message) { log(Level.WARNING, message); }
+    public static void info(Supplier<String> message) { log(Level.INFO, message); }
+    public static void fine(Supplier<String> message) { log(Level.FINE, message); }
+    public static void finest(Supplier<String> message) { log(Level.FINEST, message); }
+
     public static void warning(String message)
     {
         log(Level.WARNING, message);

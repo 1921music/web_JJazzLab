@@ -9,6 +9,21 @@ static tsf *font, *parts[PARTS];
 static int count, drums[PARTS];
 static float output[PARTS * BLOCK * 2];
 
+/* Inspect actual SF2 regions, including velocity layers; used for compatibility checks. */
+int synth_note_supported(int bank, int program, int key, int velocity)
+{
+    if (!font) return 0;
+    int preset = tsf_get_presetindex(font, bank, program);
+    if (preset < 0) return 0;
+    struct tsf_preset *p = font->presets + preset;
+    for (int i = 0; i < p->regionNum; ++i)
+    {
+        struct tsf_region *r = p->regions + i;
+        if (key >= r->lokey && key <= r->hikey && velocity >= r->lovel && velocity <= r->hivel && r->end > r->offset) return 1;
+    }
+    return 0;
+}
+
 void synth_close(void)
 {
     for (int i = 0; i < count; ++i) { tsf_close(parts[i]); parts[i] = 0; }
