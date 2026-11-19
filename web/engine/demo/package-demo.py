@@ -42,7 +42,9 @@ def package(engine_dir, output):
     archive = (DEMO / "style-archive.js").read_text(encoding="utf-8")
     with ZipFile(STYLE_ARCHIVE) as styles:
         style = encode_gzip(styles.read("8Beat.T160.STY"))
+        jazz_waltz = encode_gzip(styles.read("JazzWaltzMed.S351.sst"))
     data = f'const embeddedWasm = "{wasm}";\nconst embeddedStyle = "{style}";'
+    data += f'\nconst embeddedJazzWaltz = "{jazz_waltz}";'
     data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])

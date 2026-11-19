@@ -12,6 +12,7 @@ const swingVariation = document.querySelector("#swing-variation");
 const status = document.querySelector("#status");
 const download = document.querySelector("#download");
 const bundledStyle = "8Beat.T160.STY";
+const bundledJazzWaltz = "JazzWaltzMed.S351.sst";
 const stylePackUrl = "https://raw.githubusercontent.com/1921music/web_JJazzLab/923ed5dd8b6d426722bacdd951b268a049a6638a/web/engine/demo/assets/jjazzlab_user_styles.zip";
 const loadStylePackButton = document.querySelector("#load-style-pack");
 const stylePackStatus = document.querySelector("#style-pack-status");
@@ -98,7 +99,7 @@ styleInput.addEventListener("change", () => { selectedLibraryStyle = undefined; 
 
 rhythmEngine.addEventListener("change", () => {
     const swing = rhythmEngine.value === "jjswing";
-    document.querySelector("#swing-settings").hidden = !swing;
+    document.querySelector("#swing-settings").hidden = !swing || Boolean(editor.project);
     document.querySelector("#style-field").hidden = swing;
     styleInput.disabled = swing;
     tempoInput.placeholder = swing ? "120" : "スタイルの既定値";
@@ -302,8 +303,15 @@ editor.onMeterChange = meter => {
     }
 };
 
-async function readArrangementStyle(project, swing) {
-    if (swing) return { name: "jjSwing", id: "jjSwing-ID", bytes: new Int8Array() };
+async function defaultArrangementStyle(meter, replaced) {
+    const waltz = meter === "THREE_FOUR";
+    const name = waltz ? bundledJazzWaltz : bundledStyle;
+    return { name, id: `${name}-ID`, bytes: new Int8Array(await decompress(waltz ? embeddedJazzWaltz : embeddedStyle)), replaced };
+}
+
+async function readArrangementStyle(project, requestedSwing, meter) {
+    if (requestedSwing && meter === "FOUR_FOUR") return { name: "jjSwing", id: "jjSwing-ID", bytes: new Int8Array() };
+    if (requestedSwing) return defaultArrangementStyle(meter);
     if (styleInput.files.length || selectedLibraryStyle) {
         const style = await readStyle();
         return { ...style, id: `${style.name}-ID`, attach: styleInput.files.length > 0 };
@@ -312,27 +320,30 @@ async function readArrangementStyle(project, swing) {
         return { name: editor.style.name, id: editor.style.id, bytes: Int8Array.from(editor.style.data), attach: true };
     }
     const wanted = project.parts[0].styleId.replace(/-ID$/u, "");
-    const meter = project.sections[0].meter;
-    if (wanted.toLowerCase() === bundledStyle.toLowerCase() || (wanted === "jjSwing" && meter === "FOUR_FOUR")) {
-        const style = await readStyle();
-        return { ...style, id: `${style.name}-ID` };
+    if ([bundledStyle, bundledJazzWaltz, "jjSwing"].some(name => name.toLowerCase() === wanted.toLowerCase())) {
+        const style = await defaultArrangementStyle(meter);
+        if (style.name.toLowerCase() !== wanted.toLowerCase() && wanted !== "jjSwing") style.replaced = wanted;
+        return style;
     }
     await loadStylePack();
     const entry = styleArchive?.entries.find(entry => entry.name.toLowerCase() === wanted.toLowerCase() && !styleIssue(entry));
     if (entry) return { name: entry.name, id: project.parts[0].styleId, bytes: new Int8Array(await styleArchive.read(entry)) };
-    if (meter === "FOUR_FOUR") {
-        const style = await readStyle();
-        return { ...style, id: `${style.name}-ID`, replaced: wanted };
-    }
-    const waltz = styleArchive?.entries.find(entry => entry.name === "JazzWaltzSlow.S423.prs");
-    if (meter === "THREE_FOUR" && waltz) {
-        return { name: waltz.name, id: `${waltz.name}-ID`, bytes: new Int8Array(await styleArchive.read(waltz)), replaced: wanted };
-    }
-    throw new Error(`スタイル「${wanted}」を選ぶか、同じ拍子の代替スタイルを指定してください。`);
+    return defaultArrangementStyle(meter, wanted);
 }
 
-function updateProjectVariation(part, useDefault) {
-    if (useDefault || !part.parameters.rpVariationID) delete part.parameters.rpVariationID;
+function selectVariation(saved, available) {
+    const variation = saved?.trim().toLowerCase();
+    const exact = available.find(value => value.toLowerCase() === variation);
+    if (exact) return exact;
+
+    // Styles can offer additional versions of a Main, Intro, or Ending.
+    const family = /^(main [a-e]|fill in [a-z]+|intro|ending)\b/u.exec(variation ?? "")?.[1];
+    if (family) {
+        const compatible = available.find(value => value.toLowerCase().startsWith(`${family}-`)
+            || value.toLowerCase().startsWith(`${family} `));
+        if (compatible) return compatible;
+    }
+    return available[0];
 }
 
 form.addEventListener("input", (event) => {
@@ -373,22 +384,43 @@ form.addEventListener("submit", async (event) => {
                 throw new Error("Wasmを読み込めませんでした。WasmGCとgzip展開に対応したブラウザで開いてください。");
             }
         }
-        const swing = rhythmEngine.value === "jjswing";
+        const requestedSwing = rhythmEngine.value === "jjswing";
         let style, bars = chords.length;
         let midi;
         if (project) {
             editor.readChords();
             if (!project.chords.length) throw new Error("コードを1つ以上入力してください。");
-            if (new Set(project.parts.map(part => part.styleId)).size > 1) throw new Error("曲中のスタイル変更には対応していません。");
-            style = await readArrangementStyle(project, swing);
-            const styleChanged = project.parts[0].styleId !== style.id;
-            const arrangement = { ...project, tempo: tempo || project.tempo, parts: project.parts.map(part => ({
-                ...part, styleId: style.id, styleName: style.name, parameters: { ...part.parameters }
-            })) };
-            arrangement.parts.forEach(part => updateProjectVariation(part, styleChanged));
-            if (styleChanged && swing) {
-                for (const part of arrangement.parts) part.parameters.rpVariationID = swingVariation.value;
+            const meter = project.sections[0].meter;
+            if (project.sections.some(section => section.meter !== meter)) {
+                throw new Error("曲中の拍子変更には対応していません。");
             }
+            if (!["FOUR_FOUR", "THREE_FOUR"].includes(meter)) throw new Error("再生は4/4と3/4に対応しています。");
+            if (!requestedSwing && new Set(project.parts.map(part => part.styleId)).size > 1) {
+                throw new Error("曲中のスタイル変更には対応していません。");
+            }
+            style = await readArrangementStyle(project, requestedSwing, meter);
+            const swing = style.id === "jjSwing-ID";
+            let variations;
+            if (swing) {
+                variations = Array.from(engine.exports.getSwingVariations());
+            } else {
+                let [styleMeter, ...supported] = Array.from(engine.exports.getYamahaStyleInfo(style.bytes, style.name));
+                if (styleMeter !== meter) {
+                    style = await defaultArrangementStyle(meter, style.name);
+                    supported = Array.from(engine.exports.getYamahaStyleInfo(style.bytes, style.name)).slice(1);
+                }
+                variations = supported;
+            }
+            const parts = project.parts.map(part => {
+                const parameters = { ...part.parameters };
+                if (swing || parameters.rpVariationID) {
+                    parameters.rpVariationID = selectVariation(parameters.rpVariationID, variations);
+                }
+                return { ...part, styleId: style.id, styleName: style.name, parameters };
+            });
+            const arrangementChanged = parts.some((part, index) => part.styleId !== project.parts[index].styleId
+                || part.parameters.rpVariationID !== project.parts[index].parameters.rpVariationID);
+            const arrangement = { ...project, tempo: tempo || project.tempo, parts };
             midi = engine.exports.generateSongMidi(...DesktopSongFiles.engineArgs(arrangement, style.bytes, swing ? "" : style.name, editor.mix));
             const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
             const applied = engine.exports.wasImportedMixApplied();
@@ -399,6 +431,7 @@ form.addEventListener("submit", async (event) => {
                 return { ...source, sourceChannel: source.sourceChannel ?? source.channel, channel: track.channel };
             });
             const notices = [];
+            if (requestedSwing && !swing) notices.push(`jjSwingは4/4専用のため、3/4の「${style.name}」で演奏します。`);
             if (style.replaced) notices.push(`「${style.replaced}」の代わりに「${style.name}」を使用しました。`);
             if (editor.mix.length && !applied) notices.push("スタイルやトラックが異なるため、既定ミックスを使用しました。");
             const substitutes = defaults.filter((track, index) => track.patch !== completeMix[index].patch).map(track => track.name);
@@ -407,20 +440,20 @@ form.addEventListener("submit", async (event) => {
             editor.baseMix = editor.renderedMix = editor.mix = completeMix;
             editor.project.parts = arrangement.parts;
             editor.project.tempo = arrangement.tempo;
-            if (styleChanged) editor.render();
+            if (arrangementChanged) editor.render();
             editor.style = style.attach ? { name: style.name, id: style.id, data: Array.from(new Uint8Array(style.bytes.buffer)) } : null;
             editor.exportButton.disabled = false;
             activeProject = project;
             bars = arrangement.parts.reduce((total, part) => total + (arrangement.sections[part.section + 1]?.bar ?? arrangement.bars)
                 - arrangement.sections[part.section].bar, 0);
         } else try {
-            style = swing ? { name: "jjSwing" } : await readStyle();
-            midi = swing
+            style = requestedSwing ? { name: "jjSwing" } : await readStyle();
+            midi = requestedSwing
                 ? engine.exports.generateSwingMidiWithVariation(chords, tempo, swingVariation.value, swingBass.value, swingDrums.value)
                 : engine.exports.generateMidi(style.bytes, style.name, chords, tempo);
         } catch (error) {
             console.error(error);
-            throw new Error(swing ? "jjSwingの伴奏を生成できませんでした。コード表記を確認してください。" : "MIDIを生成できませんでした。コード表記とスタイルファイルを確認してください。");
+            throw new Error(requestedSwing ? "jjSwingの伴奏を生成できませんでした。コード表記を確認してください。" : "MIDIを生成できませんでした。コード表記とスタイルファイルを確認してください。");
         }
         const metadata = engine.exports.getPartMetadata();
         song = parseMidi(midi, bars, metadata);

@@ -2,6 +2,7 @@ package org.jjazz.web.engine;
 
 import java.io.ByteArrayOutputStream;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
+import org.jjazz.yamjjazz.rhythm.YamJJazzRhythmImpl;
 import org.teavm.jso.JSExport;
 
 /** JavaScript entry point for generating a General MIDI accompaniment. */
@@ -91,6 +92,22 @@ public final class WasmMidiEngine
     {
         WebServices.install();
         return RP_SYS_Variation.getVariationRp(WebJJSwing.rhythm()).getPossibleValues().toArray(new String[0]);
+    }
+
+    /** Reports the style's meter followed by its available variation names. */
+    @JSExport
+    public static String[] getYamahaStyleInfo(byte[] bytes, String name) throws Exception
+    {
+        WebServices.install();
+        try (var style = new RawStyleFile(bytes, name))
+        {
+            var rhythm = new YamJJazzRhythmImpl(style.file());
+            var variations = RP_SYS_Variation.getVariationRp(rhythm).getPossibleValues();
+            var result = new String[variations.size() + 1];
+            result[0] = rhythm.getTimeSignature().name();
+            for (int i = 0; i < variations.size(); i++) result[i + 1] = variations.get(i);
+            return result;
+        }
     }
 
     /** Track-indexed entries: drums|melodic, a tab, then the rhythm voice name. */

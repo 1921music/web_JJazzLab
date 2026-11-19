@@ -38,7 +38,11 @@
         open.files = files.files;
         await editor.openFiles(open);
         check(editor.project.title.startsWith("SpeakNoEvil"), editor.status.textContent);
+        const originalVariations = editor.project.parts.map(part => part.parameters.rpVariationID);
+        check(rhythmEngine.value === "jjswing", "A desktop jjSwing song did not select jjSwing");
         await generate();
+        check(editor.project.parts.every((part, index) => part.parameters.rpVariationID === originalVariations[index]),
+            "Generating a desktop jjSwing song changed its saved variations");
         check(engine.exports.wasImportedMixApplied(), "The matching desktop mix was not applied");
         check(song.parts.some(part => part.id === "user:User1"), "User MIDI track was not generated");
         check(song.barTimes.length === 139, "Expected 138 bars in the imported arrangement");
@@ -61,6 +65,42 @@
         await generate();
         check(engine.exports.wasImportedMixApplied(), "The Web project lost its mix on reopening");
         report.importedBars = song.barTimes.length - 1;
+
+        const converted = DesktopSongFiles.readSong(desktopFixture.song);
+        const variationExamples = ["Intro C-1", "Main B-1", "Main D-4", "Ending B-1"];
+        for (const [index, part] of converted.parts.entries()) {
+            part.styleId = index % 2 ? "ExampleSalsa.sty-ID" : "ExampleSwing.sty-ID";
+            part.parameters.rpVariationID = variationExamples[index % variationExamples.length];
+        }
+        converted.parts[0].parameters.RpSysMuteID = "[A source instrument unavailable in jjSwing]";
+        const convertedFiles = new DataTransfer();
+        convertedFiles.items.add(new File([DesktopSongFiles.writeSong(converted)], "converted.sng"));
+        convertedFiles.items.add(new File([desktopFixture.mix], "converted.mix"));
+        open.files = convertedFiles.files;
+        await editor.openFiles(open);
+        rhythmEngine.value = "jjswing";
+        rhythmEngine.dispatchEvent(new Event("change"));
+        await generate();
+        const mapped = editor.project.parts.slice(0, 4).map(part => part.parameters.rpVariationID);
+        check(mapped.join() === "Intro A-1,Main B-1,Main D-1,Ending A-1", `Unexpected jjSwing variations: ${mapped}`);
+        check(document.querySelector("#swing-settings").hidden, "The global variation selector is visible in the song editor");
+        report.convertedVariations = mapped;
+
+        document.querySelector("#new-project").click();
+        editor.meter.value = "THREE_FOUR";
+        editor.meter.dispatchEvent(new Event("change"));
+        const wrongMeter = new DataTransfer();
+        wrongMeter.items.add(new File([style], bundledStyle));
+        styleInput.files = wrongMeter.files;
+        await generate();
+        check(editor.project.parts[0].styleName === bundledJazzWaltz, "A mismatched 4/4 style was not replaced for a 3/4 song");
+        check(Math.abs(song.barTimes[1] - 1.5) < 0.001, "The replacement did not generate in 3/4");
+        rhythmEngine.value = "jjswing";
+        rhythmEngine.dispatchEvent(new Event("change"));
+        await generate();
+        check(editor.project.parts[0].styleName === bundledJazzWaltz && editor.status.textContent.includes("jjSwingは4/4専用"),
+            "Selecting jjSwing for a 3/4 song did not explain the compatible substitution");
+        report.waltzFallback = editor.project.parts[0].styleName;
         if (desktopFixture.styles) {
             const bytes = Uint8Array.from(atob(desktopFixture.styles), character => character.charCodeAt(0));
             styleArchive = new MemoryStyleArchive(bytes.buffer);
@@ -97,6 +137,16 @@
                 }
             }
             report.repertoire.push({ title: fixture.name, bars: song.barTimes.length - 1 });
+            if (fixture.name.startsWith("BlueBossa")) {
+                const savedVariations = arrangement.parts.map(part => part.parameters.rpVariationID);
+                rhythmEngine.value = "jjswing";
+                rhythmEngine.dispatchEvent(new Event("change"));
+                await generate();
+                const mapped = arrangement.parts.map(part => part.parameters.rpVariationID);
+                check(mapped[0] === "Intro A-1" && mapped.slice(1).join() === savedVariations.slice(1).join(),
+                    "Blue Bossa lost saved Main variations when switched to jjSwing");
+                report.blueBossaSwingVariations = [...new Set(mapped)];
+            }
         }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }

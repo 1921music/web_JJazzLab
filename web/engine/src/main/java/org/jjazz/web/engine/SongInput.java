@@ -1,5 +1,6 @@
 package org.jjazz.web.engine;
 
+import java.text.ParseException;
 import java.util.ArrayList;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
 import org.jjazz.harmony.api.Position;
@@ -87,9 +88,18 @@ record SongInput(String title, String meter, int tempo, int bars,
         return song;
     }
 
-    private static <T> void setParameter(SongStructureImpl structure, SongPart part, RhythmParameter<T> parameter, String savedValue) throws java.text.ParseException
+    private static <T> void setParameter(SongStructureImpl structure, SongPart part, RhythmParameter<T> parameter, String savedValue)
     {
-        var value = parameter.loadFromString(savedValue);
+        T value;
+        try
+        {
+            value = parameter.loadFromString(savedValue);
+        } catch (ParseException ex)
+        {
+            // Saved values can refer to a variation or instrument of the source rhythm.
+            // JJazzLab restores the destination parameter's default in that case.
+            return;
+        }
         if (value != null && parameter.isValidValue(value))
         {
             structure.setRhythmParameterValue(part, parameter, value);
