@@ -1,0 +1,112 @@
+:root {
+    color-scheme: light;
+    font-family: system-ui, "Yu Gothic UI", sans-serif;
+    color: #1d302c;
+    background: #eef3ef;
+    line-height: 1.55;
+}
+
+* { box-sizing: border-box; }
+
+body { margin: 0; }
+
+main {
+    width: min(100% - 2rem, 46rem);
+    margin: clamp(1.5rem, 7vw, 5rem) auto;
+}
+
+header {
+    background: #143a31;
+    color: #f6faf7;
+    border-radius: 1.25rem 1.25rem 0 0;
+    padding: clamp(1.5rem, 5vw, 2.8rem);
+}
+
+.brand {
+    color: #b9e4cb;
+    font-size: .9rem;
+    font-weight: 700;
+    letter-spacing: .08em;
+}
+
+h1 {
+    margin: .25rem 0 .65rem;
+    font-size: clamp(1.75rem, 5vw, 2.8rem);
+    line-height: 1.15;
+}
+
+header p { margin: 0; }
+
+form {
+    border: 1px solid #cddbd0;
+    border-top: 0;
+    border-radius: 0 0 1.25rem 1.25rem;
+    background: #fff;
+    padding: clamp(1.25rem, 5vw, 2.8rem);
+}
+
+fieldset {
+    min-inline-size: 0;
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.field {
+    display: grid;
+    gap: .4rem;
+    min-width: 0;
+}
+
+.settings {
+    display: grid;
+    grid-template-columns: minmax(0, 1.4fr) minmax(0, 1fr);
+    gap: 1.25rem;
+    margin: 1.5rem 0;
+}
+
+label { font-weight: 700; }
+label span, small { color: #4e645a; }
+
+textarea, input, button { font: inherit; }
+
+textarea, input {
+    width: 100%;
+    border: 1px solid #98aea1;
+    border-radius: .55rem;
+    padding: .65rem .75rem;
+    color: inherit;
+    background: #fbfdfb;
+}
+
+textarea {
+    resize: vertical;
+    font-family: ui-monospace, monospace;
+    font-size: 1.1rem;
+}
+
+input[type="file"] { font-size: .9rem; }
+input::file-selector-button { margin-inline-end: .55rem; }
+
+button {
+    border: 0;
+    border-radius: .6rem;
+    padding: .8rem 1.2rem;
+    background: #176548;
+    color: white;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+button:hover { background: #114e38; }
+button:disabled { opacity: .7; cursor: wait; }
+:focus-visible { outline: 3px solid #258c63; outline-offset: 3px; }
+#status { margin: 1rem 0 .35rem; }
+#status:empty { margin: 0; }
+#status[data-error] { color: #a12828; }
+a { color: #135d42; }
+
+@media (max-width: 34rem) {
+    .settings { grid-template-columns: minmax(0, 1fr); }
+    button { width: 100%; }
+}

@@ -85,7 +85,7 @@ if (!$PSCmdlet.ShouldProcess($name, 'Install the development tools and configure
 }
 
 Invoke-Wsl -d $name -u root --cd / --exec apt-get update
-Invoke-Wsl -d $name -u root --cd / --exec env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-25-jdk-headless maven git rsync curl ca-certificates
+Invoke-Wsl -d $name -u root --cd / --exec env DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends openjdk-25-jdk-headless maven git rsync curl ca-certificates python3
 Invoke-Wsl -d $name -u root --cd / --exec bash -ec 'id jjazzdev >/dev/null 2>&1 || useradd --create-home --shell /bin/bash jjazzdev'
 Invoke-Wsl --manage $name --set-default-user $devUser
 Invoke-Wsl -d $name -u $devUser --cd / --exec mvn --version
