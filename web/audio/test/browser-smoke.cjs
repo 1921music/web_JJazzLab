@@ -138,7 +138,8 @@ const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
     } catch (error) { report.ok = false; report.error = error.stack || error.message; report.audioState = player.context?.state; report.audioTime = player.context?.currentTime; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
 })();`;
-fs.writeFileSync(smokePath, fs.readFileSync(htmlPath, "utf8").replace("</body>", "<script>" + harness + "</script></body>"));
+const selectQuickMode = songFixture ? "" : 'document.querySelector("#quick-mode").click();\n';
+fs.writeFileSync(smokePath, fs.readFileSync(htmlPath, "utf8").replace("</body>", "<script>" + selectQuickMode + harness + "</script></body>"));
 const child = spawn(chrome, [
     "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
     "--autoplay-policy=no-user-gesture-required", "--enable-logging=stderr", "--log-level=0",

@@ -3,49 +3,87 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>伴奏を作って演奏 | JJazzLab</title>
+    <title>JJazzLab Web</title>
     <!-- DEMO_STYLE -->
 </head>
 <body>
-    <main>
-        <header>
-            <p class="brand">JJazzLab</p>
-            <h1>伴奏を作って演奏</h1>
-            <p>コード進行とスタイルから、ブラウザで伴奏を生成します。</p>
+    <main id="workspace" class="workspace">
+        <header class="app-header">
+            <h1 class="brand"><span aria-hidden="true">♫</span> JJazzLab <small>Web</small></h1>
+            <div class="file-actions" aria-label="曲の操作">
+                <button id="new-project" class="secondary" type="button">新規作成</button>
+                <button id="open-project-button" class="secondary" type="button">曲を開く</button>
+                <input id="open-project" type="file" accept=".sng,.mix,.jjazzweb" aria-label="曲を開く (.sng / .mix / .jjazzweb)" multiple hidden>
+            </div>
+            <div class="view-actions" aria-label="表示">
+                <button id="toggle-mixer" class="secondary" type="button" aria-controls="mixer" aria-pressed="true">ミキサー</button>
+                <button id="quick-mode" class="secondary" type="button" aria-pressed="false">簡易入力</button>
+            </div>
         </header>
 
-        <section id="song-editor" class="panel" aria-labelledby="song-editor-title">
-            <h2 id="song-editor-title">曲エディター</h2>
-            <div class="transport">
-                <button id="new-project" type="button">新規作成</button>
-                <label class="field">曲を開く (.sng / .mix / .jjazzweb)
-                    <input id="open-project" type="file" accept=".sng,.mix,.jjazzweb" multiple>
-                </label>
+        <section id="player" class="playback-toolbar" aria-label="演奏">
+            <div class="transport transport-controls">
+                <button id="generate" class="secondary" type="submit" form="midi-form">伴奏を生成</button>
+                <button id="play" type="button">再生</button>
+                <button id="stop" type="button" class="secondary" disabled>停止</button>
+                <output id="position" aria-label="再生位置">–</output>
+                <label class="tempo-control" for="tempo">BPM</label>
+                <input id="tempo" type="number" min="20" max="400" step="1" form="midi-form" aria-label="テンポ (BPM)">
             </div>
+            <fieldset id="loop-controls" class="loop-controls">
+                <legend class="visually-hidden">ループ</legend>
+                <label class="check"><input id="loop-enabled" type="checkbox" checked> ループ</label>
+                <input id="loop-start" aria-label="ループの開始小節" type="number" min="1" value="1" step="1" required>
+                <span aria-hidden="true">–</span>
+                <input id="loop-end" aria-label="ループの終了小節" type="number" min="1" value="4" step="1" required>
+            </fieldset>
+            <div class="playback-status"><p id="status" role="status"></p><p id="play-status" role="status"></p><p id="loop-status" role="status"></p>
+                <a id="download" hidden>MIDI（GM）</a></div>
+        </section>
+        <section id="song-editor" class="panel" aria-labelledby="song-editor-title">
             <p id="project-status" role="status"></p>
             <div id="project-editor" hidden>
-                <div class="transport">
-                    <label class="field">曲名 <input id="project-title" type="text"></label>
-                    <label class="field">拍子 <select id="project-meter"><option value="FOUR_FOUR">4/4</option><option value="THREE_FOUR">3/4</option></select></label>
-                    <button id="save-project" type="button" class="secondary">Web用に保存</button>
-                    <button id="export-project" type="button" class="secondary">JJazzLab形式で書き出す</button>
+                <div class="pane-heading">
+                    <h2 id="song-editor-title">コード譜</h2>
+                    <label class="project-name">曲名 <input id="project-title" type="text"></label>
+                    <div class="sheet-file-actions">
+                        <button id="save-project" type="button" class="secondary">Web用に保存</button>
+                        <button id="export-project" type="button" class="secondary">JJazzLab形式で書き出す</button>
+                    </div>
                 </div>
-                <h3>コード譜</h3>
-                <p class="hint">複数コードは「Cmaj7 3:G7」のように、コードの前に拍位置を指定できます。</p>
-                <div id="lead-sheet" class="lead-sheet"></div>
-                <div class="transport">
+                <div class="sheet-toolbar" aria-label="コード譜の操作">
+                    <button id="edit-bar" type="button" class="secondary">小節を編集</button>
+                    <button id="edit-section" type="button" class="secondary">セクション</button>
                     <button id="add-bar" type="button" class="secondary">小節を追加</button>
                     <button id="remove-bar" type="button" class="secondary">末尾の小節を削除</button>
+                    <label for="project-meter">拍子</label>
+                    <select id="project-meter"></select>
+                    <output id="sheet-selection" aria-live="polite"></output>
                 </div>
-                <h3>演奏順</h3>
-                <p class="hint">取り込んだ曲のバリエーションは、演奏区間ごとに自動で使われます。変更するときはここで編集します。</p>
-                <ol id="song-parts" class="song-parts"></ol>
-                <button id="add-song-part" type="button" class="secondary">演奏区間を追加</button>
+                <div class="score-scroll">
+                    <div id="lead-sheet" class="lead-sheet" role="listbox" aria-label="コード譜の小節" aria-multiselectable="true"></div>
+                </div>
+                <div class="pane-heading arrangement-heading">
+                    <h3>曲構成</h3>
+                    <button id="add-song-part" type="button" class="secondary">演奏区間を追加</button>
+                </div>
+                <div class="arrangement-scroll"><ol id="song-parts" class="song-parts" aria-label="演奏順"></ol></div>
                 <p id="user-track-summary" class="hint"></p>
             </div>
         </section>
 
+        <aside id="mixer" class="panel" aria-labelledby="mixer-title">
+            <div class="pane-heading"><h2 id="mixer-title">ミキサー</h2><button id="reset-mixer" type="button" class="secondary">リセット</button></div>
+            <div class="mixer-toolbar">
+                <label class="master">マスター <input id="master" type="range" min="0" max="100" value="80"><output id="master-value">80%</output></label>
+                <button id="mute-all" class="secondary" type="button" aria-pressed="false">全Mute</button>
+                <button id="clear-solo" class="secondary" type="button">Solo解除</button>
+            </div>
+            <div id="mixer-empty" class="mixer-empty">伴奏を生成すると、トラックを調整できます。</div>
+            <div id="mixer-parts"></div>
+        </aside>
         <form id="midi-form">
+            <details id="generation-controls"><summary>伴奏設定</summary>
             <fieldset id="options">
                 <div class="field" id="quick-chords">
                     <label for="chords">コード進行</label>
@@ -126,43 +164,28 @@
                             <small>元データに問題があるスタイルは「利用不可」と表示します。</small>
                         </div>
                     </div>
-                    <div class="field">
-                        <label for="tempo">テンポ <span>(BPM)</span></label>
-                        <input id="tempo" type="number" min="20" max="400" step="1"
-                               placeholder="スタイルの既定値" aria-describedby="tempo-help">
-                        <small id="tempo-help">20〜400。空欄でスタイルの既定値。</small>
-                    </div>
                 </div>
-                <button type="submit">伴奏を生成</button>
             </fieldset>
-            <p id="status" role="status"></p>
-            <a id="download" hidden>MIDIをダウンロード（GM）</a>
+            </details>
         </form>
-        <section id="player" class="panel" aria-labelledby="player-title" hidden>
-            <h2 id="player-title">演奏</h2>
-            <div class="transport">
-                <button id="play" type="button">再生</button>
-                <button id="stop" type="button" class="secondary" disabled>停止</button>
-                <output id="position" aria-label="再生位置">1小節 / 4小節</output>
-            </div>
-            <fieldset id="loop-controls" class="loop-controls">
-                <legend>ループ</legend>
-                <label class="check"><input id="loop-enabled" type="checkbox" checked> ループする</label>
-                <label>開始小節 <input id="loop-start" type="number" min="1" value="1" step="1" required></label>
-                <label>終了小節 <input id="loop-end" type="number" min="1" value="4" step="1" required></label>
-            </fieldset>
-            <p id="loop-status" class="hint" role="status">終了小節を含めて繰り返します。</p>
-            <p id="play-status" role="status"></p>
-        </section>
-        <section id="mixer" class="panel" aria-labelledby="mixer-title" hidden>
-            <div class="section-heading"><h2 id="mixer-title">ミキサー</h2><button id="reset-mixer" type="button" class="secondary">リセット</button></div>
-            <label class="master">マスター音量 <input id="master" type="range" min="0" max="100" value="80"><output id="master-value">80%</output></label>
-            <p class="hint">音量は曲の音量に掛け合わせ、panは曲の定位に加えて調整します。</p>
-            <div id="mixer-parts"></div>
-        </section>
         <footer><small>音源: <a href="https://github.com/schellingb/TinySoundFont">TinySoundFont</a> (MIT) / TimGM6mb — Tim Brechbill (GPL-2.0)。初回の再生にはネット接続が必要です。</small><details><summary>音源ライセンス</summary><!-- AUDIO_LICENSES --></details></footer>
         <!-- SOURCE_REVISION -->
     </main>
+    <dialog id="bar-editor" aria-labelledby="bar-editor-title">
+        <form id="bar-editor-form" method="dialog">
+            <h2 id="bar-editor-title"></h2>
+            <label id="bar-chords-field" class="field">コード <input id="edit-bar-chords" type="text" spellcheck="false" aria-describedby="bar-editor-help"></label>
+            <p id="bar-editor-help" class="hint">複数コードは「Cmaj7 3:G7」のように、コードの前に拍位置を指定します。</p>
+            <label id="bar-section-field" class="field" hidden>セクション名 <input id="edit-section-name" type="text"></label>
+            <p id="bar-editor-error" class="editor-error" role="alert"></p>
+            <div class="dialog-actions"><button id="cancel-bar-edit" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
+        </form>
+    </dialog>
+    <div id="bar-context" class="bar-context" role="group" aria-label="小節の操作" hidden>
+        <button type="button" data-action="edit">小節を編集 <kbd>Enter</kbd></button>
+        <button type="button" data-action="section">セクションを編集</button>
+        <button type="button" data-action="play">ここから再生 <kbd>Ctrl+Space</kbd></button>
+    </div>
     <!-- DEMO_SCRIPTS -->
 </body>
 </html>

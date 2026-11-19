@@ -46,9 +46,10 @@ function packageSongFiles(files) {
 }
 
 class SongEditor {
-    constructor(onOpen, onChooseBar) {
+    constructor(onOpen, onChooseBar, onPlay) {
         this.onOpen = onOpen;
         this.onChooseBar = onChooseBar;
+        this.onPlay = onPlay;
         this.grid = document.querySelector("#lead-sheet");
         this.parts = document.querySelector("#song-parts");
         this.title = document.querySelector("#project-title");
@@ -58,12 +59,42 @@ class SongEditor {
         this.meter.replaceChildren(mixedMeter, ...Object.entries(DesktopSongFiles.meters).map(([id, [label]]) => new Option(label, id)));
         this.status = document.querySelector("#project-status");
         this.exportButton = document.querySelector("#export-project");
+        this.selection = document.querySelector("#sheet-selection");
+        this.barDialog = document.querySelector("#bar-editor");
+        this.chordField = document.querySelector("#edit-bar-chords");
+        this.sectionField = document.querySelector("#edit-section-name");
+        this.barError = document.querySelector("#bar-editor-error");
+        this.contextMenu = document.querySelector("#bar-context");
+        document.querySelector("#edit-bar").onclick = () => this.openBarEditor();
+        document.querySelector("#edit-section").onclick = () => this.openBarEditor("section");
+        document.querySelector("#cancel-bar-edit").onclick = () => this.barDialog.close();
+        document.querySelector("#bar-editor-form").onsubmit = (event) => { event.preventDefault(); this.commitBarEdit(); };
+        this.barDialog.addEventListener("close", () => this.grid.children[this.selectedBar]?.focus({ preventScroll: true }));
+        this.contextMenu.onclick = (event) => {
+            const action = event.target.closest("button")?.dataset.action;
+            this.contextMenu.hidden = true;
+            if (action === "play") {
+                this.grid.children[this.selectedBar].focus({ preventScroll: true });
+                this.playSelection();
+            }
+            else if (action) this.openBarEditor(action);
+        };
+        document.addEventListener("pointerdown", event => {
+            if (!this.contextMenu.contains(event.target)) this.contextMenu.hidden = true;
+        });
+        this.contextMenu.onkeydown = event => {
+            if (event.key === "Escape") {
+                event.preventDefault(); this.contextMenu.hidden = true;
+                this.grid.children[this.selectedBar]?.focus({ preventScroll: true });
+            }
+        };
         document.querySelector("#new-project").onclick = () => this.open({
             title: "新しい曲", tempo: 120, bars: 4, sections: [{ name: "A", bar: 0, meter: "FOUR_FOUR" }],
             chords: ["C", "Am7", "Dm7", "G7"].map((name, bar) => ({ name, bar, beat: 0 })),
             parts: [{ name: "A", section: 0, styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} }], userTracks: []
         }, []);
         document.querySelector("#open-project").onchange = event => this.openFiles(event.target);
+        document.querySelector("#open-project-button").onclick = () => document.querySelector("#open-project").click();
         document.querySelector("#add-bar").onclick = () => this.editArrangement(() => {
             if (this.project.bars >= 1024) throw new Error("譜面の上限は1024小節です。");
             this.project.bars++;
@@ -107,7 +138,7 @@ class SongEditor {
     }
 
     editArrangement(action) {
-        try { this.readChords(); action(); this.changed(); this.render(); }
+        try { action(); this.changed(); this.render(); }
         catch (error) { this.notify(error.message, true); }
     }
 
@@ -115,8 +146,8 @@ class SongEditor {
         this.project = project;
         this.mix = mix;
         this.style = style;
-        this.inputs = [];
         this.selectedPart = null;
+        this.selectedBar = this.selectionAnchor = 0;
         this.changed();
         this.notify();
         document.querySelector("#project-editor").hidden = false;
@@ -162,21 +193,130 @@ class SongEditor {
         return button;
     }
 
-    chooseBar(bar, selectedPart = null) {
+    chooseBar(bar, selectedPart = null, throughBar) {
         let start = 0;
-        let first;
+        const occurrences = [];
         for (let index = 0; index < this.project.parts.length; index++) {
             const part = this.project.parts[index];
             const from = this.project.sections[part.section].bar;
             const to = this.project.sections[part.section + 1]?.bar ?? this.project.bars;
-            if (bar >= from && bar < to) {
-                const location = { from: start + bar - from + 1, to: start + to - from };
-                first ??= location;
-                if (index === selectedPart) { this.onChooseBar(location); return; }
-            }
+            occurrences.push({ index, from, to, start });
             start += to - from;
         }
-        if (first) this.onChooseBar(first);
+        const contains = (occurrence, value) => value >= occurrence.from && value < occurrence.to;
+        const matching = occurrences.filter(occurrence => contains(occurrence, bar));
+        const first = matching.find(occurrence => occurrence.index === selectedPart) ?? matching[0];
+        if (!first) { this.onChooseBar(null); return; }
+        const last = throughBar === undefined ? null : occurrences.find(occurrence => occurrence.index >= first.index && contains(occurrence, throughBar));
+        this.onChooseBar({ from: first.start + bar - first.from + 1,
+            to: last ? last.start + throughBar - last.from + 1 : first.start + first.to - first.from });
+    }
+
+    selectBar(bar, extend = false, focus = false) {
+        this.selectedBar = Math.min(Math.max(0, bar), this.project.bars - 1);
+        if (!extend) this.selectionAnchor = this.selectedBar;
+        this.markSelection();
+        const [first, last] = this.selectedRange();
+        this.chooseBar(first, this.selectedPart, first === last ? undefined : last);
+        if (focus) this.grid.children[this.selectedBar].focus();
+    }
+
+    selectedRange() {
+        return [Math.min(this.selectedBar, this.selectionAnchor), Math.max(this.selectedBar, this.selectionAnchor)];
+    }
+
+    playSelection() {
+        const [first, last] = this.selectedRange();
+        this.chooseBar(first, this.selectedPart, first === last ? undefined : last);
+        this.onPlay();
+    }
+
+    markSelection() {
+        const [first, last] = this.selectedRange();
+        Array.from(this.grid.children).forEach((cell, index) => {
+            cell.tabIndex = index === this.selectedBar ? 0 : -1;
+            cell.setAttribute("aria-selected", String(index >= first && index <= last));
+        });
+        this.selection.textContent = first === last ? `${first + 1}小節` : `${first + 1}–${last + 1}小節`;
+    }
+
+    handleBarKey(event, bar) {
+        const columns = getComputedStyle(this.grid).gridTemplateColumns.split(" ").length;
+        const motion = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns }[event.key];
+        if (motion) {
+            event.preventDefault(); this.selectBar(bar + motion, event.shiftKey, true);
+        } else if (event.code === "Space" && (event.ctrlKey || event.metaKey)) {
+            event.preventDefault(); this.playSelection();
+        } else if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault(); this.openBarEditor();
+        } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
+            event.preventDefault();
+            const rect = this.grid.children[bar].getBoundingClientRect();
+            this.openContext(rect.left, rect.bottom);
+        } else if (/^[a-gA-GnN]$/u.test(event.key) && !event.ctrlKey && !event.metaKey && !event.altKey) {
+            event.preventDefault(); this.openBarEditor("edit", event.key.toUpperCase());
+        }
+    }
+
+    openContext(x, y) {
+        this.contextMenu.hidden = false;
+        this.contextMenu.style.left = `${Math.max(0, Math.min(x, innerWidth - this.contextMenu.offsetWidth - 8))}px`;
+        this.contextMenu.style.top = `${Math.max(0, Math.min(y, innerHeight - this.contextMenu.offsetHeight - 8))}px`;
+        this.contextMenu.querySelector("button").focus();
+    }
+
+    openBarEditor(mode = "edit", initialChord) {
+        const bar = this.selectedBar;
+        this.editingSection = mode === "section";
+        document.querySelector("#bar-editor-title").textContent = `${bar + 1}小節の${this.editingSection ? "セクション" : "コード"}`;
+        document.querySelector("#bar-chords-field").hidden = document.querySelector("#bar-editor-help").hidden = this.editingSection;
+        document.querySelector("#bar-section-field").hidden = !this.editingSection;
+        this.barError.textContent = "";
+        this.chordField.value = initialChord ?? this.project.chords.filter(chord => chord.bar === bar).sort((a, b) => a.beat - b.beat)
+            .map(chord => chord.beat ? `${Number((chord.beat + 1).toFixed(6))}:${chord.name}` : chord.name).join(" ");
+        const sections = this.project.sections;
+        let suffix = 1;
+        while (sections.some(section => section.name === `S${suffix}`)) suffix++;
+        this.sectionField.value = sections.find(section => section.bar === bar)?.name ?? `S${suffix}`;
+        this.barDialog.showModal();
+        const field = this.editingSection ? this.sectionField : this.chordField;
+        field.focus();
+        if (initialChord === undefined) field.select();
+        else field.setSelectionRange(field.value.length, field.value.length);
+    }
+
+    commitBarEdit() {
+        const bar = this.selectedBar;
+        try {
+            if (this.editingSection) this.setSectionName(bar, this.sectionField.value.trim());
+            else {
+                const newChords = this.parseBarChords(bar, this.chordField.value);
+                this.project.chords = [...this.project.chords.filter(chord => chord.bar !== bar), ...newChords]
+                    .sort((a, b) => a.bar - b.bar || a.beat - b.beat);
+            }
+            this.changed(); this.render();
+            this.barDialog.close();
+            this.selectBar(this.editingSection ? bar : bar + 1, false, true);
+        } catch (error) { this.barError.textContent = error.message; }
+    }
+
+    setSectionName(bar, name) {
+        const { sections, parts } = this.project;
+        const section = sections.find(section => section.bar === bar);
+        if (!name || sections.some(other => other !== section && other.name === name)) {
+            throw new Error("セクション名は空欄や重複を避けてください。");
+        }
+        if (section) {
+            for (const part of parts) {
+                if (sections[part.section] === section && part.name === section.name) part.name = name;
+            }
+            section.name = name;
+        } else {
+            const next = sections.findIndex(item => item.bar > bar);
+            const insert = next < 0 ? sections.length : next;
+            sections.splice(insert, 0, { name, bar, meter: sections[insert - 1].meter });
+            for (const part of parts) if (part.section >= insert) part.section++;
+        }
     }
 
     showPlayingBar(bar) {
@@ -204,72 +344,103 @@ class SongEditor {
         this.meter.value = sections.some(section => section.meter !== sections[0].meter) ? "" : sections[0].meter;
         this.removeBar.disabled = bars < 2 || sections.at(-1).bar === bars - 1;
         this.grid.replaceChildren();
-        this.inputs = [];
+        const chordsByBar = Map.groupBy(chords, chord => chord.bar);
+        const colors = ["#e7ac83", "#9bb487", "#8bbab5", "#b1a7d0", "#d4c381", "#9cb5d6"];
+        let sectionIndex = 0;
         for (let bar = 0; bar < bars; bar++) {
+            if (sections[sectionIndex + 1]?.bar === bar) sectionIndex++;
+            const section = sections[sectionIndex];
+            const [meter, beats] = DesktopSongFiles.meters[section.meter];
+            const start = section.bar === bar;
+            const symbols = (chordsByBar.get(bar) ?? []).sort((a, b) => a.beat - b.beat);
             const cell = document.createElement("div");
-            const section = sections.find(item => item.bar === bar);
-            const heading = this.button(`${bar + 1}小節${section ? ` · ${section.name} · ${DesktopSongFiles.meters[section.meter][0]}` : ""}`,
-                () => this.chooseBar(bar, this.selectedPart));
-            const input = document.createElement("input");
-            input.setAttribute("aria-label", `${bar + 1}小節のコード`);
-            input.spellcheck = false;
-            input.value = chords.filter(chord => chord.bar === bar).sort((a, b) => a.beat - b.beat)
-                .map(chord => chord.beat ? `${Number((chord.beat + 1).toFixed(6))}:${chord.name}` : chord.name).join(" ");
-            input.oninput = () => this.changed();
-            input.onkeydown = event => {
-                if (event.key === "Enter" || event.key === "ArrowDown" || event.key === "ArrowUp") {
-                    const next = this.inputs[bar + (event.key === "ArrowUp" ? -1 : 1)];
-                    if (next) { event.preventDefault(); next.focus(); next.select(); }
+            cell.className = "score-bar";
+            cell.setAttribute("role", "option");
+            cell.style.setProperty("--section-color", colors[sectionIndex % colors.length]);
+            cell.classList.toggle("section-start", start);
+            cell.setAttribute("aria-label", `${bar + 1}小節、${section.name}、${meter}、${symbols.map(chord => chord.name).join("、") || "コードなし"}`);
+            const number = document.createElement("span");
+            number.className = "measure-number";
+            number.textContent = bar + 1;
+            cell.append(number);
+            if (start) {
+                const meterDisplay = document.createElement("span");
+                meterDisplay.className = "measure-meter";
+                for (const digit of meter.split("/")) {
+                    const position = document.createElement("span");
+                    position.textContent = digit;
+                    meterDisplay.append(position);
                 }
-            };
-            this.inputs.push(input);
-            const addSection = this.button("区切り", () => {
-                try {
-                    this.readChords();
-                    const index = sections.findIndex(item => item.bar > bar);
-                    const insert = index < 0 ? sections.length : index;
-                    let suffix = 1;
-                    while (sections.some(item => item.name === `S${suffix}`)) suffix++;
-                    sections.splice(insert, 0, { name: `S${suffix}`, bar, meter: sections[insert - 1].meter });
-                    for (const part of parts) if (part.section >= insert) part.section++;
-                    this.changed(); this.render();
-                } catch (error) { this.notify(error.message, true); }
-            });
-            addSection.disabled = Boolean(section);
-            cell.append(heading, input, addSection);
-            if (section) {
-                const sectionName = document.createElement("input");
-                sectionName.value = section.name;
-                sectionName.setAttribute("aria-label", `${bar + 1}小節のセクション名`);
-                sectionName.onchange = () => {
-                    const name = sectionName.value.trim();
-                    if (!name || sections.some(other => other !== section && other.name === name)) {
-                        sectionName.value = section.name;
-                        this.notify("セクション名は空欄や重複を避けてください。", true);
-                        return;
-                    }
-                    this.editArrangement(() => {
-                        for (const part of parts) {
-                            if (sections[part.section] === section && part.name === section.name) part.name = name;
-                        }
-                        section.name = name;
-                    });
-                };
-                cell.append(sectionName);
+                cell.append(meterDisplay);
             }
+            const lane = document.createElement("div");
+            lane.className = "chord-lane";
+            for (const [index, chord] of symbols.entries()) {
+                const symbol = document.createElement("span");
+                symbol.className = "chord-symbol";
+                const next = symbols[index + 1];
+                const late = !next && chord.beat / beats >= 0.75;
+                const compact = symbols.length > 2 || (next && next.beat - chord.beat < 1);
+                if (late) {
+                    symbol.classList.add("late-chord");
+                    if (symbols[index - 1]?.beat / beats >= 0.5 || symbols.length > 2) symbol.classList.add("lower-chord");
+                } else {
+                    symbol.style.left = `${100 * chord.beat / beats}%`;
+                    symbol.style.maxWidth = `${100 * ((next?.beat ?? beats) - chord.beat) / beats}%`;
+                }
+                symbol.textContent = chord.name.replace(/([A-G])b/gu, "$1♭").replace(/([A-G])#/gu, "$1♯");
+                if (compact) symbol.classList.add("compact");
+                symbol.title = chord.name;
+                lane.append(symbol);
+            }
+            const ruler = document.createElement("div");
+            ruler.className = "beat-ruler";
+            for (let beat = 0; beat < beats; beat += 0.5) {
+                const tick = document.createElement("i");
+                tick.style.left = `${100 * beat / beats}%`;
+                if (Number.isInteger(beat)) tick.className = "major";
+                ruler.append(tick);
+            }
+            for (const chord of symbols) {
+                const tick = document.createElement("i");
+                tick.className = "chord-beat";
+                tick.style.left = `${100 * chord.beat / beats}%`;
+                ruler.append(tick);
+            }
+            const band = document.createElement("div");
+            band.className = "section-band";
+            if (start) band.textContent = section.name;
+            cell.append(lane, ruler, band);
+            cell.onclick = event => this.selectBar(bar, event.shiftKey, true);
+            cell.ondblclick = () => this.openBarEditor();
+            cell.onkeydown = event => this.handleBarKey(event, bar);
+            cell.oncontextmenu = event => {
+                event.preventDefault();
+                this.selectBar(bar, false, true);
+                this.openContext(event.clientX, event.clientY);
+            };
             this.grid.append(cell);
         }
+        this.selectedBar = Math.min(this.selectedBar, bars - 1);
+        this.selectionAnchor = Math.min(this.selectionAnchor, bars - 1);
+        this.markSelection();
         this.parts.replaceChildren();
+        let partStart = 1;
         parts.forEach((part, index) => {
             const item = document.createElement("li");
+            item.style.setProperty("--section-color", colors[part.section % colors.length]);
+            const partLength = (sections[part.section + 1]?.bar ?? bars) - sections[part.section].bar;
+            const header = document.createElement("div");
+            header.className = "part-heading";
             const row = document.createElement("div");
+            row.className = "part-controls";
             const select = document.createElement("select");
             select.setAttribute("aria-label", `${index + 1}番目のセクション`);
             sections.forEach((section, id) => {
                 const option = document.createElement("option"); option.value = id; option.textContent = section.name; select.append(option);
             });
             select.value = part.section;
-            select.onchange = () => { part.section = Number(select.value); part.name = sections[part.section].name; this.changed(); };
+            select.onchange = () => { part.section = Number(select.value); part.name = sections[part.section].name; this.changed(); this.render(); this.parts.children[index].querySelector("select").focus(); };
             const variation = document.createElement("input");
             variation.placeholder = "バリエーション";
             variation.setAttribute("aria-label", `${index + 1}番目のバリエーション`);
@@ -277,9 +448,14 @@ class SongEditor {
             variation.oninput = () => { part.parameters.rpVariationID = variation.value; this.changed(); };
             const styleName = document.createElement("span");
             styleName.textContent = part.styleName || part.styleId.replace(/-ID$/u, "");
+            styleName.className = "part-style";
+            styleName.title = styleName.textContent;
+            const range = document.createElement("span");
+            range.textContent = `${partStart}–${partStart + partLength - 1}`;
+            partStart += partLength;
+            header.append(select, range);
             const move = (destination) => {
                 try {
-                    this.readChords();
                     [parts[index], parts[destination]] = [parts[destination], parts[index]];
                     this.selectedPart = null;
                     this.changed(); this.render();
@@ -289,32 +465,39 @@ class SongEditor {
             const down = this.button("下へ", () => move(index + 1)); down.disabled = index === parts.length - 1;
             const remove = this.button("削除", () => {
                 try {
-                    this.readChords(); parts.splice(index, 1); this.selectedPart = null; this.changed(); this.render();
+                    parts.splice(index, 1); this.selectedPart = null; this.changed(); this.render();
                 } catch (error) { this.notify(error.message, true); }
             });
             remove.disabled = parts.length < 2;
-            row.append(select, styleName, variation, up, down, remove, this.button("この区間を選択", () => {
-                this.selectedPart = index; this.chooseBar(sections[part.section].bar, index);
-            }));
-            item.append(row); this.parts.append(item);
+            const focusPart = this.button("区間を選択", () => {
+                this.selectedPart = index;
+                this.selectBar(sections[part.section].bar, false, true);
+            });
+            for (const [button, label] of [[up, "←"], [down, "→"], [remove, "×"], [focusPart, "↗"]]) {
+                button.title = button.textContent;
+                button.setAttribute("aria-label", button.textContent);
+                button.textContent = label;
+            }
+            row.append(up, down, remove, focusPart);
+            item.append(header, styleName, variation, row); this.parts.append(item);
         });
         document.querySelector("#user-track-summary").textContent = userTracks.length ? `ユーザートラック: ${userTracks.map(track => track.name).join("、")}` : "";
     }
 
-    readChords() {
-        const previous = new Map(this.project.chords.map(chord => [`${chord.bar}:${chord.beat}:${chord.name}`, chord]));
-        this.project.chords = this.inputs.flatMap((input, bar) => {
-            const beats = new Set();
-            return input.value.trim().split(/\s+/u).filter(Boolean).map(token => {
-                const match = /^(?:(\d+(?:\.\d+)?):)?(.+)$/u.exec(token);
-                const beat = Number(match[1] ?? 1) - 1;
-                const section = this.project.sections.findLast(item => item.bar <= bar);
-                if (beat < 0 || beat >= DesktopSongFiles.meters[section.meter][1] || beats.has(beat)) {
-                    throw new Error(`${bar + 1}小節のコードの拍位置を確認してください。`);
-                }
-                beats.add(beat);
-                return previous.get(`${bar}:${beat}:${match[2]}`) ?? { name: match[2], bar, beat };
-            });
+    parseBarChords(bar, value) {
+        const previous = this.project.chords.filter(chord => chord.bar === bar);
+        const section = this.project.sections.findLast(item => item.bar <= bar);
+        const beats = new Set();
+        return value.trim().split(/\s+/u).filter(Boolean).map(token => {
+            const match = /^(?:(\d+(?:\.\d+)?):)?(.+)$/u.exec(token);
+            const beat = Number(match[1] ?? 1) - 1;
+            const name = match[2].replaceAll("♭", "b").replaceAll("♯", "#");
+            if (name.includes(":") || beat < 0 || beat >= DesktopSongFiles.meters[section.meter][1] || beats.has(beat)) {
+                throw new Error(`${bar + 1}小節のコードの拍位置を確認してください。`);
+            }
+            beats.add(beat);
+            return previous.find(chord => Number((chord.beat + 1).toFixed(6)) === beat + 1 && chord.name === name)
+                ?? { name, bar, beat };
         });
     }
 
@@ -322,7 +505,6 @@ class SongEditor {
 
     save() {
         try {
-            this.readChords();
             const data = { version: 1, song: this.project, mix: this.renderedMix ?? this.mix, style: this.style };
             downloadSongFile(`${this.fileStem()}.jjazzweb`, JSON.stringify(data), "application/json");
         } catch (error) { this.notify(error.message, true); }

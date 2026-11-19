@@ -8,11 +8,25 @@
         check(song && !status.hasAttribute("data-error"), status.textContent);
     }
     try {
-        document.querySelector("#new-project").click();
-        const first = document.querySelector("#lead-sheet input");
-        first.value = "Cmaj7 3:G7";
-        first.dispatchEvent(new Event("input", { bubbles: true }));
-        document.querySelector("#lead-sheet > div:last-child button:last-child").click();
+        const first = document.querySelector("#lead-sheet > div");
+        check(first?.getAttribute("aria-selected") === "true" && !document.querySelector("#song-editor").hidden,
+            "Startup did not open the chord sheet");
+        first.dispatchEvent(new KeyboardEvent("keydown", { key: "C" }));
+        check(editor.barDialog.open && editor.chordField.value === "C", "Typing a chord did not open the measure editor");
+        editor.chordField.value = "Cmaj7 5:G7";
+        document.querySelector("#bar-editor-form").requestSubmit();
+        check(editor.barDialog.open && editor.barError.textContent, "Out-of-range beat position did not keep the editor open");
+        editor.chordField.value = "Cmaj7 3:G7";
+        document.querySelector("#bar-editor-form").requestSubmit();
+        check(editor.grid.firstElementChild.querySelectorAll(".chord-symbol")[1]?.style.left === "50%"
+            && document.activeElement === editor.grid.children[1], "Chord symbols were not placed by beat or editing did not advance");
+        editor.grid.children[1].dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowRight", shiftKey: true }));
+        check(editor.grid.querySelectorAll('[aria-selected="true"]').length === 2, "Shift+arrow did not extend selection");
+        editor.grid.lastElementChild.dispatchEvent(new MouseEvent("contextmenu"));
+        check(!editor.contextMenu.hidden, "Context menu did not open");
+        editor.contextMenu.querySelector('[data-action="section"]').click();
+        editor.sectionField.value = "B";
+        document.querySelector("#bar-editor-form").requestSubmit();
         document.querySelector("#add-song-part").click();
         document.querySelector("#add-song-part").click();
         const third = document.querySelector("#song-parts > li:nth-child(3) select");
@@ -27,8 +41,34 @@
         check(editor.project.chords[1].beat === 2, "Editing the arrangement lost the second chord");
         check(editor.renderedMix.length > 0, "New song does not have a writable mix");
         document.querySelector("#song-parts > li:nth-child(2) button:last-child").click();
-        document.querySelector("#lead-sheet > div:nth-child(2) button:first-child").click();
+        document.querySelector("#lead-sheet > div:nth-child(2)").click();
         check(loopStart.value === "5" && loopEnd.value === "6", "Sheet selection did not use the second A");
+        editor.grid.lastElementChild.dispatchEvent(new MouseEvent("click", { shiftKey: true }));
+        check(loopStart.value === "5" && loopEnd.value === "7", "Range selection did not span two sections");
+        const mixerPanel = document.querySelector("#mixer");
+        const mixerToggle = document.querySelector("#toggle-mixer");
+        mixerToggle.click();
+        check(mixerPanel.hidden, "Mixer did not hide");
+        mixerToggle.click();
+        check(!mixerPanel.hidden, "Mixer did not reopen");
+        const volume = document.querySelector(".strip-volume input");
+        const pan = document.querySelector(".strip-pan input");
+        check(getComputedStyle(volume).writingMode === "vertical-lr" && document.querySelector(".track-preview"), "No vertical fader or note preview");
+        volume.value = "75"; volume.dispatchEvent(new Event("input"));
+        pan.value = "-25"; pan.dispatchEvent(new Event("input"));
+        check(mixerParts[0].volume === 0.75 && mixerParts[0].pan === -0.25, "Fader and pan did not reach mixer state");
+        document.querySelector("#mute-all").click();
+        check(mixerParts.every(part => part.mute && editor.renderedMix.find(track => track.channel === part.channel)?.mute),
+            "Bulk mute did not reach the exported mix for each active channel");
+        document.querySelector('#mixer-parts [data-mix="solo"]').click();
+        check(mixerParts[0].solo, "Solo button did not set the track state");
+        document.querySelector("#clear-solo").click();
+        check(mixerParts.every(part => !part.solo), "Bulk solo clear did not reset the track");
+        document.querySelector("#quick-mode").click();
+        check(!editor.project && !document.querySelector("#quick-chords").hidden, "Quick input did not open");
+        document.querySelector("#quick-mode").click();
+        check(editor.project.chords[0].name === "Cmaj7", "Returning from quick input lost the draft");
+        await generate();
         report.newSongBars = song.barTimes.length - 1;
 
         const open = document.querySelector("#open-project");
@@ -154,6 +194,8 @@
             open.files = file.files;
             await editor.openFiles(open);
             check(editor.meter.selectedOptions[0].textContent === "曲中で変化", "Africa did not display mixed meter");
+            check(Array.from(editor.grid.querySelectorAll(".measure-meter"), meter => meter.textContent).includes("24"),
+                "Africa chord sheet did not show a 2/4 section");
             await generate();
             const beats = DesktopSongFiles.barBeats(editor.project);
             const shortBars = beats.flatMap((beat, bar) => beat === 2 ? [bar + 1] : []);
@@ -180,10 +222,17 @@
             check(Math.abs(loop.end - loop.start - 10 * beatSeconds) < 0.00002, "Africa loop length must be 4+2+4 beats");
             await player.initialize(showPlayStatus);
             const positions = [];
+            const highlightedBars = new Set();
             const originalPosition = player.onPosition;
-            player.onPosition = data => { if (data.playing) positions.push(data.seconds); originalPosition(data); };
+            player.onPosition = data => {
+                originalPosition(data);
+                if (data.playing) {
+                    positions.push(data.seconds);
+                    highlightedBars.add(editor.grid.querySelector(".playing-bar .measure-number")?.textContent);
+                }
+            };
             try {
-                await player.play(song, loop, mixerParts, 0.8);
+                playButton.click();
                 for (let i = 0; i < 220 && !positions.some((value, index) => index && value < positions[index - 1]); i++) {
                     await new Promise(resolve => setTimeout(resolve, 50));
                 }
@@ -191,6 +240,7 @@
                 check(wrap > 0 && positions[wrap] < loop.start + 0.25, "Africa loop did not return to bar 11");
                 check(positions.every(seconds => seconds >= loop.start - 0.01 && seconds <= loop.end + 0.01), "Playback escaped the Africa loop");
                 check(positions.some(seconds => seconds >= song.barTimes[11] && seconds < song.barTimes[12]), "Playback skipped bar 12 in 2/4");
+                check(highlightedBars.size > 1 && !highlightedBars.has(undefined), "Playing measures did not highlight in the chord sheet");
                 report.africa = { bars: beats.length, shortBars, loopBars: [11, 13], loopSeconds: loop.end - loop.start, wraps: 1 };
             } finally {
                 player.onPosition = originalPosition;

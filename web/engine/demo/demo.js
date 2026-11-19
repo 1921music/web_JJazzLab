@@ -126,6 +126,14 @@ let mixerParts = [];
 const savedMix = new Map();
 const playButton = document.querySelector("#play");
 const stopButton = document.querySelector("#stop");
+const generateButton = document.querySelector("#generate");
+const workspace = document.querySelector("#workspace");
+const mixer = document.querySelector("#mixer");
+const toggleMixer = document.querySelector("#toggle-mixer");
+const quickMode = document.querySelector("#quick-mode");
+const generationControls = document.querySelector("#generation-controls");
+const muteAll = document.querySelector("#mute-all");
+const clearSolo = document.querySelector("#clear-solo");
 const loopEnabled = document.querySelector("#loop-enabled");
 const loopStart = document.querySelector("#loop-start");
 const loopEnd = document.querySelector("#loop-end");
@@ -137,9 +145,12 @@ const player = new AccompanimentPlayer(updatePosition, (message) => {
 });
 
 function updateButtons() {
+    generateButton.disabled = tempoInput.disabled = generating || starting;
+    document.querySelector("#new-project").disabled = document.querySelector("#open-project-button").disabled
+        = document.querySelector("#open-project").disabled = quickMode.disabled = generating || starting;
     playButton.disabled = generating || starting || playing || !song;
     stopButton.disabled = generating || starting || !playing;
-    document.querySelector("#loop-controls").disabled = starting || generating;
+    document.querySelector("#loop-controls").disabled = !song || starting || generating;
 }
 
 function showPlayStatus(message, error = false) {
@@ -180,50 +191,90 @@ function applyMix() {
     player.mix(mixerParts, Number(masterInput.value) / 100);
 }
 
+function updateMixerButtons() {
+    const allMuted = mixerParts.length > 0 && mixerParts.every(part => part.mute);
+    muteAll.setAttribute("aria-pressed", String(allMuted));
+    muteAll.disabled = !mixerParts.length;
+    clearSolo.disabled = !mixerParts.some(part => part.solo);
+    document.querySelector("#reset-mixer").disabled = !mixerParts.length;
+}
+
 function renderMixer() {
     const container = document.querySelector("#mixer-parts");
     container.replaceChildren();
+    document.querySelector("#mixer-empty").hidden = mixerParts.length > 0;
+    updateMixerButtons();
+    const notes = Map.groupBy(song?.events.filter(event => event.type === 0x90 && event.b) ?? [], event => event.part);
+    const styleIds = new Set(mixerParts.map(part => part.styleId).filter(Boolean));
     mixerParts.forEach((part, index) => {
         const strip = document.createElement("div"); strip.className = "strip";
+        strip.dataset.voice = part.source === "user" ? "user" : part.drum ? "drums" : "rhythm";
         const title = document.createElement("div"); title.className = "part-name"; title.textContent = part.name;
+        const patch = editor.project && editor.baseMix?.find(track => track.channel === part.channel)?.patch;
+        title.title = patch ? `${part.name} · ${patch}` : part.name;
         const channel = document.createElement("small");
-        channel.textContent = `MIDI ch ${part.channel + 1}${part.drum ? " · Drums" : ""}${part.styleId ? ` · ${part.styleId.replace(/-ID$/u, "")}` : ""}`;
-        title.append(channel);
-        strip.append(title);
+        channel.textContent = `CH ${part.channel + 1}${part.source === "user" ? " · User" : part.drum ? " · Drums" : ""}`;
+        if (styleIds.size > 1 && part.styleId) {
+            channel.textContent += ` · ${part.styleId.replace(/-ID$/u, "")}`;
+        }
+        channel.title = channel.textContent;
+        strip.append(channel, title);
         const buttons = document.createElement("div"); buttons.className = "strip-buttons";
         for (const [key, label] of [["mute", "Mute"], ["solo", "Solo"]]) {
-            const button = document.createElement("button"); button.type = "button"; button.className = "secondary"; button.textContent = label;
+            const button = document.createElement("button"); button.type = "button"; button.className = "secondary";
+            button.textContent = label[0]; button.title = label; button.dataset.mix = key;
             button.setAttribute("aria-label", `${part.name} ${label}`); button.setAttribute("aria-pressed", String(part[key]));
-            button.addEventListener("click", () => { part[key] = !part[key]; button.setAttribute("aria-pressed", String(part[key])); applyMix(); });
+            button.addEventListener("click", () => {
+                part[key] = !part[key]; button.setAttribute("aria-pressed", String(part[key])); updateMixerButtons(); applyMix();
+            });
             buttons.append(button);
         }
         strip.append(buttons);
-        for (const [key, text, min, max] of [["volume", "音量", 0, 150], ["pan", "Pan", -100, 100]]) {
+        for (const [key, text, min, max] of [["pan", "Pan", -100, 100], ["volume", "音量", 0, 150]]) {
             const label = document.createElement("label"); label.htmlFor = `${key}-${index}`;
+            label.className = `strip-${key}`;
             const caption = document.createElement("span"); caption.textContent = text;
             const output = document.createElement("output");
             const input = document.createElement("input"); input.id = label.htmlFor; input.type = "range"; input.min = min; input.max = max; input.step = 1;
             input.value = Math.round(part[key] * 100); input.setAttribute("aria-label", `${part.name} ${text}`);
-            const display = () => { output.textContent = key === "volume" ? `${input.value}%` : Number(input.value) === 0 ? "中央" : `${Number(input.value) < 0 ? "L" : "R"} ${Math.abs(Number(input.value))}`; };
-            display(); caption.append(output); label.append(caption, input); strip.append(label);
+            const display = () => {
+                output.textContent = key === "volume" ? `${input.value}%` : Number(input.value) === 0 ? "中央" : `${Number(input.value) < 0 ? "L" : "R"} ${Math.abs(Number(input.value))}`;
+                if (key === "pan") label.style.setProperty("--pan-angle", `${Number(input.value) * 1.25}deg`);
+            };
+            display(); label.append(caption, input, output); strip.append(label);
             input.addEventListener("input", () => { part[key] = Number(input.value) / 100; display(); applyMix(); });
         }
+        const preview = document.createElement("canvas");
+        preview.className = "track-preview";
+        preview.width = 72;
+        preview.height = 29;
+        preview.setAttribute("aria-hidden", "true");
+        const context = preview.getContext("2d");
+        if (context) {
+            context.fillStyle = part.source === "user" ? "#c3afe8" : part.drum ? "#eac07e" : "#8fcbce";
+            for (const note of notes.get(index) ?? []) {
+                context.fillRect(note.seconds / song.duration * (preview.width - 2), (1 - note.a / 127) * (preview.height - 2), 2, 1);
+            }
+        }
+        strip.append(preview);
         container.append(strip);
     });
 }
 
-playButton.addEventListener("click", async () => {
-    if (!song || starting || playing) return;
+async function startPlayback(restart = false) {
+    if (!song || generating || starting || (playing && !restart)) return;
     starting = true; updateButtons(); options.disabled = true;
     try {
         const loop = readLoop();
         await player.initialize(showPlayStatus);
+        if (restart && playing) await player.stop();
         await player.play(song, loop, mixerParts, Number(masterInput.value) / 100, Boolean(editor.project));
         playing = true;
         showPlayStatus("演奏中");
     } catch (error) { showPlayStatus(error.message, true); }
     finally { starting = false; options.disabled = false; updateButtons(); }
-});
+}
+playButton.addEventListener("click", () => startPlayback());
 
 stopButton.addEventListener("click", async () => {
     try { await player.stop(); playing = false; updatePosition({ seconds: 0, playing: false }); }
@@ -245,6 +296,22 @@ document.querySelector("#reset-mixer").addEventListener("click", () => {
     mixerParts.forEach(part => Object.assign(part, { volume: 1, pan: 0, mute: false, solo: false }));
     masterInput.value = 80; document.querySelector("#master-value").textContent = "80%";
     renderMixer(); applyMix();
+});
+muteAll.addEventListener("click", () => {
+    const mute = muteAll.getAttribute("aria-pressed") === "false";
+    mixerParts.forEach(part => { part.mute = mute; });
+    document.querySelectorAll('#mixer-parts [data-mix="mute"]').forEach(button => button.setAttribute("aria-pressed", String(mute)));
+    updateMixerButtons(); applyMix();
+});
+clearSolo.addEventListener("click", () => {
+    mixerParts.forEach(part => { part.solo = false; });
+    document.querySelectorAll('#mixer-parts [data-mix="solo"]').forEach(button => button.setAttribute("aria-pressed", "false"));
+    updateMixerButtons(); applyMix();
+});
+toggleMixer.addEventListener("click", () => {
+    mixer.hidden = !mixer.hidden;
+    workspace.classList.toggle("mixer-closed", mixer.hidden);
+    toggleMixer.setAttribute("aria-pressed", String(!mixer.hidden));
 });
 
 function decompress(encoded) {
@@ -309,6 +376,22 @@ function restoreAttachedStyle(style) {
 
 let activeProject;
 let chosenRange;
+let draft;
+function clearPlayback() {
+    playing = false;
+    song = null;
+    mixerParts = [];
+    player.loadedSong = null;
+    document.querySelector("#position").textContent = "–";
+    loopStatus.textContent = "";
+    loopStatus.removeAttribute("data-error");
+    editor.showPlayingBar(0);
+    showPlayStatus("");
+    clearDownload();
+    renderMixer();
+    updateButtons();
+}
+
 const editor = new SongEditor((opened) => {
     chosenRange = null;
     activeProject = undefined;
@@ -322,19 +405,51 @@ const editor = new SongEditor((opened) => {
     rhythmEngine.value = sources.size > 1 ? "song" : sources.has("jjSwing-ID") ? "jjswing" : "yamaha";
     rhythmEngine.dispatchEvent(new Event("change"));
     player.stop().catch(error => showPlayStatus(error.message, true));
-    playing = false;
-    song = null;
-    document.querySelector("#player").hidden = true;
-    document.querySelector("#mixer").hidden = true;
-    clearDownload();
-    updateButtons();
+    clearPlayback();
+    document.querySelector("#song-editor").hidden = false;
+    quickMode.setAttribute("aria-pressed", "false");
+    workspace.classList.remove("quick-view");
+    generationControls.open = false;
+    showStatus("");
 }, (range) => {
     chosenRange = range;
-    if (song && range.to < song.barTimes.length) {
+    if (song && range && range.to < song.barTimes.length) {
         loopStart.value = range.from;
         loopEnd.value = range.to;
         loopStart.dispatchEvent(new Event("input", { bubbles: true }));
     }
+}, () => {
+    if (!song) showStatus("伴奏を生成してから再生できます。");
+    else if (!chosenRange) showStatus("選択した小節は曲構成の演奏順に含まれていません。");
+    else if (chosenRange.to >= song.barTimes.length) showStatus("伴奏を生成してから、変更した範囲を再生できます。");
+    else startPlayback(true);
+});
+quickMode.addEventListener("click", () => {
+    if (!editor.project) {
+        if (draft) editor.open(draft.project, draft.mix, draft.style);
+        else document.querySelector("#new-project").click();
+        return;
+    }
+    draft = { project: editor.project, mix: editor.mix, style: editor.style };
+    editor.project = null;
+    activeProject = undefined;
+    chosenRange = null;
+    document.querySelector("#song-editor").hidden = true;
+    document.querySelector("#quick-chords").hidden = false;
+    chordInput.required = true;
+    tempoInput.value = "";
+    selectedLibraryStyle = undefined;
+    libraryStyle.value = bundledExtension.value = styleInput.value = "";
+    rhythmEngine.querySelector('option[value="song"]').hidden = true;
+    rhythmEngine.value = "yamaha";
+    rhythmEngine.dispatchEvent(new Event("change"));
+    player.stop().catch(error => showPlayStatus(error.message, true));
+    clearPlayback();
+    showStatus("");
+    quickMode.setAttribute("aria-pressed", "true");
+    workspace.classList.add("quick-view");
+    generationControls.open = true;
+    chordInput.focus();
 });
 editor.onMeterChange = meter => {
     if (meter === "THREE_FOUR" && rhythmEngine.value === "jjswing") {
@@ -456,17 +571,24 @@ async function resolveArrangement(project, requestedSwing) {
     return { styles, sources, parts };
 }
 
-form.addEventListener("input", (event) => {
+form.addEventListener("input", () => {
     if (event.target === styleSearch || event.target === styleCategory) return;
     if (song) showStatus("入力を変更しました。「伴奏を生成」で現在の演奏を停止し、新しい伴奏を作ります。");
     if (editor.project) {
-        if (event.target === tempoInput) editor.project.tempo = tempoInput.valueAsNumber || 120;
         editor.changed();
     }
+});
+tempoInput.addEventListener("input", () => {
+    if (editor.project) {
+        if (tempoInput.validity.valid && tempoInput.value) editor.project.tempo = tempoInput.valueAsNumber;
+        editor.changed();
+    }
+    if (song) showStatus("テンポを変更しました。「伴奏を生成」で反映します。");
 });
 
 form.addEventListener("submit", async (event) => {
     event.preventDefault();
+    if (generating || starting) return;
     clearDownload();
     const project = editor.project;
     const chords = chordInput.value.split(/[\s,|]+/u).filter(Boolean);
@@ -483,10 +605,7 @@ form.addEventListener("submit", async (event) => {
     showStatus("MIDIを生成しています…");
     try {
         await player.stop();
-        playing = false;
-        song = null;
-        document.querySelector("#player").hidden = true;
-        document.querySelector("#mixer").hidden = true;
+        clearPlayback();
         if (!engine) {
             try {
                 engine = await loadEngine();
@@ -498,7 +617,6 @@ form.addEventListener("submit", async (event) => {
         let style, bars = chords.length, barBeats;
         let midi;
         if (project) {
-            editor.readChords();
             if (!project.chords.length) throw new Error("コードを1つ以上入力してください。");
             const { styles, sources, parts } = await resolveArrangement(project, requestedSwing);
             style = styles.length === 1 ? styles[0] : { name: project.title };
@@ -572,8 +690,6 @@ form.addEventListener("submit", async (event) => {
         renderMixer();
         // Do not send settings to the previous song's worklet parts while stopped.
         player.loadedSong = null;
-        document.querySelector("#player").hidden = false;
-        document.querySelector("#mixer").hidden = false;
         updatePosition({ seconds: 0, playing: false });
         showStatus(`${bars}小節・${song.parts.length}パートの伴奏を生成しました。`);
     } catch (error) {
@@ -584,3 +700,4 @@ form.addEventListener("submit", async (event) => {
         generating = false; updateButtons();
     }
 });
+document.querySelector("#new-project").click();
