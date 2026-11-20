@@ -241,6 +241,34 @@ class SongEditor {
         catch (error) { this.notify(error.message, true); return false; }
     }
 
+    fixMissingSectionChords(playRange) {
+        const { parts, sections, chords } = this.project;
+        if (!chords.length) return false;
+        const ranges = this.partRanges();
+        const toPlay = playRange ? parts.filter((_, index) => ranges[index].from <= playRange.to && ranges[index].to >= playRange.from) : parts;
+        const order = (a, b) => a.bar - b.bar || a.beat - b.beat;
+        const fixed = chords.toSorted(order);
+        let changed = false;
+        for (const section of new Set(toPlay.map(part => part.section))) {
+            const { bar, meter } = sections[section];
+            const first = fixed.findIndex(chord => chord.bar >= bar);
+            const upcoming = fixed[first];
+            if (upcoming?.bar === bar && upcoming.beat === 0) continue;
+            if (upcoming?.bar === bar && upcoming.beat <= 1) {
+                fixed[first] = { ...upcoming, beat: 0 };
+            } else {
+                const lastBeat = DesktopSongFiles.meters[meter][1] - 1;
+                const anticipated = fixed.findLast(chord => chord.bar === bar - 1 && chord.beat >= lastBeat);
+                const distance = chord => Math.abs(4 * (chord.bar - bar) + chord.beat);
+                const nearest = anticipated ?? fixed.reduce((best, chord) => distance(chord) < distance(best) ? chord : best);
+                fixed.push(nearest.bar === bar ? { ...nearest, beat: 0 } : { name: nearest.name, bar, beat: 0 });
+                fixed.sort(order);
+            }
+            changed = true;
+        }
+        return changed && this.editArrangement(() => { this.project.chords = fixed; });
+    }
+
     capturesMixTrack(track, mixNames, rhythmMixKey) {
         return DesktopSongFiles.isUserMixTrack(track) ? mixNames.includes(track.name)
             : Boolean(rhythmMixKey && track.rhythmId === rhythmMixKey.rhythmId && track.name === rhythmMixKey.name);

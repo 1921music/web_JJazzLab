@@ -3,7 +3,7 @@
 class AppPreferences {
     constructor(canonicalize) {
         this.key = "jjazzlab.preferences";
-        this.defaults = { theme: "dark", fontSize: 100, font: "system", restoreSongs: true, wheelChanges: true, aliases: [] };
+        this.defaults = { theme: "dark", fontSize: 100, font: "system", restoreSongs: true, wheelChanges: true, fixSectionChords: true, aliases: [] };
         this.settings = { ...this.defaults };
         try { Object.assign(this.settings, JSON.parse(localStorage.getItem(this.key) ?? "{}")); } catch { /* Optional storage. */ }
         if (!Array.isArray(this.settings.aliases)) this.settings.aliases = [];
@@ -34,20 +34,21 @@ class AppPreferences {
     }
 
     loadForm(settings) {
-        const { theme, font, fontSize, restoreSongs, wheelChanges, aliases } = this.form.elements;
+        const { theme, font, fontSize, restoreSongs, wheelChanges, fixSectionChords, aliases } = this.form.elements;
         theme.value = settings.theme;
         font.value = settings.font;
         fontSize.value = settings.fontSize;
         restoreSongs.checked = settings.restoreSongs;
         wheelChanges.checked = settings.wheelChanges;
+        fixSectionChords.checked = settings.fixSectionChords;
         aliases.value = settings.aliases.map(([alias, type]) => `C${alias}=C${type}`).join("\n");
     }
 
     async save() {
-        const { theme, font, fontSize, restoreSongs, wheelChanges, aliases } = this.form.elements;
+        const { theme, font, fontSize, restoreSongs, wheelChanges, fixSectionChords, aliases } = this.form.elements;
         const rows = aliases.value.split(/\r?\n/u).map(row => row.trim()).filter(Boolean);
         const pending = { theme: theme.value, font: font.value, fontSize: fontSize.valueAsNumber, restoreSongs: restoreSongs.checked,
-            wheelChanges: wheelChanges.checked, aliases: [] };
+            wheelChanges: wheelChanges.checked, fixSectionChords: fixSectionChords.checked, aliases: [] };
         const submit = this.form.querySelector("[type=submit]");
         submit.disabled = true;
         this.status.textContent = "";

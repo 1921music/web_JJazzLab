@@ -348,6 +348,7 @@ JJazzLab に寄付|Donate to JJazzLab
 画面の文字サイズ（%）|Interface text size (%)
 起動時に開いていた曲を復元する|Restore open songs on startup
 ホイールでミキサーの値を変更する|Use the mouse wheel to adjust mixer values
+再生時にセクション先頭のコードを補完する|Fix missing chords at section starts when playing
 コードの別名|Chord aliases
 既定値に戻す|Reset to Defaults
 出力を試聴|Test Output

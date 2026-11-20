@@ -2477,6 +2477,36 @@ AbM7 | G7 Cm7 |
             }
             report.localSoundFont = true;
         }
+        {
+            editor.newSong();
+            editor.editArrangement(() => {
+                const { project } = editor;
+                const originalPart = project.parts[0];
+                project.sections = [
+                    { name: "A", bar: 0, meter: "FOUR_FOUR" },
+                    { name: "B", bar: 3, meter: "FOUR_FOUR" },
+                    { name: "C", bar: 6, meter: "FOUR_FOUR" }
+                ];
+                project.parts = ["A", "B", "C"].map((name, section) => ({ ...originalPart, name, section }));
+                project.chords = [{ name: "Dm7", bar: 0, beat: .5 }, { name: "G7", bar: 2, beat: 3 },
+                    { name: "C", bar: 3, beat: 2 }, { name: "F", bar: 7, beat: 0 }];
+            });
+            const before = JSON.stringify(editor.project.chords);
+            try {
+                check(appPreferences.settings.fixSectionChords && editor.fixMissingSectionChords({ from: 4, to: 6 }),
+                    "The selected range did not repair its section");
+                check(editor.project.chords.find(chord => chord.bar === 3 && chord.beat === 0)?.name === "G7"
+                    && !editor.project.chords.some(chord => (chord.bar === 0 || chord.bar === 6) && chord.beat === 0),
+                "Section repair did not copy the anticipated chord or changed unplayed sections");
+                document.querySelector("#undo").click();
+                check(JSON.stringify(editor.project.chords) === before, "Section repair could not be undone");
+                await startPlayback();
+                check(editor.project.chords.find(chord => chord.bar === 0)?.beat === 0
+                    && editor.project.chords.find(chord => chord.bar === 6)?.name === "F",
+                "Starting playback did not repair the early chord and copy the nearest chord");
+            } finally { await player.stop(); }
+            report.missingSectionChords = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

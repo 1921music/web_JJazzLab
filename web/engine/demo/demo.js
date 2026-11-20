@@ -832,6 +832,8 @@ function renderMixer() {
 async function startPlayback(restart = false, stopAtEnd = false) {
     if (synthSettings.switching) return;
     if (generating || starting || (playing && !restart)) return;
+    const fixedSectionChords = editor.project && !arranger.session && (!paused || restart) && appPreferences.settings.fixSectionChords
+        && editor.fixMissingSectionChords(stopAtEnd || loopEnabled.checked ? chosenRange : null);
     const refresh = !song || accompanimentDirty || (tempoDirty && (!paused || restart));
     if (refresh && !form.reportValidity()) return;
     starting = true; updateButtons(); options.disabled = true;
@@ -858,6 +860,7 @@ async function startPlayback(restart = false, stopAtEnd = false) {
             tempo: tempoInput.valueAsNumber,
             rate: playbackTempoRate()
         });
+        if (fixedSectionChords) showPlayStatus(t("空いていたセクション先頭にコードを補完しました。", "Filled missing chords at section starts."));
     } catch (error) { showPlayStatus(error.message, true); }
     finally { starting = false; options.disabled = false; updateButtons(); }
 }
