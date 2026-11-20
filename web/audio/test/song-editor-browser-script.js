@@ -1450,6 +1450,62 @@
             check(editor.project.chords.map(chord => chord.name).join() === before.join(), "Chord range transposition did not undo cleanly");
             report.chordTypeTransposeAndPreview = true;
         }
+        {
+            const right = node => node.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+            const action = id => editor.contextMenu.querySelector(`[data-action="${id}"]`).click();
+            const project = editor.project;
+            let text;
+            const clipboard = Object.getOwnPropertyDescriptor(navigator, "clipboard");
+            Object.defineProperty(navigator, "clipboard", { configurable: true, value: {
+                writeText: async value => { text = value; }, readText: async () => text
+            } });
+            try {
+                right(editor.grid.children[0].querySelector(".chord-symbol"));
+                action("cut");
+                check(!project.chords.some(chord => chord.bar === 0) && text === "| C |", "Cut did not transfer the selected chord alone");
+                right(editor.grid.children[1]);
+                action("paste");
+                check(project.chords.some(chord => chord.bar === 1 && chord.name === "C"), "Pasted chord did not reach the selected bar");
+                editor.undoButton.click(); editor.undoButton.click();
+                editor.editArrangement(() => { project.annotations = [{ bar: 0, text: "Comp lightly" }]; });
+                right(editor.grid.children[0].querySelector(".bar-annotation,.bar-annotation-marker"));
+                action("copy");
+                right(editor.grid.children[1]);
+                action("paste");
+                check(project.annotations.some(note => note.bar === 1 && note.text === "Comp lightly"), "Annotation copy changed the wrong bar");
+                editor.editArrangement(() => editor.setSectionName(3, "New Section", "FOUR_FOUR"));
+                right(editor.grid.children[3].querySelector(".section-band"));
+                action("copy");
+                right(editor.grid.children[6]);
+                action("paste");
+                check(project.sections.some(section => section.bar === 6 && section.name === "New Section-2"), "Pasted section did not get a unique name");
+                editor.undoButton.click();
+                right(editor.grid.children[3].querySelector(".section-band"));
+                action("cut");
+                check(!project.sections.some(section => section.bar === 3) && project.parts.every(part => project.sections[part.section]), "Cut left stale section references");
+                editor.undoButton.click();
+                editor.selectBar(0); editor.selectBar(1, true);
+                editor.barAction("copy");
+                check(text.startsWith("| 4/4 C |"), "The system clipboard text omitted the initial meter");
+                const bars = project.bars;
+                editor.selectBar(3);
+                editor.barAction("paste-insert");
+                check(project.bars === bars + 2 && project.sections.some(section => section.bar === 5 && section.name === "New Section")
+                    && project.chords.some(chord => chord.bar === 3 && chord.name === "C"), "Inserting copied bars lost structure or shifted chords incorrectly");
+                editor.undoButton.click();
+                editor.selectBar(3);
+                text = "| 3/4 Dm7 | G7 |";
+                await editor.pasteClipboardText(3, false);
+                check(project.bars === bars + 2 && project.sections.some(section => section.bar === 3 && section.meter === "THREE_FOUR")
+                    && project.chords.some(chord => chord.bar === 4 && chord.name === "G7") && project.sections.some(section => section.bar === 5 && section.meter === "FOUR_FOUR"),
+                    "Pasting lead-sheet text did not preserve both time signatures");
+                editor.undoButton.click();
+                report.scoreClipboard = true;
+            } finally {
+                if (clipboard) Object.defineProperty(navigator, "clipboard", clipboard);
+                else delete navigator.clipboard;
+            }
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

@@ -10,6 +10,9 @@ MIDIを取り込む…|Import MIDI…
 選択区間のみ再生|Play selected song part
 小節メモを表示|Show bar annotations
 小節メモを削除|Delete bar annotation
+切り取り|Cut
+コピーした小節を挿入|Insert copied bars
+テキスト譜面を貼り付け|Paste text lead sheet
 メモの行数|Annotation lines
 曲を閉じる|Close song
 開いている曲|Open songs

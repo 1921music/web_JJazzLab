@@ -352,6 +352,7 @@ class SongEditor {
         this.selectedPart = null;
         this.partSelection.clear();
         this.selectedChord = null;
+        this.scoreTarget = "bar";
         this.undoStack = view?.undoStack ?? [];
         this.redoStack = view?.redoStack ?? [];
         this.styleParameters = view?.styleParameters ?? new Map();
@@ -504,6 +505,7 @@ class SongEditor {
     selectBar(bar, extend = false, focus = false) {
         this.selectedBar = Math.min(Math.max(0, bar), this.project.bars - 1);
         this.selectedChord = null;
+        this.scoreTarget = "bar";
         if (!extend) this.selectionAnchor = this.selectedBar;
         this.markSelection();
         const [first, last] = this.selectedRange();
@@ -574,9 +576,10 @@ class SongEditor {
             event.preventDefault(); this.playSelection(!event.shiftKey);
         } else if (event.key === "Enter" || (event.key === " " && !event.shiftKey)) {
             event.preventDefault(); this.openBarEditor(this.selectedChord ? "chord" : "edit");
-        } else if (event.key === "Delete" || ((event.ctrlKey || event.metaKey) && /^(c|v)$/iu.test(event.key))) {
+        } else if (event.key === "Delete" || ((event.ctrlKey || event.metaKey) && /^[cxv]$/iu.test(event.key))) {
             event.preventDefault();
-            this.barAction(({ Delete: "clear", c: "copy", v: "paste" })[event.key.toLowerCase()] ?? "clear");
+            const action = ({ c: "copy", x: "cut", v: "paste-clipboard" })[event.key.toLowerCase()] ?? "clear";
+            this.barAction(action);
         } else if (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10")) {
             event.preventDefault();
             const rect = this.grid.children[bar].getBoundingClientRect();
@@ -586,9 +589,10 @@ class SongEditor {
         }
     }
 
-    openContext(x, y, menu = this.contextMenu, target = this.selectedChord ? "chord" : "bar") {
+    openContext(x, y, menu = this.contextMenu, target = this.selectedChord ? "chord" : this.scoreTarget ?? "bar") {
         this.contextMenu.hidden = this.partMenu.hidden = this.parameterMenu.hidden = true;
         if (menu === this.contextMenu) {
+            this.scoreTarget = target;
             const labels = { bar: ["小節の操作", "Bar actions"], chord: ["コードの操作", "Chord actions"],
                 section: ["セクションの操作", "Section actions"], annotation: ["小節メモの操作", "Bar annotation actions"] };
             menu.setAttribute("aria-label", t(...labels[target]));
@@ -596,8 +600,12 @@ class SongEditor {
                 button.hidden = !button.dataset.target.split(" ").includes(target);
             }
             const [first, last] = this.selectedRange();
-            menu.querySelector('[data-action="paste"]').disabled = !this.barClipboard || first + this.clipboardLength > this.project.bars
-                || this.barClipboard.some(chord => chord.beat >= this.beatsInBar(chord.bar + first));
+            menu.querySelector('[data-action="paste"]').disabled = !this.canPasteScore(first);
+            menu.querySelector('[data-action="paste-insert"]').disabled = this.scoreClipboard?.target !== "bar"
+                || this.project.bars + this.scoreClipboard.length > 1024;
+            menu.querySelector('[data-action="paste-text"]').disabled = !navigator.clipboard?.readText;
+            menu.querySelector('[data-action="cut"]').disabled = target === "bar" ? last - first + 1 >= this.project.bars
+                : target === "section" && (first === 0 || !this.canCutSection(first));
             menu.querySelector('[data-action="insert"]').disabled = this.project.bars >= 1024;
             menu.querySelector('[data-action="remove-bars"]').disabled = last - first + 1 >= this.project.bars;
             menu.querySelector('[data-action="end"]').disabled = last === this.project.bars - 1;
@@ -696,25 +704,17 @@ class SongEditor {
                     this.project.loopRestartBar = this.project.loopRestartBar === first ? undefined : first;
                 });
                 break;
-            case "copy":
-                this.barClipboard = structuredClone(this.project.chords.filter(chord => chord.bar >= first && chord.bar <= last)
-                    .map(chord => ({ ...chord, bar: chord.bar - first })));
-                this.clipboardLength = last - first + 1;
-                this.annotationClipboard = (this.project.annotations ?? []).filter(note => note.bar >= first && note.bar <= last)
-                    .map(note => ({ ...note, bar: note.bar - first }));
+            case "copy": case "cut":
+                this.copyScoreSelection(first, last, action === "cut");
                 break;
             case "paste":
-                if (!this.barClipboard) return;
-                this.editArrangement(() => {
-                    const end = first + this.clipboardLength;
-                    const pasted = this.barClipboard.map(chord => ({ ...structuredClone(chord), bar: chord.bar + first }));
-                    if (end > this.project.bars || pasted.some(chord => chord.beat >= this.beatsInBar(chord.bar))) {
-                        throw new Error(t("貼り付け先の小節数か拍子が合いません。", "The destination bars or time signatures do not fit the copied range."));
-                    }
-                    this.project.chords = [...this.project.chords.filter(chord => chord.bar < first || chord.bar >= end), ...pasted];
-                    this.project.annotations = [...(this.project.annotations ?? []).filter(note => note.bar < first || note.bar >= end),
-                        ...this.annotationClipboard.map(note => ({ ...note, bar: note.bar + first }))];
-                });
+                this.pasteScore(first);
+                break;
+            case "paste-insert":
+                if (this.scoreClipboard?.target === "bar") this.insertScoreExcerpt(first, this.scoreClipboard);
+                break;
+            case "paste-text": case "paste-clipboard":
+                void this.pasteClipboardText(first, action === "paste-clipboard");
                 break;
             case "clear":
                 this.editArrangement(() => {
@@ -747,6 +747,154 @@ class SongEditor {
                     this.project.sections.splice(removed);
                 });
         }
+    }
+
+    copyScoreSelection(first, last, cut) {
+        const target = this.selectedChord ? "chord" : this.scoreTarget ?? "bar";
+        const project = this.project;
+        if (target === "bar") {
+            const length = last - first + 1;
+            if (cut && length >= project.bars) return;
+            const relative = items => items.filter(item => item.bar >= first && item.bar <= last)
+                .map(item => ({ ...item, bar: item.bar - first }));
+            const initial = project.sections.findLast(section => section.bar <= first);
+            const sections = [{ ...initial, bar: 0 }, ...relative(project.sections.filter(section => section.bar > first))];
+            const parts = sections.map((section, index) => ({ ...project.parts.find(part => project.sections[part.section].name === section.name), section: index }));
+            this.scoreClipboard = structuredClone({ target, length, sections, parts, chords: relative(project.chords), annotations: relative(project.annotations ?? []) });
+            this.copyScoreText(this.scoreExcerptText(this.scoreClipboard));
+            if (cut) this.removeBars(first, last);
+            return;
+        }
+        const item = target === "chord" ? this.selectedChord : target === "section" ? project.sections.find(section => section.bar === first)
+            : project.annotations?.find(note => note.bar === first);
+        if (!item || (cut && target === "section" && !this.canCutSection(first))) return;
+        this.scoreClipboard = structuredClone({ target, item });
+        if (target === "chord") this.copyScoreText(`| ${item.originalName ?? item.name} |`);
+        else if (target === "annotation") this.copyScoreText(item.text);
+        else this.scoreClipboardText = undefined;
+        if (!cut) return;
+        this.editArrangement(() => {
+            if (target === "chord") project.chords = project.chords.filter(chord => chord !== item);
+            else if (target === "annotation") project.annotations = project.annotations.filter(note => note !== item);
+            else {
+                const index = project.sections.indexOf(item);
+                project.sections.splice(index, 1);
+                project.parts = project.parts.filter(part => part.section !== index);
+                for (const part of project.parts) if (part.section > index) part.section--;
+            }
+            this.selectedChord = null;
+            this.scoreTarget = "bar";
+        });
+    }
+
+    canCutSection(bar) {
+        const { sections, parts, chords, bars } = this.project;
+        const index = sections.findIndex(section => section.bar === bar);
+        if (index <= 0 || parts.every(part => part.section === index)) return false;
+        const end = sections[index + 1]?.bar ?? bars;
+        const beats = DesktopSongFiles.meters[sections[index - 1].meter][1];
+        return !chords.some(chord => chord.bar >= bar && chord.bar < end && chord.beat >= beats);
+    }
+
+    canPasteScore(bar) {
+        const clip = this.scoreClipboard;
+        if (!clip) return false;
+        if (clip.target === "chord") return clip.item.beat < this.beatsInBar(bar);
+        if (clip.target !== "bar") return true;
+        return bar + clip.length <= this.project.bars && clip.chords.every(chord => chord.beat < this.beatsInBar(chord.bar + bar));
+    }
+
+    pasteScore(bar) {
+        if (!this.canPasteScore(bar)) return;
+        const { target, item, length, chords, annotations } = structuredClone(this.scoreClipboard);
+        const project = this.project;
+        this.editArrangement(() => {
+            if (target === "bar") {
+                const end = bar + length;
+                const outside = value => value.bar < bar || value.bar >= end;
+                project.chords = [...project.chords.filter(outside), ...chords.map(chord => ({ ...chord, bar: bar + chord.bar }))];
+                project.annotations = [...(project.annotations ?? []).filter(outside), ...annotations.map(note => ({ ...note, bar: bar + note.bar }))];
+            } else if (target === "chord") {
+                project.chords = [...project.chords.filter(chord => chord.bar !== bar || chord.beat !== item.beat), { ...item, bar }];
+            } else if (target === "annotation") {
+                project.annotations = [...(project.annotations ?? []).filter(note => note.bar !== bar), { ...item, bar }];
+            } else {
+                let name = item.name;
+                for (let suffix = 2; project.sections.some(section => section.bar !== bar && section.name === name); suffix++) name = `${item.name}-${suffix}`;
+                this.setSectionName(bar, name, item.meter);
+                project.sections.find(section => section.bar === bar).clientProperties = item.clientProperties;
+            }
+        });
+    }
+
+    scoreExcerptText({ length, sections, chords }) {
+        const byBar = Map.groupBy(chords, chord => chord.bar);
+        const meters = new Map(sections.map(section => [section.bar, section.meter]));
+        const lines = [];
+        let cells = [], previous;
+        for (let bar = 0; bar < length; bar++) {
+            const meter = meters.get(bar);
+            const names = (byBar.get(bar) ?? []).toSorted((a, b) => a.beat - b.beat).map(chord => chord.originalName ?? chord.name);
+            cells.push([...(meter && meter !== previous ? [DesktopSongFiles.meters[meter][0]] : []), ...names].join(" "));
+            if (meter) previous = meter;
+            if (cells.length === 4 || bar === length - 1) { lines.push(`| ${cells.join(" | ")} |`); cells = []; }
+        }
+        return lines.join("\n");
+    }
+
+    copyScoreText(text) {
+        this.scoreClipboardText = text;
+        navigator.clipboard?.writeText?.(text).catch(() => {});
+    }
+
+    async pasteClipboardText(bar, preferInternal) {
+        const project = this.project;
+        try {
+            let text;
+            try { text = await navigator.clipboard?.readText(); }
+            catch (error) { if (!preferInternal || !this.scoreClipboard) throw error; }
+            if (this.project !== project || this.selectedRange()[0] !== bar) return;
+            if (preferInternal && this.scoreClipboard && (!text || text.trim() === this.scoreClipboardText?.trim())) {
+                this.pasteScore(bar);
+                return;
+            }
+            if (!text?.trim()) return;
+            const excerpt = await this.onReadTextSong(text);
+            if (this.project === project && this.selectedRange()[0] === bar) this.insertScoreExcerpt(bar, { ...excerpt, length: excerpt.bars });
+        } catch (error) { if (this.project === project) this.notify(error.message, true); }
+    }
+
+    insertScoreExcerpt(bar, excerpt) {
+        this.editArrangement(() => {
+            const project = this.project;
+            const { length, chords, annotations = [] } = excerpt;
+            if (project.bars + length > 1024) throw new Error(t("譜面の上限は1024小節です。", "The lead sheet is limited to 1024 bars."));
+            const shift = item => ({ ...item, bar: item.bar + (item.bar >= bar ? length : 0) });
+            const oldSections = project.sections.map(shift);
+            const names = new Set(oldSections.map(section => section.name));
+            const create = (section, position) => {
+                let name = section.name;
+                for (let suffix = 2; names.has(name); suffix++) name = `${section.name}-${suffix}`;
+                names.add(name);
+                return { ...structuredClone(section), name, bar: position };
+            };
+            const inserted = excerpt.sections.map(section => create(section, bar + section.bar));
+            const after = project.sections.findLastIndex(section => section.bar <= bar);
+            const split = project.sections[after].bar < bar;
+            if (split) inserted.push(create(project.sections[after], bar + length));
+            const sections = [...oldSections, ...inserted].sort((a, b) => a.bar - b.bar);
+            const parts = project.parts.map(part => ({ ...part, section: sections.indexOf(oldSections[part.section]) }));
+            const previous = project.parts.findIndex(part => part.section === after - Number(!split));
+            const fallback = project.parts[previous] ?? project.parts[0];
+            parts.splice(previous + 1, 0, ...inserted.map((section, index) => {
+                const saved = excerpt.parts?.find(part => part.section === index && part.styleId);
+                return { ...structuredClone(saved ?? fallback), name: section.name, section: sections.indexOf(section) };
+            }));
+            Object.assign(project, { sections, parts, bars: project.bars + length,
+                chords: [...project.chords.map(shift), ...chords.map(chord => ({ ...structuredClone(chord), bar: bar + chord.bar }))],
+                annotations: [...(project.annotations ?? []).map(shift), ...annotations.map(note => ({ ...structuredClone(note), bar: bar + note.bar }))],
+                loopRestartBar: project.loopRestartBar >= bar ? project.loopRestartBar + length : project.loopRestartBar });
+        });
     }
 
     chordsForTools() {
@@ -2075,7 +2223,7 @@ class SongEditor {
                 event.preventDefault();
                 const [first, last] = this.selectedRange();
                 if (bar < first || bar > last || this.selectedChord) this.selectBar(bar, false, true);
-                this.openContext(event.clientX, event.clientY);
+                this.openContext(event.clientX, event.clientY, this.contextMenu, "bar");
             };
             cell.ondragover = event => {
                 if (event.dataTransfer.types.includes("application/x-jjazz-chord")) {
