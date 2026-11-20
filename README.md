@@ -1,3 +1,3 @@
 # Published browser demo
 
-Source commit: [6d1133314254df163676153493c0e718cce8e71a](https://github.com/1921music/web_JJazzLab/tree/6d1133314254df163676153493c0e718cce8e71a)
+Source commit: [740f2035b24a9f375337da8b232e6c155c459435](https://github.com/1921music/web_JJazzLab/tree/740f2035b24a9f375337da8b232e6c155c459435)

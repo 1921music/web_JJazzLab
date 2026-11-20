@@ -1,5 +1,12 @@
 {
-  "sourceCommit": "6d1133314254df163676153493c0e718cce8e71a",
-  "sourceUrl": "https://github.com/1921music/web_JJazzLab/tree/6d1133314254df163676153493c0e718cce8e71a",
-  "htmlSha256": "7c3cfccce90f5340e7afe81f0bdac99cc2020ad80d4e573a6b0268be1a99a6f9"
+  "sourceCommit": "740f2035b24a9f375337da8b232e6c155c459435",
+  "sourceUrl": "https://github.com/1921music/web_JJazzLab/tree/740f2035b24a9f375337da8b232e6c155c459435",
+  "htmlSha256": "e4a19e6476bd22d0d49de092277ac73ac150b9904b74c94cb2fd4b33916be340",
+  "files": {
+    "index.html": "e4a19e6476bd22d0d49de092277ac73ac150b9904b74c94cb2fd4b33916be340",
+    "manifest.webmanifest": "c1a89af4a6ec5f2b23a4bce7970e8d38ee62484eb945b36f4e06d6245035eab9",
+    "icon-192.png": "54f0477842ee0c69da24cdda20c4b0fdfb3c66ee21e666462480001a2a92b033",
+    "icon-512.png": "5453cc9ca523210ea94f818f5f88b6a6d61d04db5097224fbc245045124c9df3",
+    "sw.js": "85a433f964c188aa93b710d88e92100ffddf083f603cb34f76a90072cb7578fc"
+  }
 }
