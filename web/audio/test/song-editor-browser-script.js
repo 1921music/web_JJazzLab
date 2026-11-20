@@ -822,6 +822,34 @@
                 await player.stop();
             }
             report.multiStyle.push(summary);
+            if (fixture.name.startsWith("PetiteFleur")) {
+                const originalProject = editor.project;
+                const expanded = [];
+                const savedFile = downloadSongFile;
+                try {
+                    downloadSongFile = (name, contents) => expanded.push({ name, ...JSON.parse(contents) });
+                    document.querySelector("#duplicate-song").click();
+                    document.querySelector("#linearize-song").click();
+                } finally { downloadSongFile = savedFile; }
+                const [copy, linear] = expanded;
+                const sourceBars = DesktopSongFiles.barBeats(originalProject);
+                check(editor.project === originalProject && copy.song.title !== originalProject.title
+                    && JSON.stringify(copy.song.parts) === JSON.stringify(originalProject.parts)
+                    && JSON.stringify(copy.mix) === JSON.stringify(editor.mix), "Saving a copy affected the open song or its mix");
+                const roundTrip = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(linear.song));
+                check(roundTrip.bars === sourceBars.length && roundTrip.parts.length === roundTrip.sections.length
+                    && DesktopSongFiles.barBeats(roundTrip).join() === sourceBars.join()
+                    && roundTrip.parts.every((part, index) => part.section === index && part.styleId === originalProject.parts[index].styleId),
+                    "The unfolded .sng did not retain the original order, rhythms or meters");
+                document.querySelector("#save-song-template").click();
+                document.querySelector("#new-project").click();
+                check(editor.project.title !== originalProject.title && editor.project.parts.length === originalProject.parts.length
+                    && editor.mix.length === copy.mix.length, "New song did not load the saved template structure and mix");
+                document.querySelector("#clear-song-template").click();
+                document.querySelector("#new-project").click();
+                check(editor.project.bars === 4 && editor.project.parts.length === 1, "Clearing the template did not restore the default song");
+                report.songCopiesAndTemplates = true;
+            }
         }
         if (desktopFixture.styles) {
             const speak = DesktopSongFiles.readSong(desktopFixture.song);

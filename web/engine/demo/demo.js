@@ -220,6 +220,9 @@ function updateButtons() {
     nextPart.disabled = generating || starting || !editor.project || !editor.partRanges().some(range => range.from > playbackBar);
     previousPart.disabled ||= quickMode.getAttribute("aria-pressed") === "true";
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
+    for (const id of ["duplicate-song", "linearize-song", "save-song-template", "clear-song-template"]) {
+        document.getElementById(id).disabled = !editor.project || starting || generating;
+    }
     structureToggle.disabled = !editor.project;
     document.querySelector("#add-user-track").disabled = !editor.project || generating || starting;
     document.querySelector("#open-song-memo").disabled = !editor.project || generating || starting;
@@ -965,6 +968,10 @@ const editor = new SongEditor((opened, useSavedStyles) => {
     else startPlayback(true, stopAtEnd);
 });
 const openProject = document.querySelector("#open-project");
+document.querySelector("#duplicate-song").onclick = () => editor.save("duplicate");
+document.querySelector("#linearize-song").onclick = () => editor.save("linearize");
+document.querySelector("#save-song-template").onclick = () => editor.saveTemplate();
+document.querySelector("#clear-song-template").onclick = () => editor.clearTemplate();
 openProject.onchange = async () => {
     const previous = editor.project;
     await editor.openFiles(openProject);

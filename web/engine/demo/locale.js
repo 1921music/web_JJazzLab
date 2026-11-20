@@ -168,6 +168,10 @@ Solo解除|Clear solo
 シンバル|Cymbals
 パーカッション|Percussion
 MIDI設定|MIDI settings
+曲のコピーを保存…|Save a copy…
+演奏順に展開した曲を保存…|Save an unfolded song…
+新規曲のテンプレートにする|Use as the new-song template
+標準テンプレートに戻す|Restore the default template
 MIDIチャンネル|MIDI channel
 移調（半音）|Transpose (semitones)
 ベロシティ補正|Velocity shift

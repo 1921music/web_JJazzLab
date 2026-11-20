@@ -1,6 +1,7 @@
 "use strict";
 
 const partMarkers = ["theme", "solo", "theme2", "theme3", "theme4", "solo2", "solo3", "solo4"];
+const songTemplatePreference = "jjazzlab.songTemplate";
 
 function desktopColor(value) {
     if (typeof value !== "string" || !/^-?\d+$/u.test(value)) return undefined;
@@ -131,11 +132,7 @@ class SongEditor {
             }
         };
         document.querySelector("#cancel-part-edit").onclick = () => this.partDialog.close();
-        document.querySelector("#new-project").onclick = () => this.open({
-            title: t("新しい曲", "New song"), tempo: 120, bars: 4, sections: [{ name: "A", bar: 0, meter: "FOUR_FOUR" }],
-            chords: ["C", "Am7", "Dm7", "G7"].map((name, bar) => ({ name, bar, beat: 0 })),
-            parts: [{ name: "A", section: 0, styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} }], userTracks: []
-        }, []);
+        document.querySelector("#new-project").onclick = () => this.newSong();
         document.querySelector("#open-project-button").onclick = () => document.querySelector("#open-project").click();
         document.querySelector("#add-bar").onclick = () => this.editArrangement(() => {
             if (this.project.bars >= 1024) throw new Error("譜面の上限は1024小節です。");
@@ -299,6 +296,63 @@ class SongEditor {
             this.open(song, mix, null, true);
             this.notify(t(`${songFile.name} を開きました。`, `Opened ${songFile.name}.`));
         } catch (error) { this.notify(error.message, true); }
+    }
+
+    newSong() {
+        const title = t("新しい曲", "New song");
+        let saved;
+        try { saved = localStorage.getItem(songTemplatePreference); } catch { /* Preference storage is optional. */ }
+        let templateError;
+        try {
+            if (saved) {
+                const { song, mix, style } = JSON.parse(saved);
+                this.open(DesktopSongFiles.validateSong({ ...song, title }), mix ?? [], style, true);
+                return;
+            }
+        } catch (error) { templateError = error; }
+        this.open({ title, tempo: 120, bars: 4, sections: [{ name: "A", bar: 0, meter: "FOUR_FOUR" }],
+            chords: ["C", "Am7", "Dm7", "G7"].map((name, bar) => ({ name, bar, beat: 0 })),
+            parts: [{ name: "A", section: 0, styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} }], userTracks: []
+        }, []);
+        if (templateError) {
+            this.notify(t("テンプレートを読み込めなかったため、標準の曲を開きました。", "The template could not be loaded. Opened the default song."), true);
+        }
+    }
+
+    saveTemplate() {
+        try {
+            localStorage.setItem(songTemplatePreference, JSON.stringify(this.webData()));
+            this.notify(t("新規曲のテンプレートを保存しました。", "Saved the template for new songs."));
+        } catch (error) { this.notify(error.message, true); }
+    }
+
+    clearTemplate() {
+        try {
+            localStorage.removeItem(songTemplatePreference);
+            this.notify(t("標準の新規曲テンプレートに戻しました。", "Restored the default new-song template."));
+        } catch (error) { this.notify(error.message, true); }
+    }
+
+    linearizedSong() {
+        const original = structuredClone(this.project);
+        const ranges = this.partRanges();
+        const bars = ranges.at(-1).to;
+        if (bars > 1024) throw new Error(t("展開後のコード譜が1024小節を超えます。", "The expanded lead sheet exceeds 1,024 bars."));
+        const sections = [], chords = [], parts = [], annotations = [];
+        let loopRestartBar;
+        for (const range of ranges) {
+            const part = original.parts[range.index];
+            const source = original.sections[part.section];
+            const offset = range.from - 1 - range.sheetStart;
+            const contains = item => item.bar >= range.sheetStart && item.bar < range.sheetEnd;
+            sections.push({ ...source, bar: range.from - 1, name: `${source.name}#${range.index + 1}` });
+            parts.push({ ...part, section: range.index });
+            chords.push(...original.chords.filter(contains).map(item => ({ ...item, bar: item.bar + offset })));
+            annotations.push(...(original.annotations ?? []).filter(contains).map(item => ({ ...item, bar: item.bar + offset })));
+            if (loopRestartBar === undefined && contains({ bar: original.loopRestartBar })) loopRestartBar = original.loopRestartBar + offset;
+        }
+        return DesktopSongFiles.validateSong({ ...original, bars, sections, chords, parts, annotations, loopRestartBar,
+            title: `${original.title} - ${t("演奏順", "linearized")}` });
     }
 
     button(label, callback) {
@@ -1517,12 +1571,17 @@ class SongEditor {
         });
     }
 
-    fileStem() { return this.project.title.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/gu, "_") || "JJazzLab"; }
+    fileStem(title = this.project.title) { return title.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/gu, "_") || "JJazzLab"; }
 
-    save() {
+    webData(song = this.project) {
+        return { version: 1, song, mix: this.unresolvedStyleMix ?? this.renderedMix ?? this.mix, style: this.style };
+    }
+
+    save(mode) {
         try {
-            const data = { version: 1, song: this.project, mix: this.unresolvedStyleMix ?? this.renderedMix ?? this.mix, style: this.style };
-            downloadSongFile(`${this.fileStem()}.jjazzweb`, JSON.stringify(data), "application/json");
+            const song = mode === "linearize" ? this.linearizedSong() : mode === "duplicate"
+                ? { ...this.project, title: `${this.project.title} - ${t("コピー", "copy")}` } : this.project;
+            downloadSongFile(`${this.fileStem(song.title)}.jjazzweb`, JSON.stringify(this.webData(song)), "application/json");
         } catch (error) { this.notify(error.message, true); }
     }
 
