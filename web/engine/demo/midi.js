@@ -109,7 +109,8 @@ function parseMidi(input, barCount, metadata = [], barBeats) {
         else if (e.beat !== undefined) beatTimes.push({ seconds, beat: e.beat, bar: e.barIndex + 1 });
         else if (e.tick <= endTick) playable.push({ ...e, seconds });
     }
-    return { parts, events: playable, barTimes, beatTimes, duration: barTimes.at(-1), meterChanges };
+    const firstTempo = events.findLast(event => event.tick === 0 && event.tempo)?.tempo ?? 500000;
+    return { parts, events: playable, barTimes, beatTimes, duration: barTimes.at(-1), meterChanges, bpm: 60000000 / firstTempo };
 }
 
 // Read event bytes for an export-only rewrite. Expand running status so a

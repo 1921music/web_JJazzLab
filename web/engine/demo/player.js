@@ -105,6 +105,7 @@ class AccompanimentPlayer {
     async pause() { if (this.ready) await this.send("pause"); }
     async panic() { if (this.ready) await this.send("panic"); }
     async click(enabled) { if (this.ready) await this.send("click", { enabled }); }
+    async tempo(rate) { if (this.ready && this.loadedSong && !this.previewing) await this.send("tempo", { rate }); }
     mix(parts, master) {
         if (this.ready && this.loadedSong && !this.previewing) this.send("mix", { parts, master }).catch(error => this.onError(error.message));
     }

@@ -51,6 +51,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         this.playing = false;
         this.parts = [];
         this.master = this.masterTarget = 0.8;
+        this.tempoRate = 1;
         this.report = 0;
         this.effects = new MixerEffects(sampleRate);
         this.port.onmessage = ({ data }) => this.command(data);
@@ -112,7 +113,10 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 const loop = this.prepareLoop(message.loop);
                 if (this.playing) this.pendingLoop = loop;
                 else this.loop = loop;
+            } else if (type === "tempo") {
+                this.setTempoRate(message.rate);
             } else if (type === "play") {
+                if (message.rate !== undefined || !message.resume) this.setTempoRate(message.rate ?? 1);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.clickEnabled = message.click ?? this.clickEnabled;
                 if (!this.paused || !message.resume) {
@@ -124,7 +128,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     if (message.precount) {
                         const end = this.beats.find(beat => beat.frame > start && beat.beat === 1)?.frame ?? this.duration;
                         this.countBeats = this.beats.filter(beat => beat.frame >= start && beat.frame < end).length || 4;
-                        this.countStep = Math.max(1, Math.round((end - start) / this.countBeats));
+                        this.countStep = Math.max(1, Math.round((end - start) / this.countBeats / this.tempoRate));
                         let countBars = message.precount === "1" ? 1 : 2;
                         if (message.precount === "auto") {
                             const tempo = message.tempo || 60 * sampleRate / this.countStep;
@@ -168,6 +172,11 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (start < 0 || end <= start || end > this.duration || restart < start || restart >= end) throw new Error("ループ範囲が不正です。");
         const chase = this.events.filter(e => e.frame < restart && [0xb0, 0xc0, 0xe0].includes(e.type));
         return { enabled: loop.enabled, start, end, restart, chase };
+    }
+
+    setTempoRate(rate) {
+        if (!Number.isFinite(rate) || rate <= 0 || rate > 40) throw new Error("テンポ比が不正です。");
+        this.tempoRate = rate;
     }
 
     applyProgram(index) {
@@ -240,6 +249,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (!this.playing || !this.api) return true;
         try {
             let offset = 0;
+            const rate = this.tempoRate;
             while (offset < left.length && this.countFrames > 0) {
                 const beat = this.countFrames / this.countStep;
                 const value = this.clickSample(Number.isInteger(beat) ? beat % this.countBeats === 0 : undefined);
@@ -254,6 +264,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                     if (this.loop.enabled) this.seek(this.loop.restart);
                     else if (this.frame >= this.playbackEnd) {
+                        this.frame = this.playbackEnd;
                         this.playing = false;
                         for (let i = 0; i < this.parts.length; i++) this.api.synth_reset(i);
                         this.reportPosition();
@@ -265,7 +276,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     this.event(this.events[this.index++]);
                 }
                 const next = this.events[this.index]?.frame ?? boundary;
-                const n = Math.min(128, left.length - offset, boundary - this.frame, Math.max(1, next - this.frame));
+                const n = Math.min(128, left.length - offset, Math.max(1, Math.ceil((Math.min(boundary, next) - this.frame) / rate)));
                 const pointer = this.api.synth_render(n) / 4;
                 for (let f = 0; f < n; f++) {
                     this.master += (this.masterTarget - this.master) * 0.01;
@@ -292,14 +303,15 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     }
                     this.effects.process(chorus, room);
                     const beat = this.beats[this.beatIndex];
-                    const click = beat?.frame === this.frame + f;
+                    const playFrame = this.frame + f * rate;
+                    const click = beat?.frame <= playFrame;
                     if (click) this.beatIndex++;
                     const clickSound = this.clickEnabled ? this.clickSample(click ? beat.beat === 1 : undefined) : 0;
-                    const fade = Math.min(1, (this.frame + f - this.fadeStart) / 64, (boundary - this.frame - f) / 64);
+                    const fade = Math.min(1, (playFrame - this.fadeStart) / (64 * rate), (boundary - playFrame) / (64 * rate));
                     left[offset + f] = (l + this.effects.left) * this.master * fade + clickSound * this.master;
                     right[offset + f] = (r + this.effects.right) * this.master * fade + clickSound * this.master;
                 }
-                this.frame += n; offset += n;
+                this.frame += n * rate; offset += n;
             }
             if (++this.report >= 32) { this.report = 0; this.reportPosition(); }
         } catch (error) {

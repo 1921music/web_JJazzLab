@@ -139,6 +139,12 @@ let playbackBar = 1;
 let playbackFraction = 0;
 let mixerParts = [];
 let generatedMidi;
+let renderedTempo = 0, tempoDirty = false;
+
+function playbackTempoRate() {
+    const tempo = tempoInput.valueAsNumber;
+    return renderedTempo && tempoInput.validity.valid && Number.isFinite(tempo) ? tempo / renderedTempo : 1;
+}
 const savedMix = new Map();
 const playButton = document.querySelector("#play");
 const stopButton = document.querySelector("#stop");
@@ -522,7 +528,7 @@ function openMixerContext(part, strip, x, y) {
 async function exportRhythmTrack(part) {
     if (!generatedMidi || generating || starting) return;
     try {
-        if (accompanimentDirty || editor.mix !== editor.baseMix) {
+        if (accompanimentDirty || tempoDirty || editor.mix !== editor.baseMix) {
             if (!await generateAccompaniment()) return;
             part = mixerParts.find(candidate => candidate.id === part.id);
         }
@@ -694,7 +700,7 @@ function renderMixer() {
 
 async function startPlayback(restart = false, stopAtEnd = false) {
     if (generating || starting || (playing && !restart)) return;
-    const refresh = !song || accompanimentDirty;
+    const refresh = !song || accompanimentDirty || (tempoDirty && (!paused || restart));
     if (refresh && !form.reportValidity()) return;
     starting = true; updateButtons(); options.disabled = true;
     try {
@@ -709,7 +715,8 @@ async function startPlayback(restart = false, stopAtEnd = false) {
             stopAtEnd,
             click: metronome.getAttribute("aria-pressed") === "true",
             precount: !restart && precount.getAttribute("aria-pressed") === "true" && precountMode.value,
-            tempo: tempoInput.valueAsNumber
+            tempo: tempoInput.valueAsNumber,
+            rate: playbackTempoRate()
         });
     } catch (error) { showPlayStatus(error.message, true); }
     finally { starting = false; options.disabled = false; updateButtons(); }
@@ -888,6 +895,8 @@ function clearPlayback() {
     accompanimentDirty = true;
     song = null;
     generatedMidi = null;
+    renderedTempo = 0;
+    tempoDirty = false;
     mixerParts = [];
     player.loadedSong = null;
     displayPosition();
@@ -1172,7 +1181,7 @@ for (const menu of menus) {
         if (command?.dataset.command === "download") {
             void (async () => {
                 if (!form.reportValidity()) return;
-                if ((download.hidden || accompanimentDirty) && !await generateAccompaniment()) return;
+                if ((download.hidden || accompanimentDirty || tempoDirty) && !await generateAccompaniment()) return;
                 download.click();
             })();
         } else if (command) document.getElementById(command.dataset.command).click();
@@ -1438,7 +1447,7 @@ async function resolveArrangement(project, requestedSwing) {
 }
 
 form.addEventListener("input", event => {
-    if (event.target === styleSearch || event.target === styleCategory) return;
+    if (event.target === styleSearch || event.target === styleCategory || event.target === tempoInput) return;
     accompanimentDirty = true;
     if (song) showStatus("次回の再生から変更を反映します。");
     if (editor.project) {
@@ -1446,12 +1455,11 @@ form.addEventListener("input", event => {
     }
 });
 tempoInput.addEventListener("input", () => {
-    accompanimentDirty = true;
-    if (editor.project) {
-        if (tempoInput.validity.valid && tempoInput.value) editor.project.tempo = tempoInput.valueAsNumber;
-        editor.changed();
-    }
-    if (song) showStatus("次回の再生からテンポを反映します。");
+    if (!tempoInput.validity.valid) return;
+    const tempo = tempoInput.valueAsNumber;
+    if (editor.project && Number.isFinite(tempo)) editor.project.tempo = tempo;
+    tempoDirty = Boolean(song && tempo !== renderedTempo);
+    if (playing || paused) player.tempo(playbackTempoRate()).catch(error => showPlayStatus(error.message, true));
 });
 
 form.addEventListener("submit", event => {
@@ -1579,6 +1587,7 @@ async function generateAccompaniment(fromPlay = false) {
         const metadata = engine.exports.getPartMetadata();
         song = parseMidi(midi, bars, metadata, barBeats);
         generatedMidi = midi;
+        renderedTempo = tempo || project?.tempo || song.bpm;
         if (project?.loopRestartBar !== undefined) {
             song.restartBars = editor.partRanges().filter(range => project.loopRestartBar >= range.sheetStart && project.loopRestartBar < range.sheetEnd)
                 .map(range => range.from + project.loopRestartBar - range.sheetStart);

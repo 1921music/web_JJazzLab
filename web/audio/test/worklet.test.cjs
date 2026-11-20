@@ -47,6 +47,24 @@ test("events run at their sample offsets, and non-loop playback ends exactly", a
     assert.equal(p.frame, 512); assert.equal(p.playing, false);
 });
 
+test("changing tempo keeps the playhead and changes event spacing through a loop wrap", async () => {
+    const { processor: p, calls, render } = createProcessor();
+    await p.command({ type: "song", song: song([event(.064, 0x90, 60, 100), event(.192, 0x90, 62, 100)]),
+        loop: { enabled: true, start: 0, end: .256 } });
+    await p.command({ type: "play" });
+    render();
+    await p.command({ type: "tempo", rate: 2 });
+    assert.equal(p.frame, 128);
+    render();
+    assert.deepEqual(calls.filter(call => call[2] === 0x90).map(call => [call[3], call.at(-1)]), [[60, 64], [62, 160], [60, 224]]);
+    assert.equal(p.frame, 128);
+    await p.command({ type: "pause" });
+    await p.command({ type: "tempo", rate: 1.25 });
+    await p.command({ type: "play", resume: true });
+    render();
+    assert.deepEqual(calls.filter(call => call[2] === 0x90).map(call => call.at(-1)), [64, 160, 224, 308]);
+});
+
 test("loop restores controllers before its start, without restarting crossing notes", async () => {
     const { processor: p, calls, render } = createProcessor();
     await p.command({ type: "song", song: song([event(0, 0xc0, 33), event(.05, 0x90, 60, 100), event(.16, 0x90, 64, 100)]), loop: { enabled: true, start: .128, end: .256 } });

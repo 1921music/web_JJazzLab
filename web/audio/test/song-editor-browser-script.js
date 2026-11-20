@@ -68,6 +68,23 @@
         playButton.click();
         while (starting || generating) await new Promise(resolve => setTimeout(resolve, 20));
         check(playing, `Play did not prepare the song: ${status.textContent} ${playStatus.textContent}`);
+        const liveSong = song;
+        const oldTempo = tempoInput.value;
+        const oldSend = player.send;
+        let updatedRate;
+        player.send = function (type, message, transfer) {
+            if (type === "tempo") updatedRate = message.rate;
+            return oldSend.call(this, type, message, transfer);
+        };
+        try {
+            tempoInput.value = "90";
+            tempoInput.dispatchEvent(new Event("input", { bubbles: true }));
+            check(playing && !generating && song === liveSong && editor.project.tempo === 90 && updatedRate === .75,
+                "Changing the toolbar tempo stopped playback or regenerated the whole song");
+            tempoInput.value = oldTempo;
+            tempoInput.dispatchEvent(new Event("input", { bubbles: true }));
+        } finally { player.send = oldSend; }
+        report.liveTempo = true;
         await player.pause();
         check(!playing && paused, "Pause did not retain the active song");
         playButton.click();
