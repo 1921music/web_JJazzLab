@@ -21,6 +21,11 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.jjazzlab.core</groupId>
+            <artifactId>humanizer</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.jjazzlab.plugins</groupId>
             <artifactId>jjswing</artifactId>
             <version>${project.version}</version>

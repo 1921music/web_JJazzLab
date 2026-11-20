@@ -161,11 +161,17 @@
                             <option value="0.3333333333333333">1/8 ♫₃</option><option value="0.25" selected>1/16</option><option value="0.125">1/32</option>
                         </select>
                         <button id="roll-quantize" class="secondary" type="button">クオンタイズ</button>
+                        <button id="roll-humanize" class="secondary" type="button">ヒューマナイズ…</button>
                         <button id="roll-import-midi" class="secondary" type="button">MIDIを取り込む…</button>
                         <input id="roll-midi-file" type="file" accept=".mid,.midi,audio/midi" aria-label="音符のMIDIファイル" hidden>
                         <button id="roll-play" class="tool-button" type="button" data-icon="roll-play" aria-label="この位置から再生" title="この位置から再生"></button>
+                        <button id="roll-audition" class="secondary" type="button" aria-pressed="false" title="音符を試聴">音符を試聴</button>
+                        <button id="roll-solo" class="tool-button" data-icon="solo" type="button" aria-pressed="false" aria-label="このトラックをSolo" title="このトラックをSolo"></button>
+                        <button id="roll-follow" class="secondary" type="button" aria-pressed="true" title="再生位置に追従">再生位置に追従</button>
                         <label>ベロシティ <input id="roll-velocity" type="number" min="1" max="127" value="90"></label>
-                        <label class="zoom-control">横ズーム <input id="roll-zoom" type="range" min="24" max="144" value="64" aria-label="ピアノロールの横ズーム"></label>
+                        <label class="zoom-control">横ズーム <input id="roll-zoom" type="range" min="0.125" max="144" step="any" value="64" aria-label="ピアノロールの横ズーム"></label>
+                        <label class="zoom-control">縦ズーム <input id="roll-vertical-zoom" type="range" min="1" max="38" step="any" value="18" aria-label="ピアノロールの縦ズーム"></label>
+                        <button id="roll-fit" class="secondary" type="button">全音符を表示</button>
                     </div>
                     <div class="roll-surface">
                         <div id="roll-scroll" tabindex="0" role="region" aria-label="音符グリッド" aria-describedby="roll-help">
@@ -383,12 +389,73 @@
         </form>
     </dialog>
 
+    <dialog id="track-overrides" aria-labelledby="track-overrides-title">
+        <form id="track-overrides-form" method="dialog">
+            <h2 id="track-overrides-title">伴奏トラックの上書き</h2>
+            <p id="track-overrides-status" role="status"></p>
+            <label class="field">元のトラック <select id="override-source"></select></label>
+            <label class="field">置き換えるリズム <select id="override-rhythm"></select></label>
+            <label class="field">置き換えるトラック <select id="override-destination"></select></label>
+            <label class="field">バリエーション <select id="override-variation"></select></label>
+            <ul id="track-override-list"></ul>
+            <div class="dialog-actions">
+                <button id="clear-track-override" type="button" class="secondary">この上書きを解除</button>
+                <button id="close-track-overrides" type="button" class="secondary">閉じる</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="custom-phrase" aria-labelledby="custom-phrase-title">
+        <form id="custom-phrase-form" method="dialog">
+            <h2 id="custom-phrase-title">区間のカスタムフレーズ</h2>
+            <p id="custom-phrase-status" role="status" hidden></p>
+            <label class="field">伴奏トラック <select id="custom-phrase-track"></select></label>
+            <div class="dialog-actions">
+                <button id="clear-custom-phrase" type="button" class="secondary">元のフレーズに戻す</button>
+                <button id="cancel-custom-phrase" type="button" class="secondary">キャンセル</button>
+                <button type="submit">音符を編集</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="drum-transforms" aria-labelledby="drum-transforms-title">
+        <form id="drum-transforms-form" method="dialog">
+            <h2 id="drum-transforms-title">区間のドラム変形</h2>
+            <p id="drum-transform-status" role="status" hidden></p>
+            <label class="field">追加する変形 <select id="drum-transform-type"></select></label>
+            <button id="add-drum-transform" class="secondary" type="button">追加</button>
+            <div id="drum-transform-chain"></div>
+            <fieldset>
+                <legend>楽器別の強弱補正</legend>
+                <div id="drum-transform-offsets"></div>
+            </fieldset>
+            <div class="dialog-actions">
+                <button id="cancel-drum-transforms" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="part-mute-editor" aria-labelledby="part-mute-title">
         <form id="part-mute-form" method="dialog">
             <h2 id="part-mute-title">区間のミュート</h2>
             <div id="part-mute-tracks"></div>
             <div class="dialog-actions">
                 <button id="cancel-part-mute" class="secondary" type="button">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="roll-humanize-dialog" aria-labelledby="humanize-title">
+        <form id="roll-humanize-form" method="dialog">
+            <h2 id="humanize-title">ヒューマナイズ</h2>
+            <label class="field">タイミングのばらつき <input id="humanize-timing" type="range" min="0" max="100" value="20"><output for="humanize-timing">20%</output></label>
+            <label class="field">タイミングの前後 <input id="humanize-bias" type="range" min="-50" max="50" value="0"><output for="humanize-bias">0%</output></label>
+            <label class="field">ベロシティのばらつき <input id="humanize-velocity" type="range" min="0" max="100" value="20"><output for="humanize-velocity">20%</output></label>
+            <label class="check"><input id="humanize-selection" type="checkbox"> 選択した音符だけ</label>
+            <div class="dialog-actions">
+                <button id="cancel-humanize" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
         </form>
@@ -435,6 +502,9 @@
     </div>
     <div id="part-context" class="bar-context" role="group" aria-label="曲構成の操作" hidden>
         <button type="button" data-action="edit">演奏区間を編集</button>
+        <button type="button" data-action="track-overrides">伴奏トラックの上書き…</button>
+        <button type="button" data-action="custom-phrase">区間のカスタムフレーズ…</button>
+        <button type="button" data-action="drum-transforms">区間のドラム変形…</button>
         <button type="button" data-action="duplicate">複製</button>
         <button type="button" data-action="remove">削除</button>
         <button type="button" data-action="play">ここから再生</button>
@@ -460,6 +530,7 @@
     </div>
     <div id="roll-context" class="bar-context" role="group" aria-label="音符編集" hidden>
         <button data-action="select" type="button">選択</button>
+        <button data-action="invert" type="button">選択を反転</button>
         <button data-action="draw" type="button">描画</button>
         <button data-action="erase" type="button">消去</button>
         <button data-action="copy" type="button">コピー</button>

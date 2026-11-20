@@ -106,6 +106,9 @@ class SongEditor {
             this.partMenu.hidden = true;
             const index = this.selectedPart;
             if (action === "edit") this.openPartEditor(index);
+            if (action === "track-overrides") void this.openTrackOverrides(index);
+            if (action === "drum-transforms") void this.openDrumTransforms(index);
+            if (action === "custom-phrase") void this.openCustomPhrases(index);
             if (action === "duplicate") this.duplicatePart(index);
             if (action === "remove") this.removePart(index);
             if (action === "play" || action === "play-selection") this.playPart(index, action === "play");
@@ -911,6 +914,247 @@ class SongEditor {
             this.selectPart(index, true);
         };
         this.partDialog.showModal();
+    }
+
+    async openTrackOverrides(index) {
+        const part = this.project.parts[index];
+        if (!part) return;
+        const parameter = "RP_SYS_OverrideTracksID";
+        const dialog = document.querySelector("#track-overrides");
+        const form = document.querySelector("#track-overrides-form");
+        const status = document.querySelector("#track-overrides-status");
+        const source = document.querySelector("#override-source");
+        const rhythm = document.querySelector("#override-rhythm");
+        const destination = document.querySelector("#override-destination");
+        const variation = document.querySelector("#override-variation");
+        const clear = document.querySelector("#clear-track-override");
+        const apply = form.querySelector('[type="submit"]');
+        const entries = new Map(DesktopSongFiles.readTrackOverrides(part.parameters[parameter]).map(entry => [entry.source, entry]));
+        const sourceStyle = DesktopSongFiles.sourceStyleId(part.styleId);
+        const choices = this.onStyleChoices();
+        if (!choices.has(sourceStyle)) choices.set(sourceStyle, part.styleName || sourceStyle);
+        for (const { rhythm } of entries.values()) {
+            if (!choices.has(rhythm)) choices.set(rhythm, rhythm.replace(/-ID$/u, ""));
+        }
+        const styles = new Map();
+        const describe = id => {
+            if (!styles.has(id)) styles.set(id, this.onDescribeRhythm(id));
+            return styles.get(id);
+        };
+        let base, pending = 0;
+        const updateDestinations = async useSaved => {
+            const request = ++pending;
+            const saved = useSaved ? entries.get(source.value) : undefined;
+            clear.disabled = !entries.has(source.value);
+            rhythm.disabled = !base;
+            destination.disabled = variation.disabled = apply.disabled = true;
+            destination.replaceChildren();
+            variation.replaceChildren();
+            status.textContent = t("リズムを読み込んでいます…", "Loading rhythm…");
+            try {
+                const style = await describe(rhythm.value);
+                if (!dialog.open || request !== pending) return;
+                const voice = base.voices.find(voice => voice.name === source.value);
+                const drums = type => type === "DRUMS" || type === "PERCUSSION";
+                const compatible = style.voices.filter(candidate => drums(candidate.type) === drums(voice?.type));
+                destination.replaceChildren(...compatible.map(voice => new Option(voice.name, voice.name)));
+                const choice = compatible.find(voice => voice.name === saved?.destination)
+                    ?? compatible.find(candidate => candidate.type === voice?.type) ?? compatible[0];
+                if (choice) destination.value = choice.name;
+                variation.replaceChildren(new Option(t("自動", "Auto"), ""), ...style.variations.map(name => new Option(name, name)));
+                variation.value = style.variations.includes(saved?.variation) ? saved.variation : "";
+                destination.disabled = variation.disabled = apply.disabled = !choice;
+                status.textContent = choice ? "" : t("同じ種別のトラックがありません。", "This rhythm has no compatible tracks.");
+            } catch (error) {
+                if (dialog.open && request === pending) status.textContent = error.message;
+            }
+        };
+        const save = entry => {
+            if (this.project.parts[index] !== part) return dialog.close();
+            if (entry) entries.set(source.value, entry);
+            else entries.delete(source.value);
+            const saved = DesktopSongFiles.writeTrackOverrides([...entries.values()]);
+            this.editArrangement(() => {
+                if (saved) part.parameters[parameter] = saved;
+                else delete part.parameters[parameter];
+            });
+            dialog.close();
+            this.selectPart(index, true);
+        };
+        source.replaceChildren();
+        destination.replaceChildren();
+        variation.replaceChildren();
+        source.disabled = rhythm.disabled = destination.disabled = variation.disabled = apply.disabled = clear.disabled = true;
+        rhythm.replaceChildren(...Array.from(choices, ([id, name]) => new Option(name, id)));
+        document.querySelector("#track-override-list").replaceChildren(...Array.from(entries.values(), entry => {
+            const item = document.createElement("li");
+            item.textContent = `${entry.source} → ${choices.get(entry.rhythm)} / ${entry.destination}${entry.variation ? " · " + entry.variation : ""}`;
+            return item;
+        }));
+        source.onchange = () => {
+            rhythm.value = entries.get(source.value)?.rhythm ?? sourceStyle;
+            void updateDestinations(true);
+        };
+        rhythm.onchange = () => void updateDestinations(false);
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (!apply.disabled) save({ source: source.value, rhythm: rhythm.value, destination: destination.value, variation: variation.value });
+        };
+        clear.onclick = () => save(null);
+        document.querySelector("#close-track-overrides").onclick = () => dialog.close();
+        status.textContent = t("リズムを読み込んでいます…", "Loading rhythm…");
+        dialog.showModal();
+        try {
+            base = await describe(sourceStyle);
+            if (!dialog.open || this.project.parts[index] !== part) return;
+            source.replaceChildren(...base.voices.map(voice => new Option(voice.name, voice.name)));
+            source.disabled = !base.voices.length;
+            if (entries.size && base.voices.some(voice => voice.name === entries.keys().next().value)) source.value = entries.keys().next().value;
+            rhythm.value = entries.get(source.value)?.rhythm ?? sourceStyle;
+            if (!source.disabled) await updateDestinations(true);
+        } catch (error) {
+            if (dialog.open) status.textContent = error.message;
+        }
+    }
+
+    async openDrumTransforms(index) {
+        const part = this.project.parts[index];
+        if (!part) return;
+        const parameter = "RP_SYS_DrumsTransformId";
+        const mixId = "DrumsMixIdhidden";
+        const saved = part.parameters[parameter] ?? "[]";
+        const chain = saved.slice(1, -1).split("|").filter(Boolean);
+        const mix = chain.find(entry => entry.split("#", 1)[0] === mixId);
+        const transforms = chain.filter(entry => entry !== mix);
+        const offsets = new Map((mix?.split("#")[1] ?? "").split(",").filter(Boolean).map(entry => entry.split("=")));
+        const dialog = document.querySelector("#drum-transforms");
+        const form = document.querySelector("#drum-transforms-form");
+        const status = document.querySelector("#drum-transform-status");
+        const type = document.querySelector("#drum-transform-type");
+        const add = document.querySelector("#add-drum-transform");
+        const list = document.querySelector("#drum-transform-chain");
+        const submit = form.querySelector('[type="submit"]');
+        const controls = document.querySelector("#drum-transform-offsets");
+        const choices = new Map();
+        const render = () => {
+            list.replaceChildren(...transforms.map((entry, index) => {
+                const id = entry.split("#", 1)[0];
+                const row = document.createElement("div");
+                const label = document.createElement("span");
+                label.textContent = choices.get(id) ?? id;
+                const move = displacement => {
+                    const target = index + displacement;
+                    if (target < 0 || target >= transforms.length) return;
+                    [transforms[index], transforms[target]] = [transforms[target], transforms[index]];
+                    render();
+                };
+                const up = this.button("↑", () => move(-1));
+                up.setAttribute("aria-label", t("上へ移動", "Move up"));
+                up.disabled = !index;
+                const down = this.button("↓", () => move(1));
+                down.setAttribute("aria-label", t("下へ移動", "Move down"));
+                down.disabled = index === transforms.length - 1;
+                const remove = this.button(t("削除", "Delete"), () => { transforms.splice(index, 1); render(); });
+                row.append(label, up, down, remove);
+                return row;
+            }));
+        };
+        const inputs = [["BASS", "バスドラム"], ["SNARE", "スネア"], ["HI_HAT", "ハイハット"], ["TOM", "タム"],
+            ["CRASH", "クラッシュ"], ["CYMBAL", "シンバル"], ["PERCUSSION", "パーカッション"]].map(([key, name]) => {
+            const label = document.createElement("label");
+            label.className = "field";
+            const input = document.createElement("input");
+            input.type = "number"; input.min = -64; input.max = 64; input.required = true;
+            input.value = offsets.get(key) ?? 0;
+            input.dataset.drumOffset = key;
+            label.append(t(name), input);
+            return label;
+        });
+        controls.replaceChildren(...inputs);
+        type.replaceChildren();
+        add.disabled = submit.disabled = type.disabled = true;
+        status.hidden = false;
+        status.textContent = t("リズムを読み込んでいます…", "Loading rhythm…");
+        document.querySelector("#cancel-drum-transforms").onclick = () => dialog.close();
+        add.onclick = () => { transforms.push(type.value + "#"); render(); };
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (submit.disabled || this.project.parts[index] !== part) return;
+            for (const field of controls.querySelectorAll("input")) {
+                if (field.valueAsNumber) offsets.set(field.dataset.drumOffset, String(field.valueAsNumber));
+                else offsets.delete(field.dataset.drumOffset);
+            }
+            const properties = Array.from(offsets, ([key, value]) => key + "=" + value).join(",");
+            const value = "[" + [...transforms, mixId + "#" + properties].join("|") + "]";
+            if (saved !== value) this.editArrangement(() => {
+                if (transforms.length || properties) part.parameters[parameter] = value;
+                else delete part.parameters[parameter];
+            });
+            dialog.close();
+            this.selectPart(index, true);
+        };
+        render();
+        dialog.showModal();
+        try {
+            const style = await this.onDescribeRhythm(part.styleId);
+            if (!dialog.open || this.project.parts[index] !== part) return;
+            if (!style.voices.some(voice => voice.type === "DRUMS")) {
+                status.textContent = t("このリズムにドラムトラックがありません。", "This rhythm has no drums track.");
+                return;
+            }
+            const available = await this.onDrumTransformChoices();
+            if (!dialog.open || this.project.parts[index] !== part) return;
+            for (const [id, name] of available) choices.set(id, name);
+            type.replaceChildren(...Array.from(choices, ([id, name]) => new Option(name, id)));
+            add.disabled = type.disabled = !choices.size;
+            submit.disabled = false;
+            status.hidden = true;
+            render();
+        } catch (error) {
+            if (dialog.open) status.textContent = error.message;
+        }
+    }
+
+    async openCustomPhrases(index) {
+        const part = this.project.parts[index];
+        if (!part) return;
+        const dialog = document.querySelector("#custom-phrase");
+        const form = document.querySelector("#custom-phrase-form");
+        const status = document.querySelector("#custom-phrase-status");
+        const track = document.querySelector("#custom-phrase-track");
+        const clear = document.querySelector("#clear-custom-phrase");
+        const edit = form.querySelector('[type="submit"]');
+        const saved = DesktopSongFiles.readCustomPhrases(part.parameters.RP_SYS_CustomPhraseId);
+        status.hidden = false;
+        status.textContent = t("リズムを読み込んでいます…", "Loading rhythm…");
+        track.replaceChildren();
+        track.disabled = clear.disabled = edit.disabled = true;
+        document.querySelector("#cancel-custom-phrase").onclick = () => dialog.close();
+        track.onchange = () => { clear.disabled = !saved.has(track.value); };
+        clear.onclick = () => {
+            if (this.project.parts[index] === part) this.editArrangement(() => DesktopSongFiles.setCustomPhrase(part, track.value));
+            dialog.close();
+            this.selectPart(index, true);
+        };
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (edit.disabled) return;
+            const voice = track.value;
+            dialog.close();
+            void this.onEditCustomPhrase(index, voice);
+        };
+        dialog.showModal();
+        try {
+            const style = await this.onDescribeRhythm(part.styleId);
+            if (!dialog.open || this.project.parts[index] !== part) return;
+            track.replaceChildren(...style.voices.map(voice => new Option(voice.name + (saved.has(voice.name) ? " ✎" : ""), voice.name)));
+            if (saved.size && style.voices.some(voice => saved.has(voice.name))) track.value = style.voices.find(voice => saved.has(voice.name)).name;
+            track.disabled = edit.disabled = !style.voices.length;
+            track.onchange();
+            status.hidden = true;
+        } catch (error) {
+            if (dialog.open) status.textContent = error.message;
+        }
     }
 
     renderPart(part, range, colors, visibleRows) {

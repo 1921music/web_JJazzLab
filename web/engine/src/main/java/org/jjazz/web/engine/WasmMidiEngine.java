@@ -5,15 +5,24 @@ import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.text.ParseException;
 import java.util.Arrays;
+import java.util.HashMap;
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
 import org.jjazz.chordleadsheet.api.item.ExtChordSymbol;
 import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
 import org.jjazz.harmony.spi.ScaleManager;
+import org.jjazz.harmony.api.TimeSignature;
+import org.jjazz.humanizer.api.Humanizer;
+import org.jjazz.phrase.api.NoteEvent;
 import org.jjazz.phrase.api.Phrase;
 import org.jjazz.phrase.api.Phrases;
+import org.jjazz.phrasetransform.api.PhraseTransform;
+import org.jjazz.phrasetransform.api.PhraseTransformCategory;
+import org.jjazz.phrasetransform.api.PhraseTransformManager;
+import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
+import org.jjazz.utilities.api.FloatRange;
 import org.teavm.jso.JSExport;
 
 /** JavaScript entry point for generating a General MIDI accompaniment. */
@@ -45,6 +54,38 @@ public final class WasmMidiEngine
             phrases.stream().filter(phrase -> phrase.getChannel() == channel).findFirst().ifPresent(result::add);
         }
         return Phrase.saveAsString(result);
+    }
+
+    @JSExport
+    public static String humanizePhrase(String source, String selection, String meter, float endBeat, int tempo,
+            float timing, float bias, float velocity) throws ParseException
+    {
+        var phrase = Phrase.loadAsString(source);
+        if (phrase.isEmpty()) return source;
+        float end = Math.max(endBeat, phrase.getNotesBeatRange().to);
+        var humanizer = new Humanizer(phrase, TimeSignature.valueOf(meter), new FloatRange(0, end), null, tempo);
+        if (selection.isEmpty())
+        {
+            humanizer.registerNotes(phrase);
+        } else
+        {
+            var selectedCounts = new HashMap<String, Integer>();
+            for (var note : Phrase.loadAsString(selection))
+            {
+                selectedCounts.merge(NoteEvent.saveAsString(note), 1, Integer::sum);
+            }
+            var selected = phrase.stream().filter(note ->
+            {
+                String key = NoteEvent.saveAsString(note);
+                if (selectedCounts.getOrDefault(key, 0) == 0) return false;
+                selectedCounts.computeIfPresent(key, (ignored, count) -> count - 1);
+                return true;
+            }).toList();
+            humanizer.registerNotes(selected);
+        }
+        humanizer.setConfig(new Humanizer.Config(timing, bias, velocity));
+        humanizer.humanize();
+        return Phrase.saveAsString(phrase);
     }
 
     @JSExport
@@ -269,6 +310,43 @@ public final class WasmMidiEngine
         {
             return getStyleInfo(style.file(), extension.file());
         }
+    }
+
+    @JSExport
+    public static String[] getRhythmVoices(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        WebServices.install();
+        if (name.isEmpty())
+        {
+            return voiceInfo(WebJJSwing.rhythm());
+        }
+        try (var style = new RawStyleFile(bytes, name))
+        {
+            if (extensionName.isEmpty())
+            {
+                return voiceInfo(MidiGeneration.createYamahaRhythm(style.file(), null));
+            }
+            try (var extension = RawStyleFile.extension(extensionBytes, extensionName))
+            {
+                return voiceInfo(MidiGeneration.createYamahaRhythm(style.file(), extension.file()));
+            }
+        }
+    }
+
+    @JSExport
+    public static String[] getDrumTransforms()
+    {
+        WebServices.install();
+        return PhraseTransformManager.getDefault().getPhraseTransforms(PhraseTransformCategory.DRUMS).stream()
+                .map(PhraseTransform::getInfo)
+                .filter(info -> !info.getUniqueId().contains(PhraseTransform.HIDDEN_ID_TOKEN))
+                .map(info -> info.getUniqueId() + "\t" + info.getName())
+                .toArray(String[]::new);
+    }
+
+    private static String[] voiceInfo(Rhythm rhythm)
+    {
+        return rhythm.getRhythmVoices().stream().map(voice -> voice.getName() + "\t" + voice.getType().name()).toArray(String[]::new);
     }
 
     private static String[] getStyleInfo(File style, File extension) throws Exception

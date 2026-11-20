@@ -48,7 +48,9 @@ class AccompanimentPlayer {
             this.node?.disconnect();
             this.node = new AudioWorkletNode(this.context, "soundfont-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
             this.node.port.onmessage = ({ data }) => {
-                if (data.type === "position") this.onPosition(data);
+                if (data.type === "position") {
+                    if (!data.preview) this.onPosition(data);
+                }
                 else if (data.type === "error") { this.ready = false; this.onError(data.error); }
                 else if (this.waiting.has(data.id)) {
                     const request = this.waiting.get(data.id); this.waiting.delete(data.id);
@@ -89,7 +91,11 @@ class AccompanimentPlayer {
     }
 
     async play(song, loop, parts, master, startFromSelection = false, settings = {}) {
-        if (this.loadedSong !== song) { await this.send("song", { song, loop }); this.loadedSong = song; }
+        this.previewing = Boolean(settings.preview);
+        if (this.loadedSong !== song) {
+            await this.send("song", { song, loop, preview: this.previewing });
+            this.loadedSong = song;
+        }
         await this.send("loop", { loop });
         await this.send("mix", { parts, master });
         await this.send("play", { startFromSelection, ...settings });
@@ -99,6 +105,10 @@ class AccompanimentPlayer {
     async pause() { if (this.ready) await this.send("pause"); }
     async panic() { if (this.ready) await this.send("panic"); }
     async click(enabled) { if (this.ready) await this.send("click", { enabled }); }
-    mix(parts, master) { if (this.ready && this.loadedSong) this.send("mix", { parts, master }).catch(error => this.onError(error.message)); }
-    loop(loop) { if (this.ready && this.loadedSong) this.send("loop", { loop }).catch(error => this.onError(error.message)); }
+    mix(parts, master) {
+        if (this.ready && this.loadedSong && !this.previewing) this.send("mix", { parts, master }).catch(error => this.onError(error.message));
+    }
+    loop(loop) {
+        if (this.ready && this.loadedSong && !this.previewing) this.send("loop", { loop }).catch(error => this.onError(error.message));
+    }
 }

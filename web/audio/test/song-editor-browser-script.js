@@ -323,6 +323,67 @@
         document.querySelector("#open-piano-roll").click();
         check(!pianoRoll.panel.hidden && pianoRoll.name === "User1" && pianoRoll.phrase.notes.length === 4,
             "The note editor did not open an imported user track");
+        const originalZoom = [pianoRoll.pixels, pianoRoll.rowHeight];
+        const zoomWheel = options => pianoRoll.scroll.dispatchEvent(new WheelEvent("wheel", {
+            ctrlKey: true, deltaY: -100, cancelable: true, ...options
+        }));
+        zoomWheel({});
+        check(pianoRoll.pixels > originalZoom[0] && pianoRoll.rowHeight === originalZoom[1], "Ctrl+wheel did not zoom horizontally");
+        zoomWheel({ shiftKey: true });
+        check(pianoRoll.rowHeight > originalZoom[1], "Ctrl+Shift+wheel did not zoom vertically");
+        pianoRoll.select([pianoRoll.phrase.notes[0]]);
+        pianoRoll.scroll.dispatchEvent(new KeyboardEvent("keydown", { ctrlKey: true, shiftKey: true, key: "I", cancelable: true }));
+        check(pianoRoll.selection.size === 3 && !pianoRoll.selection.has(pianoRoll.phrase.notes[0]), "Selection inversion missed notes");
+        document.querySelector("#roll-fit").click();
+        const visibleNotes = pianoRoll.phrase.notes.every(note =>
+            note.position * pianoRoll.pixels >= pianoRoll.scroll.scrollLeft - 1
+            && (note.position + note.duration) * pianoRoll.pixels <= pianoRoll.scroll.scrollLeft + pianoRoll.scroll.clientWidth - PIANO_KEYS + 1
+            && (127 - note.pitch) * pianoRoll.rowHeight >= pianoRoll.scroll.scrollTop - 1
+            && (128 - note.pitch) * pianoRoll.rowHeight <= pianoRoll.scroll.scrollTop + pianoRoll.scroll.clientHeight - PIANO_RULER + 1);
+        check(visibleNotes, "Fit did not place all notes in the viewport");
+        pianoRoll.zoom(...originalZoom);
+        report.pianoRollNavigation = true;
+        const beforeHumanize = pianoRoll.saved;
+        const untouched = pianoRoll.phrase.notes.slice(1);
+        const affected = pianoRoll.phrase.notes[0];
+        pianoRoll.select([affected]);
+        document.querySelector("#roll-humanize").click();
+        document.querySelector("#humanize-timing").value = "0";
+        document.querySelector("#humanize-bias").value = "50";
+        document.querySelector("#humanize-velocity").value = "0";
+        document.querySelector("#roll-humanize-form").requestSubmit();
+        for (let attempt = 0; pianoRoll.saved === beforeHumanize && attempt < 50; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        check(pianoRoll.phrase.notes.some(note => note.pitch === affected.pitch && note.velocity === affected.velocity
+            && Math.abs(note.position - affected.position - .1) < .0001)
+            && untouched.every(original => pianoRoll.phrase.notes.some(note =>
+                note.pitch === original.pitch && note.position === original.position && note.velocity === original.velocity)),
+            `Humanize did not apply timing bias only to the selection: ${editor.status.textContent}`);
+        editor.undoButton.click();
+        check(pianoRoll.saved === beforeHumanize, "Undo did not restore the original humanized phrase");
+        report.humanize = true;
+        await pianoRoll.onSolo("User1");
+        check(mixerParts.find(part => part.name === "User1").solo && pianoRoll.soloButton.getAttribute("aria-pressed") === "true",
+            "The piano roll Solo did not reach the Mix Console");
+        document.querySelector("#clear-solo").click();
+        check(pianoRoll.soloButton.getAttribute("aria-pressed") === "false", "The piano roll did not track a Mixer Solo change");
+        pianoRoll.scroll.scrollLeft = 0;
+        pianoRoll.followButton.click();
+        pianoRoll.position(100, .25, true);
+        check(pianoRoll.scroll.scrollLeft === 0 && Number.isFinite(pianoRoll.playhead), "Disabling follow hid the playhead or scrolled the roll");
+        pianoRoll.followButton.click();
+        pianoRoll.position(100, .25, true);
+        check(pianoRoll.scroll.scrollLeft > 0, "Enabling follow did not scroll to the playhead");
+        pianoRoll.position(1, 0, false);
+        pianoRoll.scroll.scrollLeft = 0;
+        pianoRoll.select([pianoRoll.phrase.notes[0]]);
+        pianoRoll.auditionButton.click();
+        await pendingAudition;
+        check(player.previewing && !playing && player.loadedSong.events.some(event => event.type === 0x90 && event.a === affected.pitch),
+            "Audition did not send the selected note without starting the song transport");
+        pianoRoll.auditionButton.click();
+        report.pianoRollPlayback = true;
         const originalNote = pianoRoll.phrase.notes[0];
         pianoRoll.select([originalNote]);
         document.querySelector("#roll-pitch").value = "74";
@@ -747,10 +808,26 @@
             check(sameNotes.some((note, position) => position && note[0] === sameNotes[position - 1][0]
                 && note[1] !== sameNotes[position - 1][1]), "Overridden Bass did not use the saved polyphonic Chord2 voice");
 
-            const crossStyle = structuredClone(speak);
-            crossStyle.parts[externalIndex].parameters.RP_SYS_OverrideTracksID =
-                external.parameters.RP_SYS_OverrideTracksID.replace("16BeatBallad.T547.prs", "16BeatBallad2.S014.prs");
-            const crossNotes = notesIn(await renderFixture(crossStyle, speakMix), externalIndex, bass);
+            const override = DesktopSongFiles.readTrackOverrides(external.parameters.RP_SYS_OverrideTracksID)
+                .find(entry => entry.rhythm === "16BeatBallad.T547.prs-ID");
+            await editor.openTrackOverrides(externalIndex);
+            const replacement = document.querySelector("#override-rhythm");
+            const destination = document.querySelector("#override-destination");
+            const variation = document.querySelector("#override-variation");
+            const overrideForm = document.querySelector("#track-overrides-form");
+            replacement.value = "16BeatBallad2.S014.prs-ID";
+            replacement.dispatchEvent(new Event("change"));
+            for (let attempt = 0; destination.disabled && attempt < 100; attempt++) {
+                await new Promise(resolve => setTimeout(resolve, 20));
+            }
+            check(!destination.disabled, document.querySelector("#track-overrides-status").textContent);
+            destination.value = override.destination;
+            variation.value = override.variation ?? "";
+            check(destination.value === override.destination, "The replacement style did not offer the saved destination voice");
+            overrideForm.requestSubmit();
+            const crossStyle = structuredClone(editor.project);
+            await generate();
+            const crossNotes = notesIn(song, externalIndex, bass);
             check(crossNotes.length > 0 && JSON.stringify(crossNotes) !== JSON.stringify(notesIn(nativeSpeak, externalIndex, bass)),
                 "A donor that is absent from the song structure did not replace the Bass track");
             check(!mixerParts.some(track => track.styleId === "16BeatBallad2.S014.prs-ID")
@@ -758,8 +835,47 @@
             const roundTripSpeak = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
             check(roundTripSpeak.parts[externalIndex].parameters.RP_SYS_OverrideTracksID
                 === crossStyle.parts[externalIndex].parameters.RP_SYS_OverrideTracksID, "The external override did not round-trip");
+            await editor.openTrackOverrides(externalIndex);
+            document.querySelector("#clear-track-override").click();
+            check(!DesktopSongFiles.readTrackOverrides(editor.project.parts[externalIndex].parameters.RP_SYS_OverrideTracksID)
+                .some(entry => entry.source === override.source), "Clearing an override did not remove the selected mapping");
+            editor.undoButton.click();
+            check(editor.project.parts[externalIndex].parameters.RP_SYS_OverrideTracksID ===
+                crossStyle.parts[externalIndex].parameters.RP_SYS_OverrideTracksID, "Undo did not restore the override");
             report.overrides = { sameRhythmNotes: sameNotes.length, externalStyleNotes: crossNotes.length,
-                sameRhythmNoteDigest: await noteDigest(sameNotes), externalStyleNoteDigest: await noteDigest(crossNotes) };
+                sameRhythmNoteDigest: await noteDigest(sameNotes), externalStyleNoteDigest: await noteDigest(crossNotes),
+                editedInUi: true };
+
+            await editor.openCustomPhrases(sameIndex);
+            document.querySelector("#custom-phrase-track").value = "Bass";
+            document.querySelector("#custom-phrase-form").requestSubmit();
+            for (let attempt = 0; !pianoRoll.custom && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+            const partRange = editor.partRanges()[sameIndex];
+            check(pianoRoll.custom?.index === sameIndex && pianoRoll.name === "Bass"
+                && pianoRoll.boundaries.length === partRange.to - partRange.from + 2 && pianoRoll.phrase.notes.length,
+                `The custom phrase did not open at the start of the selected song part: ${editor.status.textContent}`);
+            const originalPhrase = pianoRoll.saved;
+            const accentNote = { position: .25, duration: .25, pitch: 93, velocity: 117 };
+            pianoRoll.commit([...pianoRoll.phrase.notes, accentNote], [accentNote]);
+            const reopened = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+            const custom = DesktopSongFiles.readCustomPhrases(reopened.parts[sameIndex].parameters.RP_SYS_CustomPhraseId);
+            check(UserPhrase.read(custom.get("Bass")).notes.some(note => note.pitch === 93 && note.position === .25),
+                "The custom phrase was lost in .sng output");
+            await generate();
+            check(notesIn(song, sameIndex, bass).some(note => note[1] === 93)
+                && !notesIn(song, externalIndex, bass).some(note => note[1] === 93),
+                "The edited note did not play only in its selected song part");
+            editor.undoButton.click();
+            check(pianoRoll.saved === originalPhrase, "Undo did not restore the starting phrase");
+            editor.redoButton.click();
+            pianoRoll.close();
+            await editor.openCustomPhrases(sameIndex);
+            document.querySelector("#custom-phrase-track").value = "Bass";
+            document.querySelector("#custom-phrase-track").dispatchEvent(new Event("change"));
+            document.querySelector("#clear-custom-phrase").click();
+            check(!DesktopSongFiles.readCustomPhrases(editor.project.parts[sameIndex].parameters.RP_SYS_CustomPhraseId).has("Bass"),
+                "Restoring the original phrase did not remove the Bass replacement");
+            report.customPhraseEditing = true;
 
             const petite = desktopFixture.multiStyle.find(fixture => fixture.name.startsWith("PetiteFleur"));
             if (petite) {
@@ -773,11 +889,20 @@
                 const baseline = notesIn(await renderFixture(neutralDrums, mix), index, drums);
                 check(transformed.length && baseline.length && transformed.some(note => baseline.some(other =>
                     note[0] === other[0] && note[1] === other[1] && note[2] < other[2])), "Saved drum mix did not reduce note velocity");
-                const layered = structuredClone(score);
-                layered.parts[index].parameters.RP_SYS_DrumsTransformId = "[AddTambourineEightsId#|DrumsMixIdhidden#]";
-                const tambourine = notesIn(await renderFixture(layered, mix), index, drums);
+                await editor.openDrumTransforms(index);
+                const type = document.querySelector("#drum-transform-type");
+                type.value = "AddTambourineEightsId";
+                check(type.value === "AddTambourineEightsId", document.querySelector("#drum-transform-status").textContent);
+                document.querySelector("#add-drum-transform").click();
+                document.querySelector('[data-drum-offset="SNARE"]').value = "-20";
+                document.querySelector("#drum-transforms-form").requestSubmit();
+                const layered = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+                check(layered.parts[index].parameters.RP_SYS_DrumsTransformId === "[AddTambourineEightsId#|DrumsMixIdhidden#SNARE=-20]",
+                    "The drum transform edit lost its pattern or velocity offset in the saved song");
+                await generate();
+                const tambourine = notesIn(song, index, drums);
                 check(tambourine.filter(note => note[1] === 54).length > baseline.filter(note => note[1] === 54).length,
-                    "The built-in Tambourine pattern was not restored from a saved transform chain");
+                    "The built-in Tambourine pattern was not applied from the edited transform chain");
                 // The desktop AccentProcessor may insert or choose a crash at random.
                 const withoutCrash = notes => notes.filter(note => ![49, 52, 55, 57].includes(note[1]));
                 report.drumsTransform = { originalNotes: transformed.length, addedTambourineNotes: tambourine.length - baseline.length,

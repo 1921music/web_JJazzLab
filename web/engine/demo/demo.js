@@ -195,6 +195,8 @@ const loopStatus = document.querySelector("#loop-status");
 const player = new AccompanimentPlayer(updatePosition, (message) => {
     paused = playing = false; starting = false; updateButtons(); showPlayStatus(message, true);
 });
+let pendingAudition = Promise.resolve();
+let auditionRequest = 0;
 
 function updateButtons() {
     generateButton.disabled = tempoInput.disabled = generating || starting;
@@ -202,6 +204,8 @@ function updateButtons() {
         = document.querySelector("#open-project").disabled = quickMode.disabled = generating || starting;
     playButton.disabled = generating || starting || playing;
     stopButton.disabled = generating || starting || (!playing && !paused && playbackBar === 1);
+    pianoRoll.auditionButton.disabled = generating || starting || playing || paused;
+    pianoRoll.soloButton.disabled = generating || starting;
     pauseButton.disabled = generating || starting || !playing;
     playButton.setAttribute("aria-pressed", String(playing));
     stopButton.setAttribute("aria-pressed", String(!playing && !paused));
@@ -290,6 +294,19 @@ function applyMix() {
         });
     }
     player.mix(mixerParts, Number(masterInput.value) / 100);
+    updateRollSolo();
+}
+
+function updateRollSolo() {
+    const track = rollMixPart();
+    pianoRoll.soloButton.setAttribute("aria-pressed", String(Boolean(track?.solo)));
+}
+
+function rollMixPart() {
+    if (!pianoRoll.custom) return mixerParts.find(part => part.source === "user" && part.name === pianoRoll.name);
+    const styleId = DesktopSongFiles.sourceStyleId(editor.project.parts[pianoRoll.custom.index].styleId);
+    const track = editor.mix.find(item => item.rhythmId === styleId && item.name === pianoRoll.name);
+    return track && mixerParts.find(part => part.channel === track.channel);
 }
 
 function updateMixerButtons() {
@@ -513,6 +530,7 @@ function renderMixer() {
     container.replaceChildren();
     document.querySelector("#mixer-empty").hidden = mixerParts.length > 0;
     updateMixerButtons();
+    updateRollSolo();
     const notes = Map.groupBy(song?.events.filter(event => event.type === 0x90 && event.b) ?? [], event => event.part);
     const styleIds = new Set(mixerParts.map(part => part.styleId).filter(Boolean));
     const all = new Option(t("すべてのリズム", "All rhythms"), "");
@@ -645,6 +663,7 @@ async function startPlayback(restart = false, stopAtEnd = false) {
         audio.catch(() => {});
         if (refresh && !await generateAccompaniment(true)) return;
         await audio;
+        await pendingAudition;
         await player.play(song, readLoop(), mixerParts, Number(masterInput.value) / 100, Boolean(editor.project), {
             resume: paused && !restart && !refresh,
             stopAtEnd,
@@ -884,16 +903,63 @@ openProject.onchange = async () => {
     if (editor.project !== previous && !mixer.hidden) prepareMixer.click();
 };
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
-const pianoRoll = new PianoRoll(editor, range => {
+const pianoRoll = new PianoRoll(editor, (range, stopAtEnd) => {
     chosenRange = range;
     if (song && range.to < song.barTimes.length) {
         loopStart.value = range.from;
         loopEnd.value = range.to;
     }
-    startPlayback(true);
+    startPlayback(true, stopAtEnd);
 });
 pianoRoll.onTracksChanged = () => {
     if (song && !playing && !paused) void generateAccompaniment();
+};
+pianoRoll.onTrackOpened = updateRollSolo;
+pianoRoll.onSolo = async name => {
+    if (!name || generating || starting) return;
+    if ((!song || accompanimentDirty) && !playing && !paused && !await generateAccompaniment()) return;
+    const track = rollMixPart();
+    if (!track) return;
+    track.solo = !track.solo;
+    renderMixer();
+    applyMix();
+};
+pianoRoll.onAudition = notes => {
+    if (playing || paused || starting || generating) return;
+    const request = ++auditionRequest;
+    const name = pianoRoll.name, project = editor.project;
+    const drum = pianoRoll.phrase.drum;
+    const audio = player.initialize(showPlayStatus);
+    audio.catch(() => {});
+    pendingAudition = pendingAudition.then(async () => {
+        await audio;
+        if (request !== auditionRequest || name !== pianoRoll.name || project !== editor.project
+                || playing || paused || starting || generating) return;
+        const source = rollMixPart();
+        const saved = editor.mix.find(track => DesktopSongFiles.isUserMixTrack(track) && track.name === name);
+        const defaultPatch = mixerInstruments.find(instrument =>
+            instrument.drum === drum && (instrument.patch === saved?.patch || instrument.desktop.id === saved?.instrument));
+        const program = source?.instrumentChoice?.program ?? (source?.trackIndex !== undefined ? source.program : defaultPatch?.program) ?? 0;
+        const secondsPerBeat = 60 / project.tempo;
+        const start = notes.reduce((min, note) => Math.min(min, note.position), Infinity);
+        const events = [{ seconds: 0, part: 0, type: 0xc0, a: program, b: 0 }];
+        for (const note of notes) {
+            events.push({ seconds: (note.position - start) * secondsPerBeat, part: 0, type: 0x90, a: note.pitch, b: note.velocity },
+                { seconds: (note.position - start + note.duration) * secondsPerBeat, part: 0, type: 0x80, a: note.pitch, b: 0 });
+        }
+        events.sort((a, b) => a.seconds - b.seconds || a.type - b.type);
+        const duration = events.at(-1).seconds + .15;
+        const part = { drum, volume: 1, pan: 0 };
+        await player.play({ parts: [part], events, duration }, { enabled: false, start: 0, end: duration },
+            [part], Number(masterInput.value) / 100, false, { preview: true, click: false });
+        showPlayStatus("");
+    }).catch(error => showPlayStatus(error.message, true));
+};
+pianoRoll.onStopAudition = () => {
+    auditionRequest++;
+    pendingAudition = pendingAudition.then(() => {
+        if (player.previewing) return player.stop();
+    }).catch(error => showPlayStatus(error.message, true));
 };
 const reader = document.querySelector("#easy-reader");
 const toggleReader = document.querySelector("#toggle-reader");
@@ -1007,6 +1073,44 @@ editor.onStyleChoices = () => new Map([
     ...editor.attachedStyles.map(style => [style.id, style.name]),
     ...(styleArchive?.entries.filter(entry => !styleIssue(entry)).map(entry => [`${entry.name}-ID`, entry.name]) ?? [])
 ]);
+editor.onDescribeRhythm = async id => {
+    engine ??= await getEngine();
+    const style = await findSavedStyle(DesktopSongFiles.sourceStyleId(id));
+    if (!style) throw new Error(t("スタイルが見つかりません。", "The style could not be found."));
+    const name = style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name;
+    const voices = Array.from(engine.exports.getRhythmVoices(style.bytes, name,
+        style.extension ?? new Int8Array(), style.extension ? style.name : ""), row => {
+        const [name, type] = row.split("\t");
+        return { name, type };
+    });
+    return { ...describeStyle(style), voices };
+};
+editor.onDrumTransformChoices = async () => new Map(Array.from((await getEngine()).exports.getDrumTransforms(), row => row.split("\t")));
+editor.onEditCustomPhrase = async (index, voice) => {
+    const project = editor.project;
+    const part = project.parts[index];
+    try {
+        const range = editor.partRanges()[index];
+        const bars = DesktopSongFiles.barBeats(project);
+        const offset = bars.slice(0, range.from - 1).reduce((sum, beats) => sum + beats, 0);
+        const end = offset + bars.slice(range.from - 1, range.to).reduce((sum, beats) => sum + beats, 0);
+        let phrase = DesktopSongFiles.readCustomPhrases(part.parameters.RP_SYS_CustomPhraseId).get(voice);
+        if (!phrase) {
+            if ((!song || accompanimentDirty) && !await generateAccompaniment()) return;
+            if (editor.project !== project || project.parts[index] !== part) return;
+            const id = DesktopSongFiles.sourceStyleId(part.styleId);
+            const track = editor.mix.find(track => track.rhythmId === id && track.name === voice);
+            if (!track) throw new Error(t("この区間の伴奏トラックを準備できません。", "The accompaniment track for this part is unavailable."));
+            const generated = engine.exports.getRhythmTrackPhrase(track.channel);
+            const original = generated ? UserPhrase.read(generated) : { channel: track.channel, drum: false, notes: [] };
+            const notes = original.notes.filter(note => note.position >= offset && note.position < end)
+                .map(note => ({ ...note, position: Math.fround(note.position - offset),
+                    duration: Math.fround(Math.min(note.duration, end - note.position)) }));
+            phrase = UserPhrase.write({ ...original, notes });
+        }
+        pianoRoll.openCustom(index, voice, phrase, offset);
+    } catch (error) { editor.notify(error.message, true); }
+};
 editor.onUsePartStyles = () => {
     rhythmEngine.querySelector('option[value="song"]').hidden = false;
     rhythmEngine.value = "song";
@@ -1327,11 +1431,13 @@ async function generateAccompaniment(fromPlay = false) {
     }
 
     const tempo = tempoInput.valueAsNumber || 0;
+    const solo = new Set(activeProject === project ? mixerParts.filter(part => part.solo).map(part => part.id) : []);
     generating = true; updateButtons();
     options.disabled = true;
     document.querySelector("#song-editor").inert = true;
     showStatus("MIDIを生成しています…");
     try {
+        await pendingAudition;
         await player.stop();
         clearPlayback();
         if (!engine) {
@@ -1443,6 +1549,7 @@ async function generateAccompaniment(fromPlay = false) {
         download.download = style.name.replace(/\.[^.]+$/u, "") + "-accompaniment.mid";
         download.hidden = false;
         mixerParts = initialMixerParts(song, project ? editor.baseMix : null);
+        for (const part of mixerParts) if (solo.has(part.id)) part.solo = true;
         loopStart.value = chosenRange?.to <= bars ? chosenRange.from : 1;
         loopEnd.value = chosenRange?.to <= bars ? chosenRange.to : bars;
         loopStart.max = loopEnd.max = bars;

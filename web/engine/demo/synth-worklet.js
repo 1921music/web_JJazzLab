@@ -78,6 +78,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             } else if (type === "song") {
                 this.playing = false;
                 this.paused = false;
+                this.preview = Boolean(message.preview);
                 this.api.synth_clear_parts();
                 this.parts = message.song.parts.map((part, i) => {
                     if (this.api.synth_part(Number(part.drum)) !== i) throw new Error("音源のパートを作成できません。");
@@ -202,7 +203,8 @@ class SoundFontProcessor extends AudioWorkletProcessor {
     }
 
     reportPosition() {
-        this.port.postMessage({ type: "position", seconds: this.frame / sampleRate, playing: this.playing, paused: Boolean(this.paused), counting: this.countFrames > 0 });
+        this.port.postMessage({ type: "position", seconds: this.frame / sampleRate, playing: this.playing,
+            paused: Boolean(this.paused), counting: this.countFrames > 0, preview: this.preview });
     }
 
     clickSample(accent) {

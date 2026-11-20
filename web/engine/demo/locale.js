@@ -133,6 +133,40 @@ Solo解除|Clear solo
 ユーザートラックに複製|Clone as user track
 このトラックをMIDIで書き出す|Export this track as MIDI
 ピアノロールへドラッグして音符をコピー|Drag to the piano roll to copy notes
+ヒューマナイズ|Humanize
+ヒューマナイズ…|Humanize…
+タイミングのばらつき|Timing randomness
+タイミングの前後|Timing bias
+ベロシティのばらつき|Velocity randomness
+選択した音符だけ|Selected notes only
+縦ズーム|Vertical zoom
+ピアノロールの縦ズーム|Piano roll vertical zoom
+全音符を表示|Fit all notes
+選択を反転|Invert selection
+音符を試聴|Audition notes
+このトラックをSolo|Solo this track
+再生位置に追従|Follow playback
+伴奏トラックの上書き|Override accompaniment tracks
+伴奏トラックの上書き…|Override accompaniment tracks…
+元のトラック|Original track
+置き換えるリズム|Replacement rhythm
+置き換えるトラック|Replacement track
+この上書きを解除|Remove this override
+区間のカスタムフレーズ|Song-part custom phrase
+区間のカスタムフレーズ…|Song-part custom phrase…
+伴奏トラック|Accompaniment track
+元のフレーズに戻す|Restore the original phrase
+区間のドラム変形|Song-part drum transforms
+区間のドラム変形…|Song-part drum transforms…
+追加する変形|Transform to add
+楽器別の強弱補正|Velocity offsets by drum sound
+バスドラム|Bass drum
+スネア|Snare
+ハイハット|Hi-hat
+タム|Toms
+クラッシュ|Crash
+シンバル|Cymbals
+パーカッション|Percussion
 コード進行|Chord progression
 1小節に1コード。空白、改行、カンマ、または | で区切ります。|One chord per bar. Separate chords with a space, newline, comma, or a vertical bar.
 リズムエンジン|Rhythm engine

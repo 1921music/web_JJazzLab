@@ -14,17 +14,40 @@ const DesktopSongFiles = (() => {
     function overrideStyleIds(parts) {
         const ids = new Set();
         for (const part of parts) {
-            const saved = part.parameters.RP_SYS_OverrideTracksID;
-            if (!saved) continue;
-            const modern = saved.includes(">>");
-            for (const track of saved.split(modern ? /\s*&&\s*/u : "&")) {
-                const columns = track.split(modern ? /\s*>>\s*/u : ">");
-                if (columns[1] && (columns.length === 3 || (modern && columns.length === 4))) {
-                    ids.add(sourceStyleId(columns[1]));
-                }
-            }
+            for (const { rhythm } of readTrackOverrides(part.parameters.RP_SYS_OverrideTracksID)) ids.add(sourceStyleId(rhythm));
         }
         return ids;
+    }
+
+    function readTrackOverrides(saved = "") {
+        const modern = saved.includes(">>");
+        return saved.split(modern ? /\s*&&\s*/u : /\s*&\s*/u).flatMap(item => {
+            const columns = item.split(modern ? /\s*>>\s*/u : /\s*>\s*/u);
+            const [source, rhythm, destination, variation] = columns;
+            if (!source || !rhythm || !destination || columns.length > (modern ? 4 : 3)) return [];
+            return [{ source, rhythm, destination, variation }];
+        });
+    }
+
+    function writeTrackOverrides(entries) {
+        return entries.map(({ source, rhythm, destination, variation }) =>
+            [source, rhythm, destination, ...(variation ? [variation] : [])].join(">>")).join(" && ");
+    }
+
+    function readCustomPhrases(saved = "") {
+        return new Map(saved.split("&").filter(entry => entry.includes("%")).map(entry => {
+            const separator = entry.indexOf("%");
+            return [entry.slice(0, separator), entry.slice(separator + 1)];
+        }));
+    }
+
+    function setCustomPhrase(part, voice, phrase) {
+        const key = "RP_SYS_CustomPhraseId";
+        const phrases = readCustomPhrases(part.parameters[key]);
+        if (phrase === undefined) phrases.delete(voice);
+        else phrases.set(voice, phrase);
+        if (phrases.size) part.parameters[key] = Array.from(phrases, ([voice, phrase]) => voice + "%" + phrase).join("&");
+        else delete part.parameters[key];
     }
 
     function barBeats(song) {
@@ -390,5 +413,5 @@ const DesktopSongFiles = (() => {
     }
 
     return { readSong, readMix, writeSong, writeMix, isUserMixTrack, mergeInstrumentMixes, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters,
-        sourceStyleId, overrideStyleIds, barBeats };
+        sourceStyleId, readTrackOverrides, writeTrackOverrides, overrideStyleIds, readCustomPhrases, setCustomPhrase, barBeats };
 })();
