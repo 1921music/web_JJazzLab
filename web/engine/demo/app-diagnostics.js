@@ -5,8 +5,21 @@ class AppDiagnostics {
         this.build = build;
         this.getState = getState;
         this.events = [];
+        this.key = "jjazzlab.diagnosticLevel";
+        this.level = "error";
+        try {
+            const level = localStorage.getItem(this.key);
+            if (["off", "error", "info"].includes(level)) this.level = level;
+        } catch { /* Optional storage. */ }
         this.dialog = document.querySelector("#app-diagnostics");
         this.details = this.dialog.querySelector("pre");
+        const level = this.dialog.querySelector("#diagnostics-level");
+        level.value = this.level;
+        level.onchange = () => {
+            this.level = level.value;
+            try { localStorage.setItem(this.key, this.level); } catch { /* Optional storage. */ }
+            this.render();
+        };
         document.querySelector("#open-app-diagnostics").onclick = () => {
             this.render();
             this.dialog.showModal();
@@ -19,8 +32,9 @@ class AppDiagnostics {
         window.addEventListener("unhandledrejection", () => this.record("unhandled-promise-rejection"));
     }
 
-    record(event) {
-        this.events.push({ timestamp: new Date().toISOString(), event });
+    record(event, severity = "error") {
+        if (this.level === "off" || (severity === "info" && this.level !== "info")) return;
+        this.events.push({ timestamp: new Date().toISOString(), severity, event });
         if (this.events.length > 100) this.events.shift();
         if (this.dialog.open) this.render();
     }
@@ -39,6 +53,7 @@ class AppDiagnostics {
                 fullscreen: Boolean(document.fullscreenEnabled)
             },
             session: this.getState(),
+            logging: { level: this.level, retainedEvents: this.events.length },
             events: this.events
         };
     }

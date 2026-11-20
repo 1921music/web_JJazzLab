@@ -684,6 +684,9 @@
 
     <dialog id="app-diagnostics" aria-labelledby="app-diagnostics-title">
         <h2 id="app-diagnostics-title">バージョンと診断</h2>
+        <label class="field">診断ログの記録レベル
+            <select id="diagnostics-level"><option value="off">無効</option><option value="error">エラーのみ</option><option value="info">情報とエラー</option></select>
+        </label>
         <pre aria-label="環境情報と診断ログ"></pre>
         <div class="dialog-actions">
             <button id="clear-diagnostics" type="button" class="secondary">診断ログを消去</button>

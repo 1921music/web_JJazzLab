@@ -2439,6 +2439,8 @@ AbM7 | G7 Cm7 |
         {
             const originalClick = HTMLAnchorElement.prototype.click;
             const { dialog } = appDiagnostics;
+            const level = dialog.querySelector("#diagnostics-level");
+            const savedLevel = localStorage.getItem(appDiagnostics.key);
             let downloaded;
             HTMLAnchorElement.prototype.click = function () {
                 if (this.download === "jjazzlab-web-diagnostics.json") downloaded = fetch(this.href).then(response => response.json());
@@ -2458,9 +2460,23 @@ AbM7 | G7 Cm7 |
                     "The diagnostic download did not include build and browser capabilities");
                 dialog.querySelector("#clear-diagnostics").click();
                 check(JSON.parse(dialog.querySelector("pre").textContent).events.length === 0, "The diagnostic log did not clear");
+                appDiagnostics.record("test-info", "info");
+                check(!appDiagnostics.events.length, "The error level should skip informational events");
+                level.value = "info";
+                level.dispatchEvent(new Event("change"));
+                appDiagnostics.record("test-info", "info");
+                check(appDiagnostics.report().logging.level === "info" && appDiagnostics.events[0]?.severity === "info"
+                    && localStorage.getItem(appDiagnostics.key) === "info", "The log level did not apply or persist");
+                level.value = "off";
+                level.dispatchEvent(new Event("change"));
+                appDiagnostics.record("test-error");
+                check(appDiagnostics.events.length === 1, "Disabling logging still recorded errors");
             } finally {
                 if (dialog.open) dialog.close();
                 HTMLAnchorElement.prototype.click = originalClick;
+                level.value = savedLevel ?? "error";
+                level.dispatchEvent(new Event("change"));
+                if (savedLevel === null) localStorage.removeItem(appDiagnostics.key);
                 showPlayStatus("");
             }
             report.appDiagnostics = true;

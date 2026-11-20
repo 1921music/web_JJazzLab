@@ -306,7 +306,10 @@ function updatePosition(position) {
     playing = position.playing;
     paused = Boolean(position.paused);
     if (!playing && !paused) player.stopMidi();
-    if (wasRunning && !playing && !paused && !starting && !generating) arranger.finish();
+    if (wasRunning && !playing && !paused && !starting && !generating) {
+        arranger.finish();
+        appDiagnostics.record("playback-stopped", "info");
+    }
     let bar = song.barTimes.findIndex(time => time > position.seconds);
     if (bar < 0) bar = song.barTimes.length - 1;
     const beat = song.beatTimes.findLast(beat => beat.seconds <= position.seconds + .00002);
@@ -861,6 +864,7 @@ async function startPlayback(restart = false, stopAtEnd = false) {
             rate: playbackTempoRate()
         });
         if (fixedSectionChords) showPlayStatus(t("空いていたセクション先頭にコードを補完しました。", "Filled missing chords at section starts."));
+        appDiagnostics.record("playback-started", "info");
     } catch (error) { showPlayStatus(error.message, true); }
     finally { starting = false; options.disabled = false; updateButtons(); }
 }
@@ -997,6 +1001,7 @@ function getEngine() {
             const bank = embeddedDesktopMixerPatches[drum === "true" ? "Drums" : "GM Bank"];
             return { program: Number(program), drum: drum === "true", patch, id, desktop: bank[program] };
         });
+        appDiagnostics.record("engine-loaded", "info");
         return engine;
     }).catch(error => {
         engineLoad = undefined;

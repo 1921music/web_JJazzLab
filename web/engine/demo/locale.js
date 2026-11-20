@@ -331,6 +331,9 @@ JJazzLab に寄付|Donate to JJazzLab
 環境情報と診断ログ|System information and diagnostic log
 診断ログを消去|Clear Diagnostic Log
 診断情報を保存|Save Diagnostics
+診断ログの記録レベル|Diagnostic log level
+エラーのみ|Errors only
+情報とエラー|Information and errors
 パネル配置…|Panel Layout…
 パネル配置をリセット|Reset Panel Layout
 全画面表示|Full Screen
