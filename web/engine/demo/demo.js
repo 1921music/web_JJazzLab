@@ -138,6 +138,14 @@ const nextPart = document.querySelector("#next-part");
 const toggleLoop = document.querySelector("#toggle-loop");
 const metronome = document.querySelector("#metronome");
 const precount = document.querySelector("#precount");
+const precountMode = document.querySelector("#precount-mode");
+try {
+    const storedMode = localStorage.getItem("jjazzlab.precountMode");
+    if (["1", "2", "auto"].includes(storedMode)) precountMode.value = storedMode;
+} catch { /* Preference storage is optional. */ }
+precountMode.onchange = () => {
+    try { localStorage.setItem("jjazzlab.precountMode", precountMode.value); } catch { /* Preference storage is optional. */ }
+};
 const showPoint = document.querySelector("#show-playback-point");
 const playhead = document.querySelector("#position");
 const structureToggle = document.querySelector("#toggle-structure");
@@ -161,6 +169,11 @@ const channelEffects = [
 let mixerInstruments = [];
 let usesDesktopSoundFont = false;
 const loopEnabled = document.querySelector("#loop-enabled");
+try {
+    const storedLoop = localStorage.getItem("jjazzlab.loop");
+    if (storedLoop !== null) loopEnabled.checked = storedLoop === "true";
+} catch { /* Preference storage is optional. */ }
+toggleLoop.setAttribute("aria-pressed", String(loopEnabled.checked));
 const loopStart = document.querySelector("#loop-start");
 const loopEnd = document.querySelector("#loop-end");
 const masterInput = document.querySelector("#master");
@@ -186,6 +199,7 @@ function updateButtons() {
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
     structureToggle.disabled = !editor.project;
     document.querySelector("#add-user-track").disabled = !editor.project || generating || starting;
+    document.querySelector("#open-song-memo").disabled = !editor.project || generating || starting;
     editor.updateUndo();
     editor.undoButton.disabled ||= generating || starting;
     editor.redoButton.disabled ||= generating || starting;
@@ -535,7 +549,8 @@ async function startPlayback(restart = false) {
         await player.play(song, readLoop(), mixerParts, Number(masterInput.value) / 100, Boolean(editor.project), {
             resume: paused && !restart && !refresh,
             click: metronome.getAttribute("aria-pressed") === "true",
-            precount: !restart && precount.getAttribute("aria-pressed") === "true"
+            precount: !restart && precount.getAttribute("aria-pressed") === "true" && precountMode.value,
+            tempo: tempoInput.valueAsNumber
         });
     } catch (error) { showPlayStatus(error.message, true); }
     finally { starting = false; options.disabled = false; updateButtons(); }
@@ -546,6 +561,7 @@ previousPart.onclick = () => jumpPart(-1);
 nextPart.onclick = () => jumpPart(1);
 toggleLoop.onclick = () => {
     loopEnabled.checked = !loopEnabled.checked;
+    try { localStorage.setItem("jjazzlab.loop", String(loopEnabled.checked)); } catch { /* Preference storage is optional. */ }
     loopEnabled.dispatchEvent(new Event("input", { bubbles: true }));
 };
 for (const button of [metronome, precount]) button.onclick = () => {
@@ -837,6 +853,36 @@ document.querySelector("#show-generation-controls").onclick = () => {
     generationControls.open = true;
     generationControls.scrollIntoView({ block: "nearest" });
     generationControls.querySelector("summary").focus({ preventScroll: true });
+};
+const songMemo = document.querySelector("#song-memo");
+const songMemoText = document.querySelector("#song-memo-text");
+const songMemoLinks = document.querySelector("#song-memo-links");
+songMemoText.oninput = () => {
+    const links = new Set(songMemoText.value.match(/https?:\/\/[^\s<>"\])]+/giu) ?? []);
+    songMemoLinks.replaceChildren(...[...links].map(url => {
+        const item = document.createElement("li");
+        const link = document.createElement("a");
+        link.href = url;
+        link.textContent = url;
+        link.target = "_blank";
+        link.rel = "noopener noreferrer";
+        item.append(link);
+        return item;
+    }));
+    songMemoLinks.hidden = !links.size;
+};
+document.querySelector("#open-song-memo").onclick = () => {
+    if (!editor.project) return;
+    songMemoText.value = editor.project.comments ?? "";
+    songMemoText.oninput();
+    songMemo.showModal();
+};
+document.querySelector("#cancel-song-memo").onclick = () => songMemo.close();
+document.querySelector("#song-memo-form").onsubmit = () => {
+    if (songMemoText.value === (editor.project.comments ?? "")) return;
+    editor.rememberEdit(editor.captureEdit());
+    editor.project.comments = songMemoText.value;
+    updateMenus();
 };
 structureToggle.onclick = () => {
     const panel = document.querySelector("#structure");

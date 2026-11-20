@@ -26,6 +26,7 @@
                 </div></details>
                 <details><summary>ツール</summary><div>
                     <button id="show-generation-controls" type="button">伴奏設定…</button>
+                    <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button data-command="quick-mode" type="button">簡易入力</button>
                     <label class="language-picker">言語 <select id="ui-language" aria-label="画面の言語"><option value="ja">日本語</option><option value="en">English</option></select></label>
                 </div></details>
@@ -63,7 +64,12 @@
                     <button id="show-playback-point" class="tool-button" data-icon="point" data-toggle type="button" aria-label="再生位置を譜面に表示" title="再生位置を譜面に表示" aria-pressed="true"></button>
                     <label class="tempo-control"><input id="tempo" type="number" min="20" max="400" step="1" form="midi-form" aria-label="テンポ (BPM)"> <span>BPM</span></label>
                     <button id="metronome" class="tool-button" data-icon="click" data-toggle type="button" aria-label="クリック音" title="クリック音" aria-pressed="false"></button>
-                    <button id="precount" class="tool-button" data-icon="precount" data-toggle type="button" aria-label="2小節のカウントイン" title="2小節のカウントイン" aria-pressed="false"></button>
+                    <button id="precount" class="tool-button" data-icon="precount" data-toggle type="button" aria-label="カウントイン" title="カウントイン" aria-pressed="false"></button>
+                    <select id="precount-mode" aria-label="カウントインの長さ" title="カウントインの長さ">
+                        <option value="1">1小節</option>
+                        <option value="2" selected>2小節</option>
+                        <option value="auto">自動</option>
+                    </select>
                 </div>
             </div>
             <details id="loop-range" class="loop-range"><summary>ループ範囲</summary>
@@ -275,6 +281,18 @@
         <footer><small>音源: <a href="https://github.com/schellingb/TinySoundFont">TinySoundFont</a> (MIT) / TimGM6mb — Tim Brechbill (GPL-2.0)。初回の再生にはネット接続が必要です。</small><details><summary>音源ライセンス</summary><!-- AUDIO_LICENSES --></details></footer>
         <!-- SOURCE_REVISION -->
     </main>
+    <dialog id="song-memo" aria-labelledby="song-memo-title">
+        <form id="song-memo-form" method="dialog">
+            <h2 id="song-memo-title">曲のメモ</h2>
+            <textarea id="song-memo-text" aria-labelledby="song-memo-title" rows="9"></textarea>
+            <ul id="song-memo-links" hidden></ul>
+            <div class="dialog-actions">
+                <button id="cancel-song-memo" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="bar-editor" aria-labelledby="bar-editor-title">
         <form id="bar-editor-form" method="dialog">
             <h2 id="bar-editor-title"></h2>
@@ -347,6 +365,7 @@
         <button type="button" data-action="paste">貼り付け <kbd>Ctrl+V</kbd></button>
         <button type="button" data-action="clear">コードを削除 <kbd>Del</kbd></button>
         <button type="button" data-action="insert">小節を挿入</button>
+        <button type="button" data-action="remove-bars">選択小節を削除</button>
         <button type="button" data-action="end">最終小節にする</button>
         <button type="button" data-action="restart" aria-pressed="false">ループの折り返し位置にする</button>
         <button type="button" data-action="play">ここから再生 <kbd>Ctrl+Space</kbd></button>
@@ -365,7 +384,6 @@
     </div>
     <div id="roll-context" class="bar-context" role="group" aria-label="音符編集" hidden>
         <button data-action="select" type="button">選択</button>
-        <button type="button" data-action="remove-bars">選択小節を削除</button>
         <button data-action="draw" type="button">描画</button>
         <button data-action="erase" type="button">消去</button>
         <button data-action="copy" type="button">コピー</button>

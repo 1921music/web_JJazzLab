@@ -22,6 +22,16 @@
         const first = document.querySelector("#lead-sheet > div");
         check(first?.getAttribute("aria-selected") === "true" && !document.querySelector("#song-editor").hidden,
             "Startup did not open the chord sheet");
+        const editMemo = document.querySelector("#open-song-memo");
+        const memo = document.querySelector("#song-memo-text");
+        editMemo.click();
+        memo.value = "Practice slowly\nhttps://example.org/reference";
+        memo.dispatchEvent(new Event("input"));
+        check(document.querySelector("#song-memo-links a")?.href === "https://example.org/reference", "Song memo did not expose its link");
+        document.querySelector("#song-memo-form").requestSubmit();
+        check(DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project)).comments === memo.value, "Song memo did not round-trip");
+        editor.undoButton.click();
+        check(!editor.project.comments, "Undo did not restore the previous song memo");
         first.dispatchEvent(new KeyboardEvent("keydown", { key: "C" }));
         check(editor.barDialog.open && editor.chordField.value === "C", "Typing a chord did not open the measure editor");
         editor.chordField.value = "Cmaj7 5:G7";
@@ -39,6 +49,13 @@
         editor.sectionField.value = "B";
         document.querySelector("#bar-editor-form").requestSubmit();
         check(editor.project.parts[1].name === "B", "Creating a section did not insert its corresponding song part");
+        editor.grid.children[1].dispatchEvent(new MouseEvent("contextmenu"));
+        editor.contextMenu.querySelector('[data-action="remove-bars"]').click();
+        check(editor.project.bars === 3 && editor.project.sections[1].bar === 2,
+            "Deleting a middle bar did not move the following section");
+        editor.undoButton.click();
+        check(editor.project.bars === 4 && editor.project.sections[1].bar === 3,
+            "Undo did not restore the deleted bar and section position");
         document.querySelector("#add-song-part").click();
         const second = document.querySelector("#song-parts > li:nth-child(2) select");
         second.value = "0";
@@ -49,13 +66,6 @@
         fourth.dispatchEvent(new Event("change"));
         check(!song && !playButton.disabled && document.querySelector("#generate").hidden, "Play requires a manual generation step");
         playButton.click();
-        editor.grid.children[1].dispatchEvent(new MouseEvent("contextmenu"));
-        editor.contextMenu.querySelector('[data-action="remove-bars"]').click();
-        check(editor.project.bars === 3 && editor.project.sections[1].bar === 2,
-            "Deleting a middle bar did not move the following section");
-        editor.undoButton.click();
-        check(editor.project.bars === 4 && editor.project.sections[1].bar === 3,
-            "Undo did not restore the deleted bar and section position");
         while (starting || generating) await new Promise(resolve => setTimeout(resolve, 20));
         check(playing, `Play did not prepare the song: ${status.textContent} ${playStatus.textContent}`);
         await player.pause();
@@ -84,16 +94,6 @@
         editor.barAction("restart");
         const annotated = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
         check(annotated.annotations[0].text === "Play softly" && annotated.loopRestartBar === 1, "Annotation or restart bar did not round-trip");
-        editor.undoButton.click();
-        await generate();
-        check(song.barTimes.length === 11, "AABA with 3-bar A and 1-bar B must produce ten bars");
-        check(editor.project.chords[1].beat === 2, "Editing the arrangement lost the second chord");
-        check(editor.renderedMix.length > 0, "New song does not have a writable mix");
-        editor.grid.firstElementChild.querySelector(".chord-symbol").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
-        editor.contextMenu.querySelector('[data-action="chord"]').click();
-        check(editor.barDialog.open && !document.querySelector("#chord-interpretation").hidden, "Chord interpretation editor did not open");
-        const scale = document.querySelector("#chord-scale");
-        for (let attempt = 0; scale.options.length < 2 && attempt < 50; attempt++) {
         const decorated = structuredClone(annotated);
         decorated.tags = ["Practice & rehearsal"];
         decorated.clientProperties = { PropClEditorZoomFactorY: "62" };
@@ -107,6 +107,16 @@
             && restored.chords[0].clientProperties.SongPropUserFontColor === "-65536"
             && restored.annotations[0].clientProperties.TestAnnotationProperty === "<memo>"
             && restored.parts[0].clientProperties.TestPartProperty === "1", "Native display properties or tags did not round-trip");
+        editor.undoButton.click();
+        await generate();
+        check(song.barTimes.length === 11, "AABA with 3-bar A and 1-bar B must produce ten bars");
+        check(editor.project.chords[1].beat === 2, "Editing the arrangement lost the second chord");
+        check(editor.renderedMix.length > 0, "New song does not have a writable mix");
+        editor.grid.firstElementChild.querySelector(".chord-symbol").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        editor.contextMenu.querySelector('[data-action="chord"]').click();
+        check(editor.barDialog.open && !document.querySelector("#chord-interpretation").hidden, "Chord interpretation editor did not open");
+        const scale = document.querySelector("#chord-scale");
+        for (let attempt = 0; scale.options.length < 2 && attempt < 50; attempt++) {
             await new Promise(resolve => setTimeout(resolve, 20));
         }
         check(scale.options.length > 1, "JJazzLab scales were not available for the current chord");

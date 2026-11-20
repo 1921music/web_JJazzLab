@@ -84,6 +84,18 @@ test("two-bar count-in produces clicks before the first MIDI note", async () => 
     assert.ok(calls.some(call => call[2] === 0x90));
 });
 
+test("one-bar and automatic count-in respect the starting meter and tempo", async () => {
+    const { processor: p } = createProcessor();
+    await p.command({ type: "song", song: { ...song([]),
+        beatTimes: Array.from({ length: 6 }, (_, index) => ({ seconds: index * .064, beat: index % 3 + 1 })) },
+        loop: { enabled: false, start: 0, end: .512 } });
+    for (const [precount, tempo, expected] of [["1", 120, 1], ["auto", 54, 1], ["auto", 55, 2]]) {
+        await p.command({ type: "play", precount, tempo });
+        assert.equal(p.countBeats, 3);
+        assert.equal(p.countFrames, p.countStep * 3 * expected);
+    }
+});
+
 test("live range changes apply at the old boundary, then use the new range", async () => {
     const { processor: p, render } = createProcessor();
     await p.command({ type: "song", song: song([]), loop: { enabled: true, start: 0, end: .256 } });

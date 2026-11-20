@@ -377,7 +377,7 @@ summary { cursor: pointer; }
 footer { grid-area: footer; padding: .6rem .75rem; color: var(--muted); border-top: 1px solid var(--border); }
 footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; font-size: .85rem; }
 
-#bar-editor, #channel-editor, #part-editor {
+#bar-editor, #channel-editor, #part-editor, #song-memo {
     width: min(30rem, calc(100% - 2rem));
     padding: 1rem;
     border: 1px solid #747a81;
@@ -385,8 +385,10 @@ footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; 
     background: var(--chrome);
     color: inherit;
 }
-#bar-editor::backdrop, #channel-editor::backdrop, #part-editor::backdrop { background: #10131780; }
-#bar-editor-form, #channel-editor-form, #channel-effects, #part-editor-form, #bar-section-field { display: grid; gap: .65rem; }
+#bar-editor::backdrop, #channel-editor::backdrop, #part-editor::backdrop, #song-memo::backdrop { background: #10131780; }
+#bar-editor-form, #channel-editor-form, #channel-effects, #part-editor-form, #bar-section-field, #song-memo-form { display: grid; gap: .65rem; }
+#song-memo-text { width: 100%; resize: vertical; }
+#song-memo-links { overflow-wrap: anywhere; }
 #chord-interpretation:not([hidden]) { display: grid; gap: .5rem; }
 #chord-alternate-marker-field[hidden] { display: none; }
 #bar-editor { max-height: calc(100dvh - 2rem); overflow-y: auto; }

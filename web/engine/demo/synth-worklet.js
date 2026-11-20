@@ -119,7 +119,13 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                         const end = this.beats.find(beat => beat.frame > start && beat.beat === 1)?.frame ?? this.duration;
                         this.countBeats = this.beats.filter(beat => beat.frame >= start && beat.frame < end).length || 4;
                         this.countStep = Math.max(1, Math.round((end - start) / this.countBeats));
-                        this.countFrames = this.countStep * this.countBeats * 2;
+                        let countBars = message.precount === "1" ? 1 : 2;
+                        if (message.precount === "auto") {
+                            const tempo = message.tempo || 60 * sampleRate / this.countStep;
+                            const oneBarBelow = this.countBeats <= 3 ? 55 : this.countBeats <= 4 ? 100 : 120;
+                            countBars = tempo < oneBarBelow ? 1 : 2;
+                        }
+                        this.countFrames = this.countStep * this.countBeats * countBars;
                     }
                 }
                 this.paused = false;

@@ -190,8 +190,8 @@ class SongEditor {
     }
 
     captureEdit() {
-        const { bars, sections, chords, parts, annotations, loopRestartBar, userTracks } = this.project;
-        return structuredClone({ bars, sections, chords, parts, annotations, loopRestartBar, userTracks });
+        const { bars, sections, chords, parts, annotations, comments, loopRestartBar, userTracks } = this.project;
+        return structuredClone({ bars, sections, chords, parts, annotations, comments, loopRestartBar, userTracks });
     }
 
     rememberEdit(before) {

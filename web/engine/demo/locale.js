@@ -6,6 +6,8 @@ const labels = new Map(`
 編集|Edit
 選択小節を削除|Delete selected bars
 コードの発音|Chord interpretation
+曲のメモ|Song memo
+曲のメモ…|Song memo…
 アクセント|Accent
 既定|Default
 通常|Normal
@@ -63,6 +65,11 @@ JJazzLab ユーザーガイド|JJazzLab User Guide
 次の演奏区間|Next song part
 クリック音|Metronome
 2小節のカウントイン|Two-bar count-in
+カウントイン|Count-in
+カウントインの長さ|Count-in length
+1小節|1 bar
+2小節|2 bars
+自動|Auto
 テンポ (BPM)|Tempo (BPM)
 ループ範囲|Loop range
 ループ|Loop
