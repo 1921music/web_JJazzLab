@@ -178,6 +178,11 @@ const generationControls = document.querySelector("#generation-controls");
 const muteAll = document.querySelector("#mute-all");
 const clearSolo = document.querySelector("#clear-solo");
 const saveMix = document.querySelector("#save-mix");
+const reloadSongMix = document.querySelector("#reload-song-mix");
+const restoreFactoryMix = document.querySelector("#restore-factory-mix");
+const saveRhythmMix = document.querySelector("#save-rhythm-mix");
+const loadRhythmMix = document.querySelector("#load-rhythm-mix");
+const rhythmMixPreference = "jjazzlab.rhythmMixes";
 const channelEditor = document.querySelector("#channel-editor");
 const mixerContext = document.querySelector("#mixer-context");
 const channelInstrument = document.querySelector("#channel-instrument");
@@ -335,6 +340,11 @@ function updateMixerButtons() {
     saveMix.disabled = !editor.renderedMix || !editor.nativeMix.length || activeProject !== editor.project || !song;
     document.querySelector("#import-mix-button").disabled = !editor.project || generating || starting
         || editor.unresolvedStyleMix !== undefined;
+    const ready = activeProject === editor.project && Boolean(song) && !generating && !starting && editor.unresolvedStyleMix === undefined;
+    reloadSongMix.disabled = !ready || !editor.openedMix?.length;
+    restoreFactoryMix.disabled = !ready;
+    saveRhythmMix.disabled = loadRhythmMix.disabled = !ready || !editor.mix.some(track =>
+        !DesktopSongFiles.isUserMixTrack(track) && matchesMixerRhythm(track, selectedMixerRhythm));
     prepareMixer.disabled = generating || starting;
     document.querySelector("#panic").disabled = !mixerParts.length;
 }
@@ -1359,6 +1369,61 @@ document.querySelector("#ui-language").onchange = event => {
 
 document.querySelector("#panic").onclick = () => player.panic().catch(error => showPlayStatus(error.message, true));
 const importMix = document.querySelector("#import-mix");
+const matchesMixerRhythm = (track, id) => !id || DesktopSongFiles.sourceStyleId(track.rhythmId) === DesktopSongFiles.sourceStyleId(id);
+const loadRhythmPresets = () => new Map(JSON.parse(localStorage.getItem(rhythmMixPreference) ?? "[]"));
+
+async function restoreInstrumentMixes(incoming, exactOnly) {
+    const project = editor.project;
+    if (!project || generating || starting || editor.unresolvedStyleMix !== undefined) return false;
+    if ((!song || accompanimentDirty || activeProject !== project) && !await generateAccompaniment()) return false;
+    if (editor.project !== project) return false;
+    if (editor.unresolvedStyleMix !== undefined) {
+        throw new Error(t("曲が参照するスタイルを読み込んでから、ミックスを適用してください。",
+            "Load the styles referenced by the song before applying its mix."));
+    }
+    const previous = editor.mix;
+    const merged = DesktopSongFiles.mergeInstrumentMixes(previous, incoming, exactOnly);
+    if (!merged) throw new Error(t("この曲と共通のトラックがありません。", "The mix shares no tracks with this song."));
+    editor.mix = merged;
+    if (!await generateAccompaniment()) {
+        editor.mix = previous;
+        return false;
+    }
+    return true;
+}
+
+reloadSongMix.onclick = async () => {
+    try {
+        if (await restoreInstrumentMixes(editor.openedMix, false)) {
+            editor.notify(t("読み込み時のミックスを適用しました。", "Restored the mix loaded with the song."));
+        }
+    } catch (error) { editor.notify(error.message, true); }
+};
+restoreFactoryMix.onclick = async () => {
+    const selected = selectedMixerRhythm;
+    if (accompanimentDirty && !await generateAccompaniment()) return;
+    if (await generateAccompaniment(false, selected)) {
+        editor.notify(t("既定の音色と設定に戻しました。", "Restored default instruments and settings."));
+    }
+};
+saveRhythmMix.onclick = () => {
+    try {
+        const presets = loadRhythmPresets();
+        const visible = editor.mix.filter(track => !DesktopSongFiles.isUserMixTrack(track) && matchesMixerRhythm(track, selectedMixerRhythm));
+        for (const [id, tracks] of Map.groupBy(visible, track => track.rhythmId)) presets.set(id, tracks);
+        localStorage.setItem(rhythmMixPreference, JSON.stringify([...presets]));
+        editor.notify(t("リズム別ミックスを保存しました。", "Saved the rhythm mix presets."));
+    } catch (error) { editor.notify(error.message, true); }
+};
+loadRhythmMix.onclick = async () => {
+    try {
+        const presets = loadRhythmPresets();
+        const ids = new Set(editor.mix.filter(track => matchesMixerRhythm(track, selectedMixerRhythm)).map(track => track.rhythmId));
+        const tracks = [...ids].flatMap(id => presets.get(id) ?? []);
+        if (!tracks.length) throw new Error(t("該当するリズムの保存済みミックスがありません。", "No mix preset has been saved for these rhythms."));
+        if (await restoreInstrumentMixes(tracks, true)) editor.notify(t("リズム別ミックスを適用しました。", "Applied the rhythm mix presets."));
+    } catch (error) { editor.notify(error.message, true); }
+};
 document.querySelector("#import-mix-button").onclick = () => importMix.click();
 importMix.onchange = async () => {
     const file = importMix.files[0];
@@ -1368,20 +1433,7 @@ importMix.onchange = async () => {
     try {
         const incoming = DesktopSongFiles.readMix(await file.text());
         if (editor.project !== project || generating || starting) return;
-        if ((!song || accompanimentDirty || activeProject !== project) && !await generateAccompaniment()) return;
-        if (editor.unresolvedStyleMix !== undefined) {
-            throw new Error(t("曲が参照するスタイルを読み込んでから、ミックスを適用してください。",
-                "Load the styles referenced by the song before applying its mix."));
-        }
-        const previous = editor.mix;
-        const merged = DesktopSongFiles.mergeInstrumentMixes(previous, incoming);
-        if (!merged) throw new Error(t("この曲と共通のトラックがありません。", "The mix shares no tracks with this song."));
-        editor.mix = merged;
-        if (!await generateAccompaniment()) {
-            editor.mix = previous;
-            return;
-        }
-        editor.notify(t(`${file.name} を読み込みました。`, `Imported ${file.name}.`));
+        if (await restoreInstrumentMixes(incoming, false)) editor.notify(t(`${file.name} を読み込みました。`, `Imported ${file.name}.`));
     } catch (error) { editor.notify(error.message, true); }
 };
 
@@ -1542,7 +1594,7 @@ form.addEventListener("submit", event => {
     void generateAccompaniment();
 });
 
-async function generateAccompaniment(fromPlay = false) {
+async function generateAccompaniment(fromPlay = false, factoryRhythm) {
     if (generating || (starting && !fromPlay)) return false;
     clearDownload();
     const project = editor.project;
@@ -1580,14 +1632,22 @@ async function generateAccompaniment(fromPlay = false) {
             const followSong = rhythmEngine.value === "song";
             const unresolved = followSong && replacedStyles.size > 0;
             const savedStyleMix = editor.unresolvedStyleMix ?? editor.mix;
-            const inputMix = followSong && !unresolved ? savedStyleMix : editor.mix;
+            let inputMix = followSong && !unresolved ? savedStyleMix : editor.mix;
             style = styles.length === 1 ? styles[0] : { name: project.title };
             const arrangement = { ...project, tempo: tempo || project.tempo, parts };
-            const playbackMix = inputMix.map(track => {
+            const withBrowserPatches = track => {
                 const equivalent = mixerInstruments.find(instrument => instrument.desktop.id === track.instrument);
                 return equivalent ? { ...track, patch: equivalent.patch } : track;
-            });
-            midi = engine.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(arrangement, allStyles, sources, playbackMix));
+            };
+            const renderMidi = mix => engine.exports.generateSongMidiWithChordRendering(
+                ...DesktopSongFiles.multiStyleEngineArgs(arrangement, allStyles, sources, mix.map(withBrowserPatches)));
+            if (factoryRhythm !== undefined && inputMix.length) {
+                renderMidi([]);
+                const factory = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix())
+                    .filter(track => DesktopSongFiles.isUserMixTrack(track) || matchesMixerRhythm(track, factoryRhythm));
+                inputMix = DesktopSongFiles.mergeInstrumentMixes(inputMix, factory, true) ?? inputMix;
+            }
+            midi = renderMidi(inputMix);
             const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
             const applied = engine.exports.wasImportedMixApplied();
             const original = new Map(inputMix.map(track => [`${track.rhythmId}\t${track.name}`, track]));

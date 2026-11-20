@@ -244,7 +244,7 @@ const DesktopSongFiles = (() => {
         ["Phrase1", "phrase1"], ["Phrase2", "phrase2"]
     ]);
 
-    function mergeInstrumentMixes(destination, source) {
+    function mergeInstrumentMixes(destination, source, exactOnly = false) {
         // MidiMix v5 stores voice names. YamJJazz and jjSwing use the AccType names;
         // the rhythm stubs use Drums and Bass.
         const available = [...destination].sort((a, b) => a.channel - b.channel);
@@ -255,7 +255,7 @@ const DesktopSongFiles = (() => {
             let index = available.findIndex(track => user
                 ? isUserMixTrack(track) && track.name === incoming.name
                 : track.rhythmId === incoming.rhythmId && track.name === incoming.name);
-            if (index < 0 && !user && type) {
+            if (index < 0 && !user && type && !exactOnly) {
                 index = available.findIndex(track => !isUserMixTrack(track) && rhythmVoiceTypes.get(track.name) === type);
             }
             if (index >= 0) {

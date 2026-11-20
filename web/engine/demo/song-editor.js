@@ -279,6 +279,7 @@ class SongEditor {
         this.fileRequest = null;
         this.project = project;
         this.mix = mix;
+        this.openedMix = structuredClone(mix);
         this.unresolvedStyleMix = undefined;
         this.style = style;
         this.selectedPart = null;

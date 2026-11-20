@@ -200,6 +200,11 @@ MIDIチャンネル|MIDI channel
 音色を送信|Send instrument
 音色を検索|Search instruments
 音色を試聴|Audition instrument
+調整をリセット|Reset mixer adjustments
+読み込み時のミックスに戻す|Restore the mix loaded with the song
+既定の音色と設定に戻す|Restore default instruments and settings
+リズム別ミックスを保存|Save rhythm mix preset
+リズム別ミックスを呼び出す|Load rhythm mix preset
 音量を送信|Send volume
 パンを送信|Send pan
 コード進行|Chord progression

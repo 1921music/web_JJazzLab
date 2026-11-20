@@ -213,7 +213,13 @@
                     <button id="save-mix" type="button">.mixを書き出す</button>
                     <input id="import-mix" type="file" accept=".mix" hidden>
                 </div></details>
-                <details><summary>編集</summary><div><button id="reset-mixer" type="button">リセット</button></div></details>
+                <details><summary>編集</summary><div>
+                    <button id="reset-mixer" type="button">調整をリセット</button>
+                    <button id="reload-song-mix" type="button">読み込み時のミックスに戻す</button>
+                    <button id="restore-factory-mix" type="button">既定の音色と設定に戻す</button>
+                    <button id="save-rhythm-mix" type="button">リズム別ミックスを保存</button>
+                    <button id="load-rhythm-mix" type="button">リズム別ミックスを呼び出す</button>
+                </div></details>
             </nav>
             <div class="mixer-toolbar">
                 <label class="master">マスター <input id="master" type="range" min="0" max="100" value="80"><output id="master-value">80%</output></label>

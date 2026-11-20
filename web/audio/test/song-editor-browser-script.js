@@ -408,6 +408,19 @@
         check(editor.renderedMix.filter(track => track.channel !== bassChannel).every(track =>
             originalTracks.some(source => source.name === track.name && source.patch === track.patch)),
             "Editing Bass changed another instrument");
+        saveRhythmMix.click();
+        await restoreFactoryMix.onclick();
+        check(editor.mix.find(track => track.name === "Bass").patch !== "Cello" && editor.mix.find(track => track.name === "Bass").channel === bassChannel,
+            "Factory reset did not restore the default sound while keeping the channel");
+        await loadRhythmMix.onclick();
+        check(editor.mix.find(track => track.name === "Bass").patch === "Cello"
+            && editor.mix.find(track => track.name === "Bass").reverb === 96, "Loading the rhythm preset did not restore the saved settings");
+        await reloadSongMix.onclick();
+        check(editor.mix.find(track => track.name === "Bass").patch === originalBass.patch
+            && editor.mix.find(track => track.name === "Bass").reverb === originalBass.reverb, "Reloading the opened mix used the wrong baseline");
+        await loadRhythmMix.onclick();
+        localStorage.removeItem(rhythmMixPreference);
+        report.mixerPresets = true;
         const exportedSong = DesktopSongFiles.writeSong(editor.project);
         const exportedMix = DesktopSongFiles.writeMix(editor.renderedMix);
         const style = new Uint8Array(await decompress(embeddedStyle));
