@@ -47,6 +47,20 @@ class PianoRoll {
         this.panel = this["piano-roll"];
         this.scroll = this["roll-scroll"];
         this.canvas = this["roll-canvas"];
+        this.staff = document.querySelector("#roll-score");
+        this.staffToggle = document.querySelector("#roll-show-score");
+        this.staffOctave = document.querySelector("#roll-score-octave");
+        this.drumMapField = document.querySelector("#roll-drum-map");
+        this.staffToggle.onclick = () => {
+            this.toggleRollButton(this.staffToggle);
+            this.updateScoreControls();
+            this.queuePaint();
+        };
+        this.staffOctave.onchange = () => {
+            this.editor.setSheetProperty(this.scoreProperty(), this.staffOctave.value);
+            this.queuePaint();
+        };
+        this.drumMapField.onchange = () => this.select([...this.selection]);
         this.tools = [...this.panel.querySelectorAll("[data-roll-tool]")];
         this.selection = new Set();
         this.pixels = this["roll-zoom"].valueAsNumber;
@@ -104,7 +118,7 @@ class PianoRoll {
             if ((!event.ctrlKey && !event.metaKey) || !event.deltaY) return;
             event.preventDefault();
             const bounds = this.scroll.getBoundingClientRect();
-            const x = Math.max(0, event.clientX - bounds.left - PIANO_KEYS);
+            const x = Math.max(0, event.clientX - bounds.left - this.keyWidth);
             const y = Math.max(0, event.clientY - bounds.top - PIANO_RULER);
             const factor = event.deltaY < 0 ? 1.2 : 1 / 1.2;
             if (event.shiftKey) this.zoom(this.pixels, this.rowHeight * factor, x, y);
@@ -128,8 +142,8 @@ class PianoRoll {
         velocity.onpointerdown = event => {
             if (!this.selection.size) {
                 const bounds = velocity.getBoundingClientRect();
-                if (event.clientX - bounds.left < PIANO_KEYS) return;
-                const beat = (event.clientX - bounds.left - PIANO_KEYS + this.scroll.scrollLeft) / this.pixels;
+                if (event.clientX - bounds.left < this.keyWidth) return;
+                const beat = (event.clientX - bounds.left - this.keyWidth + this.scroll.scrollLeft) / this.pixels;
                 const hit = this.phrase.notes.find(note => Math.abs(note.position - beat) <= 6 / this.pixels);
                 if (hit) this.select([hit]);
             }
@@ -229,7 +243,7 @@ class PianoRoll {
         if (this.custom) notes = notes.filter(note => note.position >= 0 && note.position < this.total).map(note => this.fit(note));
         if (!notes.length) return;
         this.commit([...this.phrase.notes, ...notes], notes);
-        this.scroll.scrollLeft = Math.max(0, notes[0].position * this.pixels - PIANO_KEYS);
+        this.scroll.scrollLeft = Math.max(0, notes[0].position * this.pixels - this.keyWidth);
         this.scroll.scrollTop = (127 - notes[0].pitch + .5) * this.rowHeight - (this.scroll.clientHeight - PIANO_RULER) / 2;
         this.scroll.focus({ preventScroll: true });
     }
@@ -405,8 +419,39 @@ class PianoRoll {
         this.chords = (range ? [range] : ranges).flatMap(range =>
             Array.from({ length: range.to - range.from + 1 }, (_, offset) =>
                 sheetChords.get(range.sheetStart + offset) ?? []));
+        this.staffMeters = (range ? [range] : ranges).flatMap(({ index, from, to }) =>
+            Array(to - from + 1).fill(project.sections[project.parts[index].section].meter));
+        this.updateScoreControls();
         this.measure();
         return true;
+    }
+
+    get keyWidth() { return this.phrase?.drum ? 144 : PIANO_KEYS; }
+
+    drumKeyName(pitch) {
+        const map = this.drumMapField.value || this.onDrumKeyMap?.() || "GM";
+        return embeddedDrumKeyMaps[map]?.[pitch] ?? String(pitch);
+    }
+
+    scoreProperty() {
+        return `NoteEditorScoreOctaveTransposition#${this.onScoreChannel?.() ?? this.phrase.channel}`;
+    }
+
+    scoreOctave() {
+        const saved = this.editor.project.clientProperties?.[this.scoreProperty()];
+        if (/^-?[0-3]$/u.test(saved)) return Number(saved);
+        const notes = this.phrase.notes;
+        const avg = notes.length ? notes.reduce((sum, note) => sum + note.pitch, 0) / notes.length : 60;
+        const suggested = avg < 43 ? Math.floor((55 - avg) / 12) : avg > 79 ? Math.floor((67 - avg) / 12) : 0;
+        return Math.min(3, Math.max(-3, suggested));
+    }
+
+    updateScoreControls() {
+        const drums = this.phrase.drum;
+        this.staffToggle.hidden = this.staffToggle.disabled = drums;
+        this.drumMapField.closest("label").hidden = !drums;
+        this.staff.hidden = this.staffOctave.closest("label").hidden = drums || this.staffToggle.getAttribute("aria-pressed") !== "true";
+        if (!drums) this.staffOctave.value = this.scoreOctave();
     }
 
     track() {
@@ -416,7 +461,7 @@ class PianoRoll {
 
     measure() {
         const size = this["roll-size"];
-        size.style.width = (PIANO_KEYS + this.pixels * Math.max(this.total,
+        size.style.width = (this.keyWidth + this.pixels * Math.max(this.total,
             this.phrase.notes.reduce((end, note) => Math.max(end, note.position + note.duration), 0))) + "px";
         size.style.height = (PIANO_RULER + 128 * this.rowHeight) + "px";
         this.queuePaint();
@@ -444,7 +489,7 @@ class PianoRoll {
             low = Math.min(low, note.pitch);
             high = Math.max(high, note.pitch);
         }
-        const width = this.scroll.clientWidth - PIANO_KEYS, height = this.scroll.clientHeight - PIANO_RULER;
+        const width = this.scroll.clientWidth - this.keyWidth, height = this.scroll.clientHeight - PIANO_RULER;
         if (width <= 0 || height <= 0) return;
         this.zoom(width / (right - left + 2), height / (high - low + 3));
         this.scroll.scrollLeft = Math.max(0, (left - 1) * this.pixels);
@@ -473,7 +518,7 @@ class PianoRoll {
         const rect = this.scroll.getBoundingClientRect();
         const x = event.clientX - rect.left;
         const y = event.clientY - rect.top;
-        return { x, y, beat: (x - PIANO_KEYS + this.scroll.scrollLeft) / this.pixels,
+        return { x, y, beat: (x - this.keyWidth + this.scroll.scrollLeft) / this.pixels,
             pitch: Math.min(127, Math.max(0, 127 - Math.floor((y - PIANO_RULER + this.scroll.scrollTop) / this.rowHeight))) };
     }
 
@@ -494,8 +539,9 @@ class PianoRoll {
         document.querySelector("#roll-humanize").disabled = !this.phrase?.notes.length;
         document.querySelector("#roll-fit").disabled = !this.phrase?.notes.length;
         const count = this.phrase?.notes.length ?? 0;
-        localizedText(this["roll-status"], notes.length ? notes.length + " 音符を選択" : "音符 " + count,
-            notes.length ? notes.length + " selected" : count + " notes");
+        const label = this.phrase?.drum && notes.length === 1 ? this.drumKeyName(first.pitch) : undefined;
+        localizedText(this["roll-status"], label ?? (notes.length ? notes.length + " 音符を選択" : "音符 " + count),
+            label ?? (notes.length ? notes.length + " selected" : count + " notes"));
         this.queuePaint();
     }
 
@@ -552,11 +598,11 @@ class PianoRoll {
     begin(event) {
         if (event.button !== 0 || this.editor.grid.closest("[inert]")) return;
         const point = this.point(event);
-        if (point.x < PIANO_KEYS && point.y >= PIANO_RULER) {
+        if (point.x < this.keyWidth && point.y >= PIANO_RULER) {
             this.hear([{ pitch: point.pitch, position: 0, duration: 2, velocity: 75 }]);
             return;
         }
-        if (point.x < PIANO_KEYS || point.x >= this.scroll.clientWidth || point.y >= this.scroll.clientHeight) return;
+        if (point.x < this.keyWidth || point.x >= this.scroll.clientWidth || point.y >= this.scroll.clientHeight) return;
         if (point.y >= PIANO_RULER && this.tool === "erase") {
             const hit = this.hit(point);
             if (hit) { this.select([hit]); this.erase(); }
@@ -717,7 +763,7 @@ class PianoRoll {
         this.playhead = active ? this.boundaries[bar - 1] + fraction * (this.boundaries[bar] - this.boundaries[bar - 1]) : undefined;
         if (Number.isFinite(this.playhead) && !this.gesture && this.followButton.getAttribute("aria-pressed") === "true") {
             const x = this.playhead * this.pixels;
-            if (x < this.scroll.scrollLeft || x > this.scroll.scrollLeft + this.scroll.clientWidth - PIANO_KEYS) this.scroll.scrollLeft = x;
+            if (x < this.scroll.scrollLeft || x > this.scroll.scrollLeft + this.scroll.clientWidth - this.keyWidth) this.scroll.scrollLeft = x;
         }
         this.queuePaint();
     }
@@ -743,12 +789,12 @@ class PianoRoll {
 
     paint() {
         const width = this.scroll.clientWidth, height = this.scroll.clientHeight;
-        if (width <= PIANO_KEYS || height <= PIANO_RULER) return;
+        if (width <= this.keyWidth || height <= PIANO_RULER) return;
         const lane = this["roll-velocity-lane"];
         const ctx = this.canvasContext(this.canvas, width, height);
         const v = this.canvasContext(lane, width, 58);
         const offsetX = this.scroll.scrollLeft, offsetY = this.scroll.scrollTop;
-        const x = beat => PIANO_KEYS + beat * this.pixels - offsetX;
+        const x = beat => this.keyWidth + beat * this.pixels - offsetX;
         const rowHeight = this.rowHeight;
         const y = pitch => PIANO_RULER + (127 - pitch) * rowHeight - offsetY;
         ctx.fillStyle = "#e4e0d9"; ctx.fillRect(0, 0, width, height);
@@ -760,22 +806,23 @@ class PianoRoll {
             if (top < PIANO_RULER - rowHeight || top > height) continue;
             const black = PITCH_NAMES[pitch % 12].includes("♯");
             const keyHeight = Math.max(1, rowHeight - 1);
-            ctx.fillStyle = black ? "#cecac4" : "#eeeae2"; ctx.fillRect(PIANO_KEYS, top, width - PIANO_KEYS, keyHeight);
-            ctx.fillStyle = "#f9f6f0"; ctx.fillRect(0, top, PIANO_KEYS - 1, keyHeight);
+            ctx.fillStyle = black ? "#cecac4" : "#eeeae2"; ctx.fillRect(this.keyWidth, top, width - this.keyWidth, keyHeight);
+            ctx.fillStyle = "#f9f6f0"; ctx.fillRect(0, top, this.keyWidth - 1, keyHeight);
             if (black && !this.phrase.drum) {
                 ctx.fillStyle = "#333b44"; ctx.fillRect(0, top, 36, keyHeight);
             }
             if (rowHeight >= 14 && (this.phrase.drum || pitch % 12 === 0)) {
-                ctx.fillStyle = "#292d31"; ctx.fillText(this.phrase.drum ? String(pitch) : pitchName(pitch), 38, top + 13);
+                ctx.fillStyle = "#292d31";
+                ctx.fillText(this.phrase.drum ? this.drumKeyName(pitch) : pitchName(pitch), this.phrase.drum ? 4 : 38, top + 13, this.keyWidth - 8);
             }
         }
         ctx.restore();
         ctx.fillStyle = "#3b3e40"; ctx.fillRect(0, 0, width, PIANO_RULER);
         v.fillStyle = "#43484b"; v.fillRect(0, 0, width, 58);
         ctx.save();
-        ctx.beginPath(); ctx.rect(PIANO_KEYS, 0, width - PIANO_KEYS, height); ctx.clip();
+        ctx.beginPath(); ctx.rect(this.keyWidth, 0, width - this.keyWidth, height); ctx.clip();
         v.save();
-        v.beginPath(); v.rect(PIANO_KEYS, 0, width - PIANO_KEYS, 58); v.clip();
+        v.beginPath(); v.rect(this.keyWidth, 0, width - this.keyWidth, 58); v.clip();
         const drag = this.gesture;
         const from = drag?.kind === "ruler" && drag.end ? this.barAt(Math.min(drag.point.beat, drag.end.beat)) : this.rangeStart;
         const to = drag?.kind === "ruler" && drag.end ? this.barAt(Math.max(drag.point.beat, drag.end.beat)) : this.rangeEnd;
@@ -786,7 +833,7 @@ class PianoRoll {
         const step = Number(this["roll-grid"].value);
         for (let bar = 0; bar + 1 < this.boundaries.length; bar++) {
             const first = this.boundaries[bar], next = this.boundaries[bar + 1];
-            if (x(next) < PIANO_KEYS || x(first) > width) continue;
+            if (x(next) < this.keyWidth || x(first) > width) continue;
             for (let index = 1; first + index * step < next - .00001; index++) {
                 const beat = first + index * step;
                 const major = Math.abs(index * step - Math.round(index * step)) < .00001;
@@ -810,11 +857,11 @@ class PianoRoll {
             const left = x(note.position), top = y(note.pitch);
             const length = Math.max(4, note.duration * this.pixels);
             const selected = this.selection.has(note) || drag?.preview?.includes(note);
-            if (left + length < PIANO_KEYS || left > width) continue;
+            if (left + length < this.keyWidth || left > width) continue;
             const velocity = selected ? this.velocityPreview ?? note.velocity : note.velocity;
             if (top >= PIANO_RULER - rowHeight && top < height) {
                 ctx.save();
-                ctx.beginPath(); ctx.rect(PIANO_KEYS, PIANO_RULER, width - PIANO_KEYS, height - PIANO_RULER); ctx.clip();
+                ctx.beginPath(); ctx.rect(this.keyWidth, PIANO_RULER, width - this.keyWidth, height - PIANO_RULER); ctx.clip();
                 ctx.fillStyle = selected ? "#227ba8" : "hsl(181 48% " + (80 - velocity * .31) + "%)";
                 const inset = rowHeight >= 6 ? 2 : 0;
                 ctx.fillRect(left, top + inset, length - 1, Math.max(1, rowHeight - inset * 2));
@@ -822,7 +869,10 @@ class PianoRoll {
                     ctx.strokeStyle = selected ? "#094064" : "#507575";
                     ctx.strokeRect(left + .5, top + 2.5, length - 2, rowHeight - 5);
                 }
-                if (length > 30 && rowHeight >= 14) { ctx.fillStyle = selected ? "#fff" : "#173335"; ctx.fillText(pitchName(note.pitch), left + 4, top + 13); }
+                if (length > 30 && rowHeight >= 14) {
+                    ctx.fillStyle = selected ? "#fff" : "#173335";
+                    ctx.fillText(this.phrase.drum ? this.drumKeyName(note.pitch) : pitchName(note.pitch), left + 4, top + 13, length - 8);
+                }
                 ctx.restore();
             }
             const level = velocity * 54 / 127;
@@ -844,5 +894,6 @@ class PianoRoll {
         ctx.fillStyle = "#dce1e1";
         ctx.fillText(this.phrase.drum ? "MIDI" : "♫", 12, 18);
         v.fillStyle = "#e3e7e8"; v.font = "11px system-ui"; v.fillText("VEL", 11, 32);
+        if (!this.staff.hidden) paintPianoScore(this.canvasContext(this.staff, width, staffHeight), this, width);
     }
 }

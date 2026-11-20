@@ -199,6 +199,15 @@
                         <label class="zoom-control">横ズーム <input id="roll-zoom" type="range" min="0.125" max="144" step="any" value="64" aria-label="ピアノロールの横ズーム"></label>
                         <label class="zoom-control">縦ズーム <input id="roll-vertical-zoom" type="range" min="1" max="38" step="any" value="18" aria-label="ピアノロールの縦ズーム"></label>
                         <button id="roll-fit" class="secondary" type="button">全音符を表示</button>
+                        <button id="roll-show-score" class="secondary" type="button" aria-controls="roll-score" aria-pressed="false">五線譜</button>
+                        <label hidden>五線譜の表示オクターブ <select id="roll-score-octave">
+                            <option value="-3">−3</option><option value="-2">−2</option><option value="-1">−1</option>
+                            <option value="0">0</option><option value="1">+1</option><option value="2">+2</option><option value="3">+3</option>
+                        </select></label>
+                        <label hidden>打楽器名のキーマップ <select id="roll-drum-map">
+                            <option value="">自動</option><option value="GM">GM</option><option value="GSGM2">GS/GM2</option>
+                            <option value="XG">XG</option><option value="XG_PopLatin">XG Pop Latin</option>
+                        </select></label>
                     </div>
                     <div class="roll-surface">
                         <div id="roll-scroll" tabindex="0" role="region" aria-label="音符グリッド" aria-describedby="roll-help">
@@ -206,6 +215,7 @@
                         </div>
                         <canvas id="roll-canvas" aria-hidden="true"></canvas>
                         <canvas id="roll-velocity-lane" aria-label="ベロシティレーン"></canvas>
+                        <canvas id="roll-score" role="img" aria-label="五線譜" hidden></canvas>
                     </div>
                     <div class="roll-footer">
                         <output id="roll-status" aria-live="polite"></output>

@@ -526,6 +526,7 @@ dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display
 #roll-scroll:focus-visible { outline-offset: -2px; }
 #roll-canvas { pointer-events: none; position: absolute; top: 0; left: 0; }
 #roll-velocity-lane { display: block; cursor: ns-resize; touch-action: none; border-top: 1px solid #737a7e; }
+#roll-score:not([hidden]) { display: block; border-top: 1px solid #737a7e; }
 .roll-footer { justify-content: space-between; border-top: 1px solid #1c1e21; font-size: .85rem; }
 #roll-help { width: 100%; }
 #roll-note-form { padding: .4rem 0 0; }

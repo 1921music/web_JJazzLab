@@ -1967,6 +1967,42 @@
             }
             report.midiOutput = true;
         }
+        {
+            editor.newSong();
+            const phrase = UserPhrase.write({ channel: 3, drum: false, notes: [
+                { pitch: 60, position: .25, duration: 1.5, velocity: 100 },
+                { pitch: 66, position: 2, duration: 1 / 3, velocity: 90 }
+            ] });
+            editor.editArrangement(() => {
+                editor.project.userTracks.push({ name: "Score test", phrase },
+                    { name: "Drum names", phrase: UserPhrase.write({ channel: 9, drum: true, notes: [
+                        { pitch: 25, position: 0, duration: .25, velocity: 90 }
+                    ] }) });
+            });
+            pianoRoll.open("Score test");
+            const toggle = document.querySelector("#roll-show-score");
+            const staff = document.querySelector("#roll-score");
+            const octave = document.querySelector("#roll-score-octave");
+            toggle.click();
+            await new Promise(resolve => requestAnimationFrame(resolve));
+            check(!staff.hidden && staff.getContext("2d").getImageData(0, 0, 2, 2).data[3] === 255
+                && scoreNoteValue(1.5).dot && scoreNoteValue(1 / 3).triplet && scoreNoteValue(.25).flags === 2,
+            "The view did not draw its staff or distinguish dotted and triplet durations");
+            octave.value = "2";
+            octave.dispatchEvent(new Event("change"));
+            const saved = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+            check(saved.clientProperties["NoteEditorScoreOctaveTransposition#3"] === "2"
+                && editor.project.userTracks[0].phrase === phrase, "The staff octave did not round-trip independently of MIDI pitch");
+            pianoRoll.open("Drum names");
+            const map = document.querySelector("#roll-drum-map");
+            map.value = "XG";
+            map.dispatchEvent(new Event("change"));
+            pianoRoll.select([pianoRoll.phrase.notes[0]]);
+            check(staff.hidden && !map.closest("label").hidden && pianoRoll.drumKeyName(25) === "Brush Tap"
+                && document.querySelector("#roll-status").textContent === "Brush Tap", "The desktop XG drum names did not reach the drum editor");
+            pianoRoll.close();
+            report.pianoScoreAndDrumNames = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

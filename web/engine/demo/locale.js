@@ -305,6 +305,9 @@ SysExを許可して接続|Connect with SysEx permission
 内蔵音源も鳴らす|Also play the built-in synthesizer
 MIDI出力遅延（ms）|MIDI output delay (ms)
 打楽器のキーマップ|Drum key mapping
+五線譜|Staff notation
+五線譜の表示オクターブ|Staff display octave
+打楽器名のキーマップ|Drum name map
 既定音色の割り当て…|Default Instrument Mappings…
 既定音色の割り当て|Default Instrument Mappings
 音源|Sound source

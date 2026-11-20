@@ -1213,6 +1213,20 @@ pianoRoll.onTracksChanged = () => {
     if (song && !playing && !paused) void generateAccompaniment();
 };
 pianoRoll.onTrackOpened = updateRollSolo;
+pianoRoll.onScoreChannel = () => {
+    const part = rollMixPart();
+    return part?.outputChannel ?? editor.mix.find(track => DesktopSongFiles.isUserMixTrack(track) && track.name === pianoRoll.name)?.channel;
+};
+pianoRoll.onDrumKeyMap = () => {
+    const part = rollMixPart();
+    const track = part && editor.mix.find(track => track.channel === part.channel)
+        || editor.mix.find(track => DesktopSongFiles.isUserMixTrack(track) && track.name === pianoRoll.name);
+    const kit = track?.instrument ?? "";
+    if (/xg.*pop.?latin/iu.test(kit)) return "XG_PopLatin";
+    if (/\bxg\b/iu.test(kit)) return "XG";
+    if (/fluid|\bgs\b|gm2/iu.test(kit)) return "GSGM2";
+    return "GM";
+};
 pianoRoll.onSolo = async name => {
     if (!name || generating || starting) return;
     if ((!song || accompanimentDirty) && !playing && !paused && !await generateAccompaniment()) return;

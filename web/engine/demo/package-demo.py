@@ -30,6 +30,7 @@ DESKTOP_OPEN = (
 )
 DESKTOP_MIXER = DEMO.parents[2] / "app/MixConsole/src/main/resources/org/jjazz/mixconsole/resources"
 DESKTOP_PIANO = DEMO.parents[2] / "app/PianoRoll/src/main/resources/org/jjazz/pianoroll"
+DESKTOP_KEYMAPS = DEMO.parents[2] / "model/Midi/src/main/java/org/jjazz/midi/api/keymap"
 DESKTOP_CHORD_PROGRESSIONS = (DEMO.parents[2] / "app/CL_EditorImpl/src/main/resources/org/jjazz/cl_editorimpl"
                               / "actions/resources/ChordProgressions.txt")
 
@@ -41,6 +42,14 @@ def encode_gzip(data):
 def inline_script(source):
     # Prevent raw-text closing tags in JavaScript from terminating the HTML element.
     return "<script>\n" + re.sub(r"</script", r"<\\/script", source, flags=re.IGNORECASE) + "\n</script>"
+
+
+def desktop_drum_key_maps():
+    result = {}
+    for mapping in ("GM", "GSGM2", "XG", "XG_PopLatin"):
+        source = (DESKTOP_KEYMAPS / f"KeyMap{mapping}.java").read_text(encoding="utf-8")
+        result[mapping] = {int(pitch): name for name, pitch in re.findall(r'addNote\("([^"]+)",\s*(\d+)', source)}
+    return result
 
 
 def desktop_mixer_patches():
@@ -111,6 +120,7 @@ def package(engine_dir, output):
     song_history = (DEMO / "song-history.js").read_text(encoding="utf-8")
     song_tabs = (DEMO / "song-tabs.js").read_text(encoding="utf-8")
     piano_roll = (DEMO / "piano-roll.js").read_text(encoding="utf-8")
+    piano_score = (DEMO / "piano-score.js").read_text(encoding="utf-8")
     archive = (DEMO / "style-archive.js").read_text(encoding="utf-8")
     rhythm_library = (DEMO / "rhythm-library.js").read_text(encoding="utf-8")
     click_settings = (DEMO / "click-settings.js").read_text(encoding="utf-8")
@@ -134,13 +144,14 @@ def package(engine_dir, output):
     data += f'\nconst embeddedDiscoHouse = "{disco_house}";'
     data += f'\nconst embeddedExtendedStyles = {json.dumps(extended_styles)};'
     data += f'\nconst embeddedDesktopMixerPatches = {json.dumps(desktop_mixer_patches())};'
+    data += f'\nconst embeddedDrumKeyMaps = {json.dumps(desktop_drum_key_maps())};'
     data += f'\nconst embeddedChordProgressions = {json.dumps(DESKTOP_CHORD_PROGRESSIONS.read_text(encoding="utf-8"))};'
     data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
                             "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_tabs, piano_roll, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_tabs, piano_score, piano_roll, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:
