@@ -1565,6 +1565,13 @@ class SongEditor {
         rhythm.replaceChildren(...(multi ? [new Option(unchanged, "")] : []),
             ...Array.from(choices, ([id, label]) => new Option(label, id)));
         rhythm.value = common(parts.map(part => DesktopSongFiles.sourceStyleId(part.styleId)));
+        let chosenVariation;
+        rhythm.onchange = () => { chosenVariation = undefined; };
+        document.querySelector("#browse-part-rhythms").onclick = () => this.openRhythmPicker(index, rhythm.value, choices, (id, variation) => {
+            if (!Array.from(rhythm.options).some(option => option.value === id)) rhythm.add(new Option(choices.get(id), id));
+            rhythm.value = id;
+            chosenVariation = variation;
+        });
         name.value = common(parts.map(part => part.name));
         name.placeholder = multi ? unchanged : "";
         name.required = !multi;
@@ -1589,6 +1596,7 @@ class SongEditor {
                     for (const [id, apply] of edits) {
                         if (parameters.has(id)) apply(part, parameters.get(id));
                     }
+                    if (chosenVariation) part.parameters.rpVariationID = chosenVariation;
                 }
                 if (changedRhythm) this.onUsePartStyles?.();
             });
@@ -1596,6 +1604,175 @@ class SongEditor {
             this.selectPart(index, true, { keep: multi });
         };
         this.partDialog.showModal();
+    }
+
+    openRhythmPicker(index, initialId, choices, apply) {
+        const dialog = document.querySelector("#rhythm-picker");
+        const form = dialog.querySelector("form");
+        const search = form.querySelector("#rhythm-filter");
+        const provider = form.querySelector("#rhythm-provider");
+        const meter = form.querySelector("#rhythm-meter");
+        const favoritesOnly = form.querySelector("#rhythm-favorites-only");
+        const rows = form.querySelector("tbody");
+        const status = form.querySelector("#rhythm-picker-status");
+        const variation = form.querySelector("#rhythm-preview-variation");
+        const preview = form.querySelector("#preview-rhythm");
+        const stop = form.querySelector("#stop-rhythm-preview");
+        const pack = form.querySelector("#rhythm-load-pack");
+        const confirm = form.querySelector("#apply-rhythm-picker");
+        const favoriteKey = "web-jjazzlab.favorite-rhythms";
+        let favorites = new Set();
+        try { favorites = new Set(JSON.parse(localStorage.getItem(favoriteKey) ?? "[]")); } catch { /* Optional storage. */ }
+        const meters = DesktopSongFiles.meters;
+        const catalogue = () => this.onRhythmCatalogue(choices);
+        const described = new Map();
+        let selected, details, auditioned, searchRequest = 0, previewRequest = 0;
+        const describe = entry => {
+            if (!described.has(entry.id)) described.set(entry.id, this.onDescribeStyle(entry.id).then(info => {
+                entry.meter = info.meter;
+                return info;
+            }).catch(() => {
+                entry.meter = "unknown";
+                return undefined;
+            }));
+            return described.get(entry.id);
+        };
+        let entries = catalogue();
+        const setProviders = () => {
+            const previous = provider.value;
+            provider.replaceChildren(new Option(t("すべて", "All"), ""),
+                ...Array.from(new Set(entries.map(entry => entry.provider)), label => new Option(label, label)));
+            provider.value = Array.from(provider.options).some(option => option.value === previous) ? previous : "";
+        };
+        const endPreview = () => {
+            previewRequest++;
+            stop.disabled = true;
+            this.onStopRhythmPreview();
+        };
+        const refreshSelected = () => {
+            for (const row of rows.rows) row.toggleAttribute("data-selected", row.dataset.id === selected?.id);
+        };
+        const select = async entry => {
+            endPreview();
+            selected = entry;
+            details = auditioned = undefined;
+            refreshSelected();
+            variation.replaceChildren();
+            confirm.disabled = preview.disabled = variation.disabled = true;
+            if (!entry) return;
+            status.textContent = t("リズムを読み込んでいます…", "Loading rhythm…");
+            const info = await describe(entry);
+            if (!dialog.open || selected !== entry) return;
+            const row = Array.from(rows.rows).find(row => row.dataset.id === entry.id);
+            if (row) row.cells[2].textContent = meters[entry.meter]?.[0] ?? "—";
+            if (!info) {
+                status.textContent = t("このリズムを読み込めませんでした。", "Could not load this rhythm.");
+                return;
+            }
+            details = info;
+            variation.replaceChildren(...info.variations.map(value => new Option(value, value)));
+            const part = this.project.parts[index];
+            if (entry.id === DesktopSongFiles.sourceStyleId(part.styleId) && info.variations.includes(part.parameters.rpVariationID)) {
+                variation.value = part.parameters.rpVariationID;
+            }
+            confirm.disabled = preview.disabled = false;
+            variation.disabled = !info.variations.length;
+            status.textContent = "";
+        };
+        const render = async () => {
+            const request = ++searchRequest;
+            const words = search.value.normalize("NFKC").toLowerCase().trim().split(/\s+/u);
+            const signature = meter.value;
+            const candidates = entries.filter(entry => (!provider.value || entry.provider === provider.value)
+                && (!favoritesOnly.checked || favorites.has(entry.id))
+                && words.every(word => `${entry.name} ${entry.category ?? ""}`.normalize("NFKC").toLowerCase().includes(word)));
+            rows.replaceChildren();
+            const append = (entry, fragment) => {
+                const row = document.createElement("tr");
+                row.dataset.id = entry.id;
+                const choose = this.button(entry.name, () => select(entry));
+                row.insertCell().append(choose);
+                row.insertCell().textContent = entry.provider;
+                const signatureCell = row.insertCell();
+                signatureCell.textContent = meters[entry.meter]?.[0] ?? "—";
+                const favorite = this.button("", () => {
+                    if (!favorites.delete(entry.id)) favorites.add(entry.id);
+                    try { localStorage.setItem(favoriteKey, JSON.stringify([...favorites])); } catch { /* Optional storage. */ }
+                    if (favoritesOnly.checked) render(); else decorateFavorite();
+                });
+                const decorateFavorite = () => {
+                    const marked = favorites.has(entry.id);
+                    favorite.textContent = marked ? "★" : "☆";
+                    favorite.setAttribute("aria-pressed", String(marked));
+                    favorite.setAttribute("aria-label", t(`${entry.name}のお気に入り`, `Favorite ${entry.name}`));
+                };
+                decorateFavorite();
+                row.insertCell().append(favorite);
+                fragment.append(row);
+            };
+            const visible = candidates.filter(entry => !signature || entry.meter === signature);
+            const fragment = document.createDocumentFragment();
+            visible.forEach(entry => append(entry, fragment));
+            rows.append(fragment);
+            if (signature) {
+                for (const entry of candidates.filter(entry => !entry.meter)) {
+                    const info = await describe(entry);
+                    if (!dialog.open || request !== searchRequest) return;
+                    if (info?.meter === signature) { visible.push(entry); append(entry, rows); }
+                }
+            }
+            if (request !== searchRequest || !dialog.open) return;
+            if (selected && !visible.includes(selected)) await select(undefined);
+            refreshSelected();
+        };
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (!selected || !details) return;
+            apply(selected.id, auditioned);
+            dialog.close();
+        };
+        form.querySelector("#cancel-rhythm-picker").onclick = () => dialog.close();
+        dialog.onclose = () => { searchRequest++; endPreview(); };
+        preview.onclick = async () => {
+            endPreview();
+            const request = previewRequest;
+            const value = variation.value;
+            const active = () => dialog.open && request === previewRequest;
+            stop.disabled = false;
+            status.textContent = t("試聴を準備しています…", "Preparing preview…");
+            try {
+                await this.onPreviewRhythm(index, details, value, active);
+                if (active()) {
+                    auditioned = value;
+                    status.textContent = "";
+                }
+            } catch (error) {
+                if (active()) { status.textContent = error.message; stop.disabled = true; }
+            }
+        };
+        stop.onclick = () => { endPreview(); status.textContent = ""; };
+        variation.onchange = () => { auditioned = undefined; endPreview(); status.textContent = ""; };
+        search.oninput = provider.onchange = meter.onchange = favoritesOnly.onchange = render;
+        pack.disabled = this.hasRhythmPack();
+        pack.onclick = async () => {
+            pack.disabled = true;
+            await this.onLoadRhythmPack();
+            if (!dialog.open) return;
+            pack.disabled = this.hasRhythmPack();
+            entries = catalogue();
+            for (const entry of entries) choices.set(entry.id, entry.name);
+            setProviders();
+            render();
+        };
+        search.value = "";
+        status.textContent = "";
+        favoritesOnly.checked = false;
+        setProviders();
+        meter.replaceChildren(new Option(t("すべて", "All"), ""),
+            ...Object.entries(meters).map(([id, [label]]) => new Option(label, id)));
+        dialog.showModal();
+        render();
+        select(entries.find(entry => entry.id === initialId));
     }
 
     makePartEditorFields(parts, container, unchanged) {

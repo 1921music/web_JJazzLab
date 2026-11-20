@@ -280,6 +280,15 @@ Auto（バリエーションに合わせる）|Auto (follow the variation)
 JJazzLab公開スタイル集|JJazzLab public style library
 カテゴリー|Category
 すべて|All
+リズムを探す…|Browse rhythms…
+リズムを選択|Select Rhythm
+検索|Search
+プロバイダー|Provider
+お気に入りのみ|Favorites only
+お気に入り|Favorite
+試聴停止|Stop Preview
+公開スタイル集を読み込む|Load Public Style Collection
+選択|Select
 スタイル名で検索|Search styles by name
 公開スタイル|Public styles
 Jazz、Bossa、Waltz…|Jazz, Bossa, Waltz…

@@ -413,11 +413,41 @@
             <h2 id="part-editor-title">演奏区間</h2>
             <label class="field">区間名 <input id="part-name" required></label>
             <label class="field">リズム <select id="part-rhythm"></select></label>
+            <button id="browse-part-rhythms" type="button" class="secondary">リズムを探す…</button>
             <fieldset id="part-batch-fields">
                 <legend>区間パラメーター</legend>
                 <div id="part-parameter-fields"></div>
             </fieldset>
             <div class="dialog-actions"><button id="cancel-part-edit" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="rhythm-picker" aria-labelledby="rhythm-picker-title">
+        <form id="rhythm-picker-form" method="dialog">
+            <h2 id="rhythm-picker-title">リズムを選択</h2>
+            <div class="rhythm-picker-fields">
+                <label class="field">検索 <input id="rhythm-filter" type="search" autofocus></label>
+                <label class="field">プロバイダー <select id="rhythm-provider"></select></label>
+                <label class="field">拍子 <select id="rhythm-meter"></select></label>
+                <label><input id="rhythm-favorites-only" type="checkbox"> お気に入りのみ</label>
+            </div>
+            <div class="rhythm-table-scroll">
+                <table id="rhythm-table">
+                    <thead><tr><th scope="col">リズム</th><th scope="col">プロバイダー</th><th scope="col">拍子</th><th scope="col">お気に入り</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <p id="rhythm-picker-status" role="status"></p>
+            <div class="rhythm-picker-fields">
+                <label class="field">バリエーション <select id="rhythm-preview-variation"></select></label>
+                <button id="preview-rhythm" type="button" class="secondary">試聴</button>
+                <button id="stop-rhythm-preview" type="button" class="secondary">試聴停止</button>
+            </div>
+            <div class="dialog-actions">
+                <button id="rhythm-load-pack" type="button" class="secondary">公開スタイル集を読み込む</button>
+                <button id="cancel-rhythm-picker" type="button" class="secondary">キャンセル</button>
+                <button id="apply-rhythm-picker" type="submit">選択</button>
+            </div>
         </form>
     </dialog>
 

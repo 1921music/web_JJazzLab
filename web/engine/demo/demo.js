@@ -1348,20 +1348,74 @@ editor.onChanged = () => {
 editor.onStyleChoices = () => new Map([
     ["jjSwing-ID", "jjSwing"],
     ...[...bundledStyles.keys(), ...Object.keys(embeddedExtendedStyles)].map(name => [`${name}-ID`, name]),
+    ...Array.from(styleInput.files, file => [`${file.name}-ID`, file.name]),
     ...editor.attachedStyles.map(style => [style.id, style.name]),
     ...(styleArchive?.entries.filter(entry => !styleIssue(entry)).map(entry => [`${entry.name}-ID`, entry.name]) ?? [])
 ]);
-editor.onDescribeRhythm = async id => {
+editor.onRhythmCatalogue = choices => {
+    const catalog = new Map([...choices, ...editor.onStyleChoices()]);
+    const categories = new Map(styleArchive?.entries.map(entry => [`${entry.name}-ID`, entry.category]));
+    return [...catalog].map(([id, name]) => ({
+        id, name, category: categories.get(id),
+        provider: id === "jjSwing-ID" ? "jjSwing" : /\.yjz-ID$/iu.test(id) ? "YamJJazz" : "Yamaha",
+        meter: id === "jjSwing-ID" || id === `${bundledStyle}-ID` || id === "DiscoHouse.S145.prs-ID" ? "FOUR_FOUR"
+            : id === `${bundledJazzWaltz}-ID` ? "THREE_FOUR" : undefined
+    })).sort((a, b) => a.name.localeCompare(b.name));
+};
+editor.hasRhythmPack = () => Boolean(styleArchive);
+editor.onLoadRhythmPack = loadStylePack;
+editor.onDescribeStyle = async id => {
     engine ??= await getEngine();
     const style = await findSavedStyle(DesktopSongFiles.sourceStyleId(id));
     if (!style) throw new Error(t("スタイルが見つかりません。", "The style could not be found."));
+    return describeStyle(style);
+};
+editor.onDescribeRhythm = async id => {
+    const style = await editor.onDescribeStyle(id);
     const name = style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name;
     const voices = Array.from(engine.exports.getRhythmVoices(style.bytes, name,
         style.extension ?? new Int8Array(), style.extension ? style.name : ""), row => {
         const [name, type] = row.split("\t");
         return { name, type };
     });
-    return { ...describeStyle(style), voices };
+    return { ...style, voices };
+};
+let rhythmPreviewEngine;
+editor.onStopRhythmPreview = stopAudition;
+editor.onPreviewRhythm = async (index, style, variation, stillValid) => {
+    if (playing || paused || starting || generating) throw new Error(t("再生を停止してから試聴してください。", "Stop playback before previewing."));
+    const audio = player.initialize(showPlayStatus);
+    const project = editor.project;
+    const part = project.parts[index];
+    const section = project.sections[part.section];
+    const { sheetStart, sheetEnd } = editor.partRanges()[index];
+    const bars = sheetEnd - sheetStart;
+    const chords = project.chords.filter(chord => chord.bar >= sheetStart && chord.bar < sheetEnd)
+        .map(chord => ({ ...chord, bar: chord.bar - sheetStart }));
+    if (!chords.some(chord => chord.bar === 0 && chord.beat === 0)) {
+        const previous = project.chords.filter(chord => chord.bar < sheetStart).toSorted((a, b) => a.bar - b.bar || a.beat - b.beat).at(-1);
+        chords.unshift({ name: previous?.name ?? "C", bar: 0, beat: 0 });
+    }
+    const compatible = Object.fromEntries(Object.entries(part.parameters).filter(([id]) => style.parameters.get(id)?.type !== "custom"
+        && style.parameters.has(id)));
+    if (variation) compatible.rpVariationID = variation;
+    const candidate = arrangePart({ ...part, section: 0, parameters: compatible }, style, section.meter);
+    const excerpt = { title: project.title, tempo: project.tempo, bars, chords, sections: [{ ...section, bar: 0 }],
+        parts: [candidate], userTracks: [] };
+    rhythmPreviewEngine ??= instantiateEngine().catch(error => { rhythmPreviewEngine = undefined; throw error; });
+    const [wasm] = await Promise.all([rhythmPreviewEngine, audio]);
+    if (!stillValid()) return;
+    const midi = wasm.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(excerpt, [style], [0], []));
+    const beats = Array(bars).fill(DesktopSongFiles.meters[section.meter][1]);
+    const preview = parseMidi(midi, bars, wasm.exports.getPartMetadata(), beats);
+    const tracks = initialMixerParts(preview, DesktopSongFiles.decodeEngineMix(wasm.exports.getSongMix()));
+    const queued = pendingAudition.then(async () => {
+        if (!stillValid() || playing || paused || starting || generating) return;
+        await player.play(preview, { enabled: false, start: 0, end: preview.duration },
+            tracks, Number(masterInput.value) / 100, false, { preview: true, click: false });
+    });
+    pendingAudition = queued.catch(() => {});
+    await queued;
 };
 editor.onDrumTransformChoices = async () => Array.from((await getEngine()).exports.getDrumTransforms(), row => row.split("\t"));
 editor.onStopDrumPreview = stopAudition;

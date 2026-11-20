@@ -1608,6 +1608,67 @@
             pianoRoll.close();
             report.batchCustomRhythmParameters = true;
         }
+        {
+            const fixture = DesktopSongFiles.readSong(desktopFixture.legacySongs[1]);
+            const original = { id: "jjSwing-ID", name: "jjSwing" };
+            Object.assign(fixture.parts[0], { styleId: original.id, styleName: original.name, parameters: {} });
+            editor.open(fixture, [], undefined, true);
+            editor.selectPart(0);
+            editor.openPartEditor(0);
+            const browse = document.querySelector("#browse-part-rhythms");
+            const picker = document.querySelector("#rhythm-picker");
+            const filter = picker.querySelector("#rhythm-filter");
+            const provider = picker.querySelector("#rhythm-provider");
+            const meter = picker.querySelector("#rhythm-meter");
+            const favorites = picker.querySelector("#rhythm-favorites-only");
+            const preview = picker.querySelector("#preview-rhythm");
+            const vary = picker.querySelector("#rhythm-preview-variation");
+            const rows = picker.querySelector("tbody");
+            const choice = id => Array.from(rows.rows).find(row => row.dataset.id === id);
+            const set = (field, value, event = "change") => { field.value = value; field.dispatchEvent(new Event(event)); };
+            const ready = async () => {
+                for (let attempt = 0; preview.disabled && attempt < 120; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+                check(!preview.disabled, picker.querySelector("#rhythm-picker-status").textContent);
+            };
+            const favoriteKey = "web-jjazzlab.favorite-rhythms";
+            const savedFavorites = localStorage.getItem(favoriteKey);
+            try {
+                localStorage.removeItem(favoriteKey);
+                browse.click();
+                check(picker.open, "The rhythm selector did not open");
+                set(provider, "Yamaha");
+                set(meter, "THREE_FOUR");
+                set(filter, "JazzWaltz", "input");
+                const waltz = choice("JazzWaltzMed.S351.sst-ID");
+                check(rows.rows.length === 1 && waltz?.cells[2].textContent === "3/4", "The provider, meter and search filters did not combine");
+                waltz.cells[3].querySelector("button").click();
+                picker.close();
+                await new Promise(resolve => setTimeout(resolve, 30));
+                browse.click();
+                favorites.click();
+                check(rows.rows.length === 1 && choice("JazzWaltzMed.S351.sst-ID"), "A favorite did not survive closing the selector");
+                favorites.click();
+                const disco = choice("DiscoHouse.S145.prs-ID");
+                disco.cells[0].querySelector("button").click();
+                await ready();
+                const variation = Array.from(vary.options).find(option => /^Main B/u.test(option.value))?.value;
+                check(Boolean(variation), "Native style variations were not available");
+                set(vary, variation);
+                await preview.onclick();
+                check(player.previewing && !playing && player.loadedSong.events.some(event => event.type === 0x90 && event.b > 0)
+                    && player.loadedSong.parts.length > 1, `The style preview did not play: ${picker.querySelector("#rhythm-picker-status").textContent}`);
+                picker.querySelector("form").requestSubmit();
+                document.querySelector("#part-editor-form").requestSubmit();
+                check(fixture.parts[0].styleId === "DiscoHouse.S145.prs-ID" && fixture.parts[0].parameters.rpVariationID === variation
+                    && fixture.parts[1].styleId !== "DiscoHouse.S145.prs-ID", "The selected rhythm and auditioned variation did not apply to the target part");
+                editor.undoButton.click();
+                check(fixture.parts[0].styleId === original.id, "Undo did not restore the original rhythm");
+            } finally {
+                if (savedFavorites === null) localStorage.removeItem(favoriteKey);
+                else localStorage.setItem(favoriteKey, savedFavorites);
+            }
+            report.rhythmPicker = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
