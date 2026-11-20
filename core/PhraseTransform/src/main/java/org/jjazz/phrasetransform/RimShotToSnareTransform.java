@@ -25,7 +25,6 @@ package org.jjazz.phrasetransform;
 
 import java.util.Properties;
 import javax.swing.Icon;
-import javax.swing.ImageIcon;
 import org.jjazz.midi.api.DrumKit;
 import org.jjazz.midi.api.DrumKit.KeyMap;
 import org.jjazz.phrase.api.NoteEvent;
@@ -47,7 +46,7 @@ public class RimShotToSnareTransform implements PhraseTransform
 
     @StaticResource(relative = true)
     private static final String ICON_PATH = "resources/Rimshot2Snare-Transformer-48x24.png";
-    private static final Icon ICON = new ImageIcon(RimShotToSnareTransform.class.getResource(ICON_PATH));
+    private static final Icon ICON = PhraseTransforms.loadIcon(RimShotToSnareTransform.class, ICON_PATH);
     private final Info info;
     private final PtProperties properties;
 

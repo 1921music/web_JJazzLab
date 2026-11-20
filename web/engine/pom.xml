@@ -21,6 +21,16 @@
 
     <dependencies>
         <dependency>
+            <groupId>org.jjazzlab.core</groupId>
+            <artifactId>embeddedsynth</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jjazzlab.core</groupId>
+            <artifactId>humanizer</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
             <groupId>org.jjazzlab.plugins</groupId>
             <artifactId>jjswing</artifactId>
             <version>${project.version}</version>
@@ -33,6 +43,11 @@
         <dependency>
             <groupId>org.jjazzlab.core</groupId>
             <artifactId>songimpl</artifactId>
+            <version>${project.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>org.jjazzlab.core</groupId>
+            <artifactId>rhythmstubs</artifactId>
             <version>${project.version}</version>
         </dependency>
         <dependency>

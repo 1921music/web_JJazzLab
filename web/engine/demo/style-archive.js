@@ -4,18 +4,26 @@
 // All bytes stay in memory; no filesystem, persistent storage or download link.
 const styleArchiveLimits = { archive: 16 * 1024 * 1024, entry: 1024 * 1024, total: 64 * 1024 * 1024, count: 2000 };
 
-function styleCrc32(bytes) {
-    let crc = 0xffffffff;
-    for (const byte of bytes) {
-        crc ^= byte;
-        for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-    }
+const crc32Table = Uint32Array.from({ length: 256 }, (_, byte) => {
+    for (let bit = 0; bit < 8; bit++) byte = (byte >>> 1) ^ ((byte & 1) ? 0xedb88320 : 0);
+    return byte;
+});
+
+function styleCrc32(bytes, previous = 0) {
+    let crc = previous ^ 0xffffffff;
+    for (let index = 0; index < bytes.length; index++) crc = (crc >>> 8) ^ crc32Table[(crc ^ bytes[index]) & 255];
     return (crc ^ 0xffffffff) >>> 0;
 }
 
 class MemoryStyleArchive {
-    constructor(input) {
+    constructor(input, options = {}) {
         this.bytes = input instanceof Uint8Array ? input : new Uint8Array(input);
+        this.validate = options.validate ?? (bytes => {
+            if (bytes.length < 14 || new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0) !== 0x4d546864)
+                throw new Error("選択したファイルはMIDI形式のYamahaスタイルではありません。");
+        });
+        const accept = options.accept ?? (path => /\.(sty|sst|prs|bcs)$/iu.test(path));
+        const entryLimit = options.entryLimit ?? styleArchiveLimits.entry;
         const bytes = this.bytes;
         if (bytes.length < 22 || bytes.length > styleArchiveLimits.archive) throw new Error("スタイル集のZIPサイズが不正です。");
         this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
@@ -44,18 +52,18 @@ class MemoryStyleArchive {
             // supported as well; no path is ever used for a filesystem write.
             const path = new TextDecoder("utf-8", { fatal: true }).decode(bytes.subarray(offset + 46, offset + 46 + nameLength));
             offset = next;
-            if (!/\.(sty|sst|prs|bcs)$/iu.test(path)) continue;
+            if (!accept(path)) continue;
             const segments = path.split("/");
             if (segments.some(s => !s || s === "." || s === ".." || /[\\:\x00-\x1f]/u.test(s)) || paths.has(path))
                 throw new Error("スタイル集に不正または重複したファイル名があります。");
             paths.add(path);
             total += length;
             if ((flags & 1) || ![0, 8].includes(method)) throw new Error("暗号化ZIPまたは未対応のZIP圧縮形式です。");
-            if (!length || length > styleArchiveLimits.entry || total > styleArchiveLimits.total || localOffset + 30 > start)
+            if (!length || length > entryLimit || total > styleArchiveLimits.total || localOffset + 30 > start)
                 throw new Error("スタイル集の展開サイズが範囲外です。");
             this.entries.push({ path, name: segments.at(-1), category: segments.slice(1, -1).join("/") || "その他", flags, method, crc, compressed, length, localOffset, directoryStart: start });
         }
-        if (offset !== end || !this.entries.length) throw new Error("ZIP内に利用できるYamahaスタイルがありません。");
+        if (offset !== end || !this.entries.length) throw new Error(options.notFound ?? "ZIP内に利用できるYamahaスタイルがありません。");
         this.entries.sort((a, b) => a.category.localeCompare(b.category) || a.name.localeCompare(b.name));
     }
 
@@ -93,8 +101,7 @@ class MemoryStyleArchive {
             } finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
         }
         if (bytes.length !== entry.length || styleCrc32(bytes) !== entry.crc) throw new Error("スタイルのZIP整合性チェックに失敗しました。");
-        if (bytes.length < 14 || new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength).getUint32(0) !== 0x4d546864)
-            throw new Error("選択したファイルはMIDI形式のYamahaスタイルではありません。");
+        this.validate(bytes);
         return bytes;
     }
 }

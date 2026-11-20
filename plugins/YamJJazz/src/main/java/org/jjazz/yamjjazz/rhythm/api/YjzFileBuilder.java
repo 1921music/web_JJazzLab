@@ -20,7 +20,7 @@
  * 
  *  Contributor(s): 
  */
-package org.jjazz.yjzwizard;
+package org.jjazz.yamjjazz.rhythm.api;
 
 import java.util.Collections;
 import java.util.logging.Level;
@@ -40,15 +40,6 @@ import org.jjazz.rhythmmusicgeneration.api.SourcePhrase;
 import org.jjazz.rhythmmusicgeneration.api.SourcePhraseSet;
 import org.jjazz.rhythm.api.MusicGenerationException;
 import org.jjazz.rhythm.api.RhythmVoice;
-import org.jjazz.rhythmdatabase.api.RhythmDatabase;
-import org.jjazz.rhythmdatabase.api.RhythmInfo;
-import org.jjazz.rhythmdatabase.api.UnavailableRhythmException;
-import org.jjazz.yamjjazz.rhythm.api.AccType;
-import org.jjazz.yamjjazz.rhythm.api.CtabChannelSettings;
-import org.jjazz.yamjjazz.rhythm.api.Style;
-import org.jjazz.yamjjazz.rhythm.api.StylePart;
-import org.jjazz.yamjjazz.rhythm.api.StylePartType;
-import org.jjazz.yamjjazz.rhythm.api.YamJJazzRhythm;
 
 /**
  * Generate the Midi sequence which will be dumped as a .yjz file.
@@ -56,16 +47,15 @@ import org.jjazz.yamjjazz.rhythm.api.YamJJazzRhythm;
 public class YjzFileBuilder
 {
 
-    int nbMainA, nbMainB, nbMainC, nbMainD;
-    int nbSrcPhrases;
-    boolean includeIntroEndings, includeFills;
-    RhythmInfo baseRhythmInfo;
-    YamJJazzRhythm baseRhythmInstance;
-    Style baseStyle;
+    private final int nbMainA, nbMainB, nbMainC, nbMainD;
+    private final int nbSrcPhrases;
+    private final boolean includeIntroEndings, includeFills;
+    private final YamJJazzRhythm baseRhythmInstance;
+    private Style baseStyle;
 
     private static final Logger LOGGER = Logger.getLogger(YjzFileBuilder.class.getSimpleName());
 
-    public YjzFileBuilder(RhythmInfo baseRhythmInfo, int nbMainA, int nbMainB, int nbMainC, int nbMainD, boolean includeIntroEndings, boolean includeFills, int nbSrcPhrases)
+    public YjzFileBuilder(YamJJazzRhythm baseRhythm, int nbMainA, int nbMainB, int nbMainC, int nbMainD, boolean includeIntroEndings, boolean includeFills, int nbSrcPhrases)
     {
         this.nbMainA = nbMainA;
         this.nbMainB = nbMainB;
@@ -74,20 +64,14 @@ public class YjzFileBuilder
         this.includeIntroEndings = includeIntroEndings;
         this.includeFills = includeFills;
         this.nbSrcPhrases = nbSrcPhrases;
-        this.baseRhythmInfo = baseRhythmInfo;
+        this.baseRhythmInstance = baseRhythm;
     }
 
-    public Sequence buildSequence() throws UnavailableRhythmException, MusicGenerationException, InvalidMidiDataException
+    public Sequence buildSequence() throws MusicGenerationException, InvalidMidiDataException
     {
-        assert !baseRhythmInfo.isAdaptedRhythm() : "baseRhythm=" + baseRhythmInfo;   //NOI18N
-
-
         // Get the base rhythm & style
-        var r = RhythmDatabase.getSharedInstance().getRhythmInstance(baseRhythmInfo);
-        assert r instanceof YamJJazzRhythm : "r.getClass()=" + r.getClass();   //NOI18N
-        r.loadResources();  // Make source phrases are loaded
-        baseRhythmInstance = (YamJJazzRhythm) r;
-        assert !baseRhythmInstance.isExtendedRhythm() : "baseRhythm=" + baseRhythmInstance;   //NOI18N
+        if (baseRhythmInstance.isExtendedRhythm()) throw new IllegalArgumentException("Choose a standard Yamaha base style");
+        baseRhythmInstance.loadResources();
         baseStyle = baseRhythmInstance.getStyle();
 
 
@@ -161,7 +145,7 @@ public class YjzFileBuilder
 
 
         // Time signature MidiEvent 
-        me = new MidiEvent(MidiUtilities.getTimeSignatureMessage(baseRhythmInfo.timeSignature()), 0);
+        me = new MidiEvent(MidiUtilities.getTimeSignatureMessage(baseRhythmInstance.getTimeSignature()), 0);
         track0.add(me);
 
 

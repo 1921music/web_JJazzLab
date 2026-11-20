@@ -23,6 +23,8 @@
 package org.jjazz.phrasetransform.api;
 
 import static com.google.common.base.Preconditions.checkNotNull;
+import javax.swing.Icon;
+import javax.swing.ImageIcon;
 import org.jjazz.midi.api.DrumKit;
 import org.jjazz.midi.api.Instrument;
 import org.jjazz.phrase.api.Phrase;
@@ -35,6 +37,11 @@ import org.jjazz.song.api.SongPartContext;
  */
 public class PhraseTransforms
 {
+
+    public static Icon loadIcon(Class<?> resourceOwner, String path)
+    {
+        return new ImageIcon(resourceOwner.getResource(path));
+    }
 
     static public Instrument getInstrument(Phrase p, SongPartContext context)
     {

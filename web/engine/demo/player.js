@@ -1,6 +1,76 @@
 "use strict";
 
 const soundFontUrl = "https://raw.githubusercontent.com/craffel/pretty-midi/0df351ff2949ef80e788343e952fe15e473f0cde/pretty_midi/TimGM6mb.sf2";
+let synthAssets;
+let selectedSoundFont;
+const defaultSynthEffects = { gain: 1, reverb: 1, chorus: 1 };
+let synthEffects = { ...defaultSynthEffects };
+
+function validateSoundFont(soundfont) {
+    if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000) {
+        throw new Error(t("SoundFontは16MB以下の .sf2 を選んでください。", "Choose an .sf2 SoundFont of up to 16 MB."));
+    }
+    const header = new DataView(soundfont);
+    if (header.getUint32(0) !== 0x52494646 || header.getUint32(8) !== 0x7366626b
+        || header.getUint32(4, true) !== soundfont.byteLength - 8) {
+        throw new Error(t("SoundFontファイルの形式が不正です。", "Invalid SoundFont file format."));
+    }
+    return soundfont;
+}
+
+async function loadDefaultSoundFont(onStatus) {
+    const manifest = document.querySelector('link[rel="manifest"]');
+    let cache;
+    if (manifest && globalThis.caches) {
+        try {
+            cache = await caches.open(`jjazzlab-soundfont:${manifest.href}`);
+            const stored = await cache.match(soundFontUrl);
+            if (stored) return validateSoundFont(await stored.arrayBuffer());
+        } catch { /* Private browsing, storage limits or an unusable cached font. */ }
+    }
+    onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
+    const response = await fetch(soundFontUrl, { credentials: "omit", signal: AbortSignal.timeout(60000) }).catch(() => {
+        throw new Error("SoundFontを取得できませんでした。ネット接続を確認して再生を押してください。");
+    });
+    if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
+    const soundfont = validateSoundFont(await response.arrayBuffer());
+    try { await cache?.put(soundFontUrl, new Response(soundfont)); }
+    catch { /* Playback is also available when storage is full. */ }
+    return soundfont;
+}
+
+function loadSynthAssets(onStatus) {
+    if (selectedSoundFont) {
+        const soundfont = selectedSoundFont.soundfont;
+        synthAssets ??= decompress(embeddedSynth).then(wasm => ({ wasm, soundfont })).catch(error => {
+            synthAssets = undefined;
+            throw error;
+        });
+        return synthAssets;
+    }
+    synthAssets ??= Promise.all([decompress(embeddedSynth), loadDefaultSoundFont(onStatus)])
+        .then(([wasm, soundfont]) => ({ wasm, soundfont }))
+        .catch(error => { synthAssets = undefined; throw error; });
+    return synthAssets;
+}
+
+function loadSynthWorklet(context) {
+    if (!context.audioWorklet) throw new Error("AudioWorkletに対応したPC版ChromeまたはEdgeで開いてください。");
+    // A data URL also works for standalone HTML documents opened from disk.
+    const source = new TextEncoder().encode(embeddedWorklet);
+    const url = "data:text/javascript;base64," + btoa(Array.from(source, byte => String.fromCharCode(byte)).join(""));
+    return context.audioWorklet.addModule(url).catch(error => { throw new Error(`音声処理モジュールを読み込めませんでした: ${error.message}`); });
+}
+
+function connectSynthOutput(context, node) {
+    const compressor = context.createDynamicsCompressor();
+    compressor.threshold.value = -3;
+    compressor.knee.value = 3;
+    compressor.ratio.value = 20;
+    node.connect(compressor);
+    compressor.connect(context.destination);
+    return compressor;
+}
 
 class AccompanimentPlayer {
     constructor(onPosition, onError) {
@@ -20,35 +90,21 @@ class AccompanimentPlayer {
     }
 
     async load(onStatus) {
-        onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
-        if (!this.context.audioWorklet) throw new Error("AudioWorkletに対応したPC版ChromeまたはEdgeで開いてください。");
-        const abort = new AbortController();
-        const timeout = setTimeout(() => abort.abort(), 60000);
         try {
-            const [wasm, response] = await Promise.all([
-                decompress(embeddedSynth),
-                fetch(soundFontUrl, { credentials: "omit", signal: abort.signal }).catch(() => {
-                    throw new Error("SoundFontを取得できませんでした。ネット接続を確認して再生を押してください。");
-                })
-            ]);
-            if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
-            const soundfont = await response.arrayBuffer();
-            if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000 ||
-                new DataView(soundfont).getUint32(0) !== 0x52494646 || new DataView(soundfont).getUint32(8) !== 0x7366626b)
-                throw new Error("取得したSoundFontが不正です。");
+            const assets = await loadSynthAssets(onStatus);
             onStatus("SoundFontを読み込んでいます…");
             if (!this.workletLoaded) {
-                // Chrome rejects blob:null worklet module URLs from file://.
-                // A self-contained data URL has no local-file subresource fetch.
-                const source = new TextEncoder().encode(embeddedWorklet);
-                const url = "data:text/javascript;base64," + btoa(Array.from(source, byte => String.fromCharCode(byte)).join(""));
-                try { await this.context.audioWorklet.addModule(url); this.workletLoaded = true; }
-                catch (error) { throw new Error("音声処理モジュールを読み込めませんでした: " + error.message); }
+                await loadSynthWorklet(this.context);
+                this.workletLoaded = true;
             }
             this.node?.disconnect();
             this.node = new AudioWorkletNode(this.context, "soundfont-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
             this.node.port.onmessage = ({ data }) => {
-                if (data.type === "position") this.onPosition(data);
+                if (data.type === "position") {
+                    if (!data.preview) this.onPosition(data);
+                }
+                else if (data.type === "refresh-applied") this.onRefreshApplied?.(data.version);
+                else if (data.type === "midi" && this.sendingMidi) this.onMidi?.(data.messages, this.context);
                 else if (data.type === "error") { this.ready = false; this.onError(data.error); }
                 else if (this.waiting.has(data.id)) {
                     const request = this.waiting.get(data.id); this.waiting.delete(data.id);
@@ -63,20 +119,31 @@ class AccompanimentPlayer {
                 this.onError("音源の処理に失敗しました。再生を押して再試行してください。");
             };
             // A single compressor catches peaks from combinations of loud parts.
-            if (!this.compressor) {
-                this.compressor = this.context.createDynamicsCompressor();
-                this.compressor.threshold.value = -3;
-                this.compressor.knee.value = 3;
-                this.compressor.ratio.value = 20;
-                this.compressor.connect(this.context.destination);
-            }
-            this.node.connect(this.compressor);
-            await this.send("init", { wasm, soundfont }, [wasm, soundfont]);
+            if (this.compressor) this.node.connect(this.compressor);
+            else this.compressor = connectSynthOutput(this.context, this.node);
+            const wasm = assets.wasm.slice(0), soundfont = assets.soundfont.slice(0);
+            await this.send("init", { wasm, soundfont, effects: synthEffects }, [wasm, soundfont]);
             this.loadedSong = null;
         } catch (error) {
             this.node?.disconnect();
             throw error;
-        } finally { clearTimeout(timeout); }
+        }
+    }
+
+    setSoundFont(selection) {
+        this.node?.port.close();
+        this.node?.disconnect();
+        this.node = undefined;
+        this.ready = false;
+        this.loadedSong = null;
+        selectedSoundFont = selection;
+        synthAssets = undefined;
+    }
+
+    async setSynthEffects(effects) {
+        if (this.loading) await this.loading;
+        if (this.ready) await this.send("effects", { effects });
+        synthEffects = effects;
     }
 
     send(type, data = {}, transfer = []) {
@@ -88,14 +155,35 @@ class AccompanimentPlayer {
         });
     }
 
-    async play(song, loop, parts, master) {
-        if (this.loadedSong !== song) { await this.send("song", { song, loop }); this.loadedSong = song; }
+    async play(song, loop, parts, master, startFromSelection = false, settings = {}) {
+        this.previewing = Boolean(settings.preview);
+        this.sendingMidi = !this.previewing && Boolean(settings.midiOutput);
+        if (this.loadedSong !== song) {
+            await this.send("song", { song, loop, preview: this.previewing });
+            this.loadedSong = song;
+        }
         await this.send("loop", { loop });
         await this.send("mix", { parts, master });
-        await this.send("play");
+        await this.send("play", { startFromSelection, ...settings });
     }
 
-    async stop() { if (this.ready) await this.send("stop"); }
-    mix(parts, master) { if (this.ready && this.loadedSong) this.send("mix", { parts, master }).catch(error => this.onError(error.message)); }
-    loop(loop) { if (this.ready && this.loadedSong) this.send("loop", { loop }).catch(error => this.onError(error.message)); }
+    stopMidi() {
+        if (!this.sendingMidi) return;
+        this.sendingMidi = false;
+        this.onMidiStop?.();
+    }
+    async stop() { this.stopMidi(); if (this.ready) await this.send("stop"); }
+    async pause() { this.stopMidi(); if (this.ready) await this.send("pause"); }
+    async panic() { this.onMidiStop?.(); if (this.ready) await this.send("panic"); }
+    async click(enabled) { if (this.ready) await this.send("click", { enabled }); }
+    async tempo(rate) { if (this.ready && this.loadedSong && !this.previewing) await this.send("tempo", { rate }); }
+    async refresh(song, version) {
+        if (this.ready && this.loadedSong && !this.previewing) await this.send("refresh", { song, version });
+    }
+    mix(parts, master) {
+        if (this.ready && this.loadedSong && !this.previewing) this.send("mix", { parts, master }).catch(error => this.onError(error.message));
+    }
+    loop(loop) {
+        if (this.ready && this.loadedSong && !this.previewing) this.send("loop", { loop }).catch(error => this.onError(error.message));
+    }
 }

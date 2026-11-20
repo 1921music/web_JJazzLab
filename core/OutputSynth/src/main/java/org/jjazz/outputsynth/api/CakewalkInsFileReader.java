@@ -28,7 +28,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.logging.Level;
@@ -79,7 +78,6 @@ public class CakewalkInsFileReader implements MidiSynthFileReader
 
     public static final String NAME = "InsFileSynthProvider";
     private static final Logger LOGGER = Logger.getLogger(CakewalkInsFileReader.class.getSimpleName());
-    private final FileNameExtensionFilter FILTER = new FileNameExtensionFilter("Cakewalk instrument files (.ins)", "ins");
 
     public CakewalkInsFileReader()
     {
@@ -94,7 +92,7 @@ public class CakewalkInsFileReader implements MidiSynthFileReader
     @Override
     public List<FileNameExtensionFilter> getSupportedFileTypes()
     {
-        return Arrays.asList(FILTER);
+        return List.of(new FileNameExtensionFilter("Cakewalk instrument files (.ins)", "ins"));
     }
 
     @Override

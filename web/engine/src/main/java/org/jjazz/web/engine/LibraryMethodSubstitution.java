@@ -19,12 +19,18 @@ public final class LibraryMethodSubstitution implements ClassHolderTransformer
     {
         for (var method : cls.getMethods())
         {
-            if (cls.getName().equals("org.jjazz.songstructure.SongStructureImpl")
-                    && method.getDescriptor().toString().equals("generateAllAdaptedRhythms()V"))
+            var signature = method.getDescriptor().toString();
+            boolean warmDesktopCatalog = cls.getName().equals("org.jjazz.songstructure.SongStructureImpl")
+                    && signature.equals("generateAllAdaptedRhythms()V");
+            boolean trackDesktopSongLifetime = cls.getName().equals("org.jjazz.rhythmmusicgeneration.api.SongSequenceBuilder")
+                    && signature.equals("releaseSubstitutetrackRhythmResourcesUponSongClose(Lorg/jjazz/rhythm/api/Rhythm;)V");
+            if (warmDesktopCatalog || trackDesktopSongLifetime)
             {
-                // This desktop task warms a rhythm catalog. Generation accepts a selected style.
+                // The Web renderer stages rhythms per render and keeps its shared jjSwing loaded.
+                // Desktop catalog warm-up and the static map of open songs do not apply.
                 var empty = new Program();
                 empty.createVariable();
+                if (trackDesktopSongLifetime) empty.createVariable();
                 empty.createBasicBlock().add(new ExitInstruction());
                 method.setProgram(empty);
                 continue;
@@ -72,6 +78,8 @@ public final class LibraryMethodSubstitution implements ClassHolderTransformer
                 default -> null;
             };
             case "org.jjazz.midi.api.MidiUtilities" -> target.getName().equals("checkMidiFileTypeSupport")
+                    ? EnginePlatformMethods.class.getName() : null;
+            case "org.jjazz.phrasetransform.api.PhraseTransforms" -> target.getName().equals("loadIcon")
                     ? EnginePlatformMethods.class.getName() : null;
             case "org.jjazz.midimix.api.MidiMix" -> target.getName().equals("loadFromFile")
                     ? EnginePlatformMethods.class.getName() : null;

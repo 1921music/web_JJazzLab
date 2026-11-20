@@ -5,7 +5,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 
-let fixtureServer;
+let fixtureServer, pageServer;
 (async () => {
 let fixtureUrl = null;
 if (process.env.JJAZZ_SMOKE_SUITE === "style-library" && process.env.JJAZZ_STYLE_FIXTURE === "1") {
@@ -25,10 +25,47 @@ const htmlPath = path.resolve(process.argv[2] || "WSL_image/midi-demo.html");
 const chrome = process.env.CHROME_BIN || "C:/Program Files/Google/Chrome/Application/chrome.exe";
 const scratch = fs.mkdtempSync(path.join(path.dirname(htmlPath), "soundfont-smoke-"));
 const smokePath = path.join(scratch, "smoke.html");
-const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
+const songFiles = path.resolve(__dirname, "../../../model/SongImpl/src/test/resources/org/jjazz/song");
+const repertoire = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.env.JJAZZ_REPERTOIRE_FIXTURES;
+const multiStyle = process.env.JJAZZ_SMOKE_SUITE === "song-editor" && process.env.JJAZZ_MULTI_STYLE_FIXTURES;
+const yjz = process.env.JJAZZ_SMOKE_SUITE === "yjz";
+const yjzDirectory = process.env.JJAZZ_YJZ_FIXTURES;
+const yjzFixtures = yjz && yjzDirectory ? ["casa-forte", "ponteio", "across-the-universe"].map(name => ({ name,
+    song: fs.readFileSync(path.join(yjzDirectory, `${name}.sng`), "utf8")
+})) : [];
+const audioExport = process.env.JJAZZ_SMOKE_SUITE === "audio-export";
+const legacyFiles = process.env.JJAZZ_SMOKE_SUITE === "legacy-files";
+const legacyFixtures = legacyFiles ? JSON.stringify({
+    songs: ["PhaseDance - 2020-spVersion1.sng", "Soul - 2022 - spVersion2.sng", "Maxine_new - 2024 - spVersion4.sng"]
+        .map(name => fs.readFileSync(path.join(songFiles, name), "utf8")),
+    // These release fixtures come from earlier revisions of JJazzLab's song and rhythm resources.
+    mixes: [1, 2, 3, 4].map(version => fs.readFileSync(path.join(__dirname, "fixtures", "legacy-mixes", `v${version}.mix`), "utf8"))
+}).replaceAll("<", "\\u003c") : null;
+const songFixture = audioExport || process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
+    song: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.sng"), "utf8"),
+    mix: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.mix"), "utf8"),
+    legacySongs: ["PhaseDance - 2020-spVersion1.sng", "Soul - 2022 - spVersion2.sng"]
+        .map(name => fs.readFileSync(path.join(songFiles, name), "utf8")),
+    legacyMix: process.env.JJAZZ_LEGACY_MIX_FIXTURE ? fs.readFileSync(process.env.JJAZZ_LEGACY_MIX_FIXTURE, "utf8") : null,
+    instrumentDefinition: fs.readFileSync(path.resolve(__dirname,
+        "../../../plugins/FluidSynthEmbeddedSynth/src/main/resources/org/jjazz/fluidsynthembeddedsynth/api/resources/JJazzLabSoundFont_FluidSynth.ins"), "base64"),
+    africa: process.env.JJAZZ_AFRICA_FIXTURE ? fs.readFileSync(process.env.JJAZZ_AFRICA_FIXTURE, "utf8") : null,
+    styles: repertoire || multiStyle ? fs.readFileSync(path.resolve(__dirname, "../../engine/demo/assets/jjazzlab_user_styles.zip"), "base64") : null,
+    multiStyle: multiStyle ? ["ANightinTunisia-Eb-Theme", "Django-Fm-Theme", "PetiteFleur-Dm-Theme2-Tango"].map(name => ({ name,
+        song: fs.readFileSync(path.join(multiStyle, `${name}.sng`), "utf8"), mix: fs.readFileSync(path.join(multiStyle, `${name}.mix`), "utf8")
+    })) : [],
+    repertoire: repertoire ? ["BlueBossa-Cm-Theme", "AllBlues-G-Theme"].map(name => ({ name,
+        song: fs.readFileSync(path.join(repertoire, `${name}.sng`), "utf8"), mix: fs.readFileSync(path.join(repertoire, `${name}.mix`), "utf8")
+    })) : []
+}).replaceAll("<", "\\u003c") : null;
+const harness = legacyFiles
+    ? `const legacyFixtures = ${legacyFixtures};\n` + fs.readFileSync(path.join(__dirname, "legacy-file-browser-script.js"), "utf8")
+    : process.env.JJAZZ_SMOKE_SUITE === "style-library"
     ? "const styleFixtureUrl = " + JSON.stringify(fixtureUrl) + ";\n" + fs.readFileSync(path.join(__dirname, "style-library-browser-script.js"), "utf8")
     : process.env.JJAZZ_SMOKE_SUITE === "jjswing"
-    ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8") : `
+    ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8")
+    : yjz ? `const yjzFixtures = ${JSON.stringify(yjzFixtures).replaceAll("<", "\\u003c")};\n` + fs.readFileSync(path.join(__dirname, "yjz-browser-script.js"), "utf8")
+    : songFixture ? `const desktopFixture = ${songFixture};\n` + fs.readFileSync(path.join(__dirname, audioExport ? "audio-export-browser-script.js" : "song-editor-browser-script.js"), "utf8") : `
 (async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -116,11 +153,23 @@ const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
     } catch (error) { report.ok = false; report.error = error.stack || error.message; report.audioState = player.context?.state; report.audioTime = player.context?.currentTime; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
 })();`;
-fs.writeFileSync(smokePath, fs.readFileSync(htmlPath, "utf8").replace("</body>", "<script>" + harness + "</script></body>"));
+const selectQuickMode = songFixture ? "" : 'applyLanguage("ja"); document.querySelector("#quick-mode").click();\n';
+fs.writeFileSync(smokePath, fs.readFileSync(htmlPath, "utf8").replace("</body>", "<script>" + selectQuickMode + harness + "</script></body>"));
+let pageUrl = pathToFileURL(smokePath).href;
+if (songFixture && process.env.JJAZZ_SMOKE_HTTP === "1") {
+    const page = fs.readFileSync(smokePath);
+    pageServer = require("node:http").createServer((request, reply) => {
+        if (request.url !== "/") { reply.writeHead(404); reply.end(); return; }
+        reply.writeHead(200, { "Content-Type": "text/html; charset=UTF-8", "Content-Length": page.length });
+        reply.end(page);
+    });
+    await new Promise(resolve => pageServer.listen(0, "127.0.0.1", resolve));
+    pageUrl = "http://127.0.0.1:" + pageServer.address().port + "/";
+}
 const child = spawn(chrome, [
     "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
     "--autoplay-policy=no-user-gesture-required", "--enable-logging=stderr", "--log-level=0",
-    "--user-data-dir=" + path.join(scratch, "profile"), pathToFileURL(smokePath).href
+    "--user-data-dir=" + path.join(scratch, "profile"), pageUrl
 ], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
 const log = fs.createWriteStream(path.join(scratch, "chrome.log"));
 let buffer = "", finished = false;
@@ -129,6 +178,7 @@ function finish(result) {
     if (finished) return; finished = true;
     clearTimeout(timeout); child.kill(); log.end();
     fixtureServer?.close();
+    pageServer?.close();
     console.log(JSON.stringify(result, null, 2));
     process.exitCode = result.ok ? 0 : 1;
 }
@@ -143,4 +193,4 @@ function read(data) {
 child.stderr.on("data", read); child.stdout.on("data", read);
 child.on("error", error => finish({ ok: false, error: error.message }));
 child.on("exit", code => { if (!finished) finish({ ok: false, error: "Chrome exited before reporting: " + code, scratch }); });
-})().catch(error => { fixtureServer?.close(); console.error(error.message); process.exitCode = 1; });
+})().catch(error => { fixtureServer?.close(); pageServer?.close(); console.error(error.message); process.exitCode = 1; });

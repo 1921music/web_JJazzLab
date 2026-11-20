@@ -25,7 +25,6 @@ package org.jjazz.phrasetransform;
 
 import java.util.Properties;
 import javax.swing.Icon;
-import javax.swing.ImageIcon;
 import org.jjazz.midi.api.DrumKit;
 import org.jjazz.midi.api.DrumKit.KeyMap;
 import org.jjazz.phrase.api.NoteEvent;
@@ -48,7 +47,7 @@ public class RideToHiHatTransform implements PhraseTransform
 
     @StaticResource(relative = true)
     private static final String ICON_PATH = "resources/Ride2HiHat-Transformer-48x24.png";
-    private static final Icon ICON = new ImageIcon(RideToHiHatTransform.class.getResource(ICON_PATH));
+    private static final Icon ICON = PhraseTransforms.loadIcon(RideToHiHatTransform.class, ICON_PATH);
     private final Info info;
     private final PtProperties properties;
 

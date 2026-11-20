@@ -32,7 +32,6 @@ import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
 import javax.sound.midi.Track;
 import javax.swing.Icon;
-import javax.swing.ImageIcon;
 import org.jjazz.harmony.api.TimeSignature;
 import org.jjazz.midi.api.DrumKit;
 import org.jjazz.midi.api.MidiConst;
@@ -44,6 +43,7 @@ import org.jjazz.phrasetransform.api.DrumsMixTransform;
 import org.openide.util.lookup.ServiceProvider;
 import org.jjazz.phrasetransform.spi.PhraseTransformProvider;
 import org.jjazz.phrasetransform.api.PhraseTransform;
+import org.jjazz.phrasetransform.api.PhraseTransforms;
 import org.jjazz.phrasetransform.api.PhraseTransformCategory;
 import org.jjazz.utilities.api.FloatRange;
 import org.jjazz.utilities.api.ResUtil;
@@ -58,34 +58,34 @@ public class DefaultPhraseTransformProvider implements PhraseTransformProvider
 
     @StaticResource(relative = true)
     private static final String ACCENT1_ICON_PATH = "resources/Accent16-1-Transformer-48x24.png";
-    private static final Icon ACCENT1_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ACCENT1_ICON_PATH));
+    private static final Icon ACCENT1_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ACCENT1_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ACCENT2_ICON_PATH = "resources/Accent16-2-Transformer-48x24.png";
-    private static final Icon ACCENT2_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ACCENT2_ICON_PATH));
+    private static final Icon ACCENT2_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ACCENT2_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ACCENT3_ICON_PATH = "resources/Accent16-3-Transformer-48x24.png";
-    private static final Icon ACCENT3_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ACCENT3_ICON_PATH));
+    private static final Icon ACCENT3_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ACCENT3_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ACCENT4_ICON_PATH = "resources/Accent16-4-Transformer-48x24.png";
-    private static final Icon ACCENT4_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ACCENT4_ICON_PATH));
+    private static final Icon ACCENT4_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ACCENT4_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ADD_CABASA_ICON_PATH = "resources/AddCabasa-Transformer-48x24.png";
-    private static final Icon ADD_CABASA_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ADD_CABASA_ICON_PATH));
+    private static final Icon ADD_CABASA_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ADD_CABASA_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ADD_CONGAS_ICON_PATH = "resources/AddCongas-Transformer-48x24.png";
-    private static final Icon ADD_CONGAS_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ADD_CONGAS_ICON_PATH));
+    private static final Icon ADD_CONGAS_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ADD_CONGAS_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ADD_TAMBOURINE_ICON_PATH = "resources/AddTambourine-Transformer-48x24.png";
-    private static final Icon ADD_TAMBOURINE_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ADD_TAMBOURINE_ICON_PATH));
+    private static final Icon ADD_TAMBOURINE_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ADD_TAMBOURINE_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ADD_TRIANGLE_ICON_PATH = "resources/AddTriangle-Transformer-48x24.png";
-    private static final Icon ADD_TRIANGLE_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ADD_TRIANGLE_ICON_PATH));
+    private static final Icon ADD_TRIANGLE_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ADD_TRIANGLE_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ADD_COWBELL_ICON_PATH = "resources/AddTriangle-Transformer-48x24.png";
-    private static final Icon ADD_COWBELL_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ADD_COWBELL_ICON_PATH));
+    private static final Icon ADD_COWBELL_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ADD_COWBELL_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ADD_SHAKER_ICON_PATH = "resources/AddMaracas-Transformer-48x24.png";
-    private static final Icon ADD_SHAKER_ICON = new ImageIcon(DefaultPhraseTransformProvider.class.getResource(ADD_SHAKER_ICON_PATH));
+    private static final Icon ADD_SHAKER_ICON = PhraseTransforms.loadIcon(DefaultPhraseTransformProvider.class, ADD_SHAKER_ICON_PATH);
     @StaticResource(relative = true)
     private static final String ADD_TAMBOURINE24_PATH = "resources/Tambourine2-4.mid";
     @StaticResource(relative = true)

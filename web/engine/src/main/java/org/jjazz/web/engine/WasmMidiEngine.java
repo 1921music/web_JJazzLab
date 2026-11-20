@@ -1,15 +1,252 @@
 package org.jjazz.web.engine;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.File;
+import java.io.IOException;
+import java.text.ParseException;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.HashMap;
+import javax.sound.midi.InvalidMidiDataException;
+import javax.sound.midi.MidiSystem;
+import javax.sound.midi.Sequence;
+import org.jjazz.chordleadsheet.api.item.ExtChordSymbol;
+import org.jjazz.chordleadsheet.api.ChordLeadSheet;
+import org.jjazz.chordleadsheet.api.item.CLI_ChordSymbol;
+import org.jjazz.chordleadsheet.api.item.CLI_Section;
+import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
+import org.jjazz.harmony.spi.ScaleManager;
+import org.jjazz.harmony.spi.ChordTypeDatabase;
+import org.jjazz.harmony.api.Note;
+import org.jjazz.harmony.api.ChordSymbolFinder;
+import org.jjazz.harmony.api.TimeSignature;
+import org.jjazz.harmony.api.Position;
+import org.jjazz.humanizer.api.Humanizer;
+import org.jjazz.importers.api.TextReader;
+import org.jjazz.importers.api.ImprovisorFileReader;
+import org.jjazz.importers.api.BiabFileReader;
+import org.jjazz.outputsynth.api.CakewalkInsFileReader;
+import org.jjazz.phrase.api.NoteEvent;
+import org.jjazz.phrase.api.Phrase;
+import org.jjazz.phrase.api.Phrases;
+import org.jjazz.phrasetransform.DrumsAccentsTransform;
+import org.jjazz.phrasetransform.api.PhraseTransform;
+import org.jjazz.phrasetransform.api.PhraseTransformCategory;
+import org.jjazz.phrasetransform.api.PhraseTransformManager;
+import org.jjazz.quantizer.api.Quantization;
+import org.jjazz.quantizer.api.Quantizer;
+import org.jjazz.rhythm.api.RP_Integer;
+import org.jjazz.rhythm.api.RP_State;
+import org.jjazz.rhythm.api.RP_StringSet;
+import org.jjazz.rhythm.api.Rhythm;
+import org.jjazz.rhythm.api.RhythmParameter;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
+import org.jjazz.utilities.api.FloatRange;
+import org.jjazz.yamjjazz.rhythm.api.YjzFileBuilder;
 import org.teavm.jso.JSExport;
 
 /** JavaScript entry point for generating a General MIDI accompaniment. */
 public final class WasmMidiEngine
 {
     private static String[] partMetadata = new String[0];
+    private static String[] songMix = new String[0];
+    private static Phrase[] rhythmPhrases = new Phrase[16];
+    private static boolean importedMixApplied;
+    private static WasmMp3Encoder mp3Encoder;
     private WasmMidiEngine()
     {
+    }
+
+    @JSExport
+    public static void startMp3(int sampleRate)
+    {
+        closeMp3();
+        mp3Encoder = new WasmMp3Encoder(sampleRate);
+    }
+
+    @JSExport
+    public static byte[] encodeMp3(float[] left, float[] right)
+    {
+        return mp3Encoder.encode(left, right);
+    }
+
+    @JSExport
+    public static byte[] finishMp3()
+    {
+        return mp3Encoder.finish();
+    }
+
+    @JSExport
+    public static void closeMp3()
+    {
+        if (mp3Encoder != null) mp3Encoder.close();
+        mp3Encoder = null;
+    }
+
+    @JSExport
+    public static String[] readMidiInstrumentDefinitions(byte[] bytes) throws IOException
+    {
+        WebServices.install();
+        var synths = new CakewalkInsFileReader().readSynthsFromStream(new ByteArrayInputStream(bytes), null);
+        var rows = new ArrayList<String>();
+        for (var synth : synths)
+        {
+            for (var bank : synth.getBanks())
+            {
+                for (var instrument : bank.getInstruments())
+                {
+                    var address = instrument.getMidiAddress();
+                    if (!address.isFullyDefined())
+                    {
+                        continue;
+                    }
+                    int msb = switch (address.getBankSelectMethod())
+                    {
+                        case MSB_LSB, MSB_ONLY -> address.getBankMSB();
+                        default -> -1;
+                    };
+                    int lsb = switch (address.getBankSelectMethod())
+                    {
+                        case MSB_LSB, LSB_ONLY -> address.getBankLSB();
+                        default -> -1;
+                    };
+                    var substitute = instrument.getSubstitute();
+                    int program = address.getProgramChange();
+                    int source = instrument.isDrumKit() ? program + 128 : substitute == null ? program : substitute.getMidiAddress().getProgramChange();
+                    String name = (synth.getName() + " / " + bank.getName() + " / " + instrument.getPatchName()).replace('\t', ' ');
+                    rows.add(source + "\t" + msb + "\t" + lsb + "\t" + program + "\t" + name);
+                }
+            }
+        }
+        return rows.toArray(String[]::new);
+    }
+
+    @JSExport
+    public static String[] readTextLeadSheet(String text)
+    {
+        WebServices.install();
+        TextReader.ParsedLeadSheet parsed;
+        try
+        {
+            parsed = new TextReader(text).readLeadSheet();
+        } catch (RuntimeException ex)
+        {
+            return new String[] { ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage() };
+        }
+        if (parsed == null) return new String[0];
+        return encodeLeadSheet(parsed.title(), parsed.tempo(), parsed.leadSheet(), null);
+    }
+
+    @JSExport
+    public static String[] readImprovisorLeadSheet(String text, String sourceName)
+    {
+        WebServices.install();
+        try
+        {
+            var parsed = ImprovisorFileReader.readLeadSheet(text, sourceName, sourceName.replaceFirst("(?i)\\.ls$", ""));
+            String comments = parsed.composer() == null || parsed.composer().isBlank() ? null : "Composer: " + parsed.composer();
+            return encodeLeadSheet(parsed.title(), parsed.tempo(), parsed.leadSheet(), comments);
+        } catch (Exception ex)
+        {
+            return new String[] { ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage() };
+        }
+    }
+
+    @JSExport
+    public static String[] readBiabLeadSheet(byte[] data, String sourceName)
+    {
+        WebServices.install();
+        try
+        {
+            var reader = new BiabFileReader(new File(sourceName), null, false);
+            var song = reader.readFile(data);
+            var rows = new ArrayList<>(Arrays.asList(encodeLeadSheet(song.getName(), song.getTempo(), song.getChordLeadSheet(), song.getComments())));
+            for (var part : song.getSongStructure().getSongParts())
+            {
+                int bar = part.getParentSection().getPosition().getBar();
+                int marker = reader.mapClsBarMarker.getOrDefault(bar, 0);
+                rows.add("part\t" + bar + "\t" + marker + "\t" + part.getName());
+            }
+            return rows.toArray(String[]::new);
+        } catch (Exception ex)
+        {
+            return new String[] { ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage() };
+        }
+    }
+
+    private static String[] encodeLeadSheet(String title, int tempo, ChordLeadSheet sheet, String comments)
+    {
+        var rows = new ArrayList<String>();
+        rows.add(title);
+        rows.add(Integer.toString(tempo));
+        rows.add(Integer.toString(sheet.getSizeInBars()));
+        if (comments != null) rows.add("comments\t" + comments);
+        for (var section : sheet.getItems(CLI_Section.class))
+        {
+            rows.add("section\t" + section.getPosition().getBar() + "\t" + section.getData().getTimeSignature().name()
+                    + "\t" + section.getData().getName());
+        }
+        for (var chord : sheet.getItems(CLI_ChordSymbol.class))
+        {
+            var features = chord.getData().getRenderingInfo().getFeatures().stream().map(Enum::name).toList();
+            rows.add("chord\t" + chord.getPosition().getBar() + "\t" + chord.getPosition().getBeat()
+                    + "\t" + chord.getData().getName() + "\t" + chord.getData().getOriginalName()
+                    + (features.isEmpty() ? "" : "\t" + String.join(",", features)));
+        }
+        return rows.toArray(String[]::new);
+    }
+
+    @JSExport
+    public static String importMidiPhrase(byte[] bytes, int channel, boolean drums) throws Exception
+    {
+        var sequence = MidiSystem.getSequence(new ByteArrayInputStream(bytes));
+        if (sequence.getDivisionType() != Sequence.PPQ)
+        {
+            throw new InvalidMidiDataException("The MIDI file does not use PPQ timing");
+        }
+        var phrases = Phrases.getPhrases(sequence.getResolution(), sequence.getTracks());
+        var result = new Phrase(channel, drums);
+        if (phrases.size() == 1)
+        {
+            result.add(phrases.getFirst());
+        } else
+        {
+            phrases.stream().filter(phrase -> phrase.getChannel() == channel).findFirst().ifPresent(result::add);
+        }
+        return Phrase.saveAsString(result);
+    }
+
+    @JSExport
+    public static String humanizePhrase(String source, String selection, String meter, float endBeat, int tempo,
+            float timing, float bias, float velocity) throws ParseException
+    {
+        var phrase = Phrase.loadAsString(source);
+        if (phrase.isEmpty()) return source;
+        float end = Math.max(endBeat, phrase.getNotesBeatRange().to);
+        var humanizer = new Humanizer(phrase, TimeSignature.valueOf(meter), new FloatRange(0, end), null, tempo);
+        if (selection.isEmpty())
+        {
+            humanizer.registerNotes(phrase);
+        } else
+        {
+            var selectedCounts = new HashMap<String, Integer>();
+            for (var note : Phrase.loadAsString(selection))
+            {
+                selectedCounts.merge(NoteEvent.saveAsString(note), 1, Integer::sum);
+            }
+            var selected = phrase.stream().filter(note ->
+            {
+                String key = NoteEvent.saveAsString(note);
+                if (selectedCounts.getOrDefault(key, 0) == 0) return false;
+                selectedCounts.computeIfPresent(key, (ignored, count) -> count - 1);
+                return true;
+            }).toList();
+            humanizer.registerNotes(selected);
+        }
+        humanizer.setConfig(new Humanizer.Config(timing, bias, velocity));
+        humanizer.humanize();
+        return Phrase.saveAsString(phrase);
     }
 
     @JSExport
@@ -21,6 +258,38 @@ public final class WasmMidiEngine
             var midi = new ByteArrayOutputStream();
             partMetadata = MidiGeneration.generate(style.file(), chords, tempo, midi);
             return midi.toByteArray();
+        }
+    }
+
+    @JSExport
+    public static byte[] generateExtendedMidi(byte[] styleBytes, String styleName, byte[] extensionBytes, String extensionName,
+                                              String[] chords, int tempo, String variation) throws Exception
+    {
+        partMetadata = new String[0];
+        try (var style = new RawStyleFile(styleBytes, styleName); var extension = RawStyleFile.extension(extensionBytes, extensionName))
+        {
+            var midi = new ByteArrayOutputStream();
+            partMetadata = MidiGeneration.generateExtended(style.file(), extension.file(), chords, tempo, variation, midi);
+            return midi.toByteArray();
+        }
+    }
+
+    @JSExport
+    public static byte[] buildYjzStyle(byte[] data, String name, int[] counts, boolean introEndings, boolean fills, int phrases) throws Exception
+    {
+        if (counts.length != 4 || Arrays.stream(counts).anyMatch(value -> value < 0 || value > 10) || phrases < 1 || phrases > 20)
+        {
+            throw new IllegalArgumentException("Invalid variation or source phrase count");
+        }
+        WebServices.install();
+        try (var style = new RawStyleFile(data, name))
+        {
+            var rhythm = MidiGeneration.createYamahaRhythm(style.file(), null);
+            var sequence = new YjzFileBuilder(rhythm, counts[0], counts[1], counts[2], counts[3], introEndings, fills, phrases).buildSequence();
+            if (sequence.getTracks().length < 2) throw new IllegalArgumentException("Choose at least one variation present in the base style");
+            var output = new ByteArrayOutputStream();
+            MidiSystem.write(sequence, 1, output);
+            return output.toByteArray();
         }
     }
 
@@ -41,12 +310,324 @@ public final class WasmMidiEngine
         return midi.toByteArray();
     }
 
+    /** Generate a complete arrangement. Empty styleName selects jjSwing. */
+    @JSExport
+    public static byte[] generateSongMidi(byte[] styleBytes, String styleName, String title, String meter, int tempo, int bars,
+                                          String[] sectionNames, int[] sectionBars, String[] chords, int[] chordBars, float[] chordBeats,
+                                          String[] partNames, int[] partSections, String[] partParameters,
+                                          String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
+    {
+        var meters = new String[sectionNames.length];
+        Arrays.fill(meters, meter);
+        return generateSongMidiWithMeters(styleBytes, styleName, title, tempo, bars, sectionNames, sectionBars, meters,
+                chords, chordBars, chordBeats, partNames, partSections, partParameters, userTrackNames, userPhrases, mix);
+    }
+
+    /** Generate a song with an individual meter for each lead-sheet section. */
+    @JSExport
+    public static byte[] generateSongMidiWithMeters(byte[] styleBytes, String styleName, String title, int tempo, int bars,
+                                                    String[] sectionNames, int[] sectionBars, String[] sectionMeters,
+                                                    String[] chords, int[] chordBars, float[] chordBeats, String[] partNames,
+                                                    int[] partSections, String[] partParameters, String[] userTrackNames,
+                                                    String[] userPhrases, String[] mix) throws Exception
+    {
+        return generateSongMidiWithStyles(styleBytes, new String[]{styleName}, new int[]{styleBytes.length}, new int[partNames.length],
+                title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats, partNames, partSections,
+                partParameters, userTrackNames, userPhrases, mix);
+    }
+
+    /** Per-part style indices refer to the supplied style names and contiguous byte ranges. */
+    @JSExport
+    public static byte[] generateSongMidiWithStyles(byte[] styleBytes, String[] styleNames, int[] styleLengths, int[] partSources,
+                                                    String title, int tempo, int bars, String[] sectionNames, int[] sectionBars,
+                                                    String[] sectionMeters, String[] chords, int[] chordBars, float[] chordBeats,
+                                                    String[] partNames, int[] partSections, String[] partParameters,
+                                                    String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
+    {
+        return generateSongMidiWithStylePairs(styleBytes, styleNames, styleLengths, new String[styleNames.length], new int[styleNames.length],
+                partSources, title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats, partNames,
+                partSections, partParameters, userTrackNames, userPhrases, mix);
+    }
+
+    /** A style's base bytes are followed immediately by its optional extension bytes. */
+    @JSExport
+    public static byte[] generateSongMidiWithStylePairs(byte[] styleBytes, String[] styleNames, int[] styleLengths,
+                                                       String[] extensionNames, int[] extensionLengths, int[] partSources,
+                                                       String title, int tempo, int bars, String[] sectionNames, int[] sectionBars,
+                                                       String[] sectionMeters, String[] chords, int[] chordBars, float[] chordBeats,
+                                                       String[] partNames, int[] partSections, String[] partParameters,
+                                                       String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
+    {
+        return generateSongMidiWithChordRendering(styleBytes, styleNames, styleLengths, extensionNames, extensionLengths,
+                partSources, title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats,
+                partNames, partSections, partParameters, userTrackNames, userPhrases, mix, new String[0]);
+    }
+
+    /** Standard scales compatible with a chord, in desktop serialization order. */
+    @JSExport
+    public static String[] getChordScales(String name) throws ParseException
+    {
+        var chord = ExtChordSymbol.get(name);
+        if (chord instanceof NCExtChordSymbol) return new String[0];
+        var manager = ScaleManager.getDefault();
+        var scales = manager.getStandardScales();
+        return manager.getMatchingScales(chord).stream()
+                .map(scale -> scales.indexOf(scale.getScale()) + "\t" + scale.getStartNote().getPitch() + "\t" + scale.getScale().getName()
+                        + "\t" + scale.getRelativePitches())
+                .toArray(String[]::new);
+    }
+
+    @JSExport
+    public static String[] getChordTypes()
+    {
+        var database = ChordTypeDatabase.getDefault();
+        var types = new String[database.getSize()];
+        for (int index = 0; index < types.length; index++) types[index] = database.getChordType(index).getName();
+        return types;
+    }
+
+    @JSExport
+    public static String recognizeArrangerChord(int[] pitches, boolean lowestIsBass)
+    {
+        if (pitches.length < 3 || pitches.length > 4) return "";
+        ChordSymbolFinder.buildStaticData();
+        var finder = new ChordSymbolFinder(4);
+        var notes = Arrays.stream(pitches).sorted().mapToObj(Note::new).toList();
+        var chord = finder.getChordSymbol(notes, finder.find(notes), lowestIsBass);
+        return chord == null ? "" : chord.getName();
+    }
+
+    @JSExport
+    public static String[] getChordPreview(String name) throws ParseException
+    {
+        var chord = ExtChordSymbol.get(name);
+        if (chord instanceof NCExtChordSymbol) return new String[] { "", "" };
+        int relativeRoot = chord.getRootNote().getRelativePitch();
+        var root = new Note(relativeRoot + (relativeRoot < 7 ? 60 : 38));
+        var pitches = chord.getChord().getNotes().stream()
+                .mapToInt(note -> root.getUpperPitch(note.getRelativePitch(), true)).sorted().toArray();
+        var suffix = chord.getChordType().getName();
+        var result = new String[pitches.length + 2];
+        result[0] = suffix;
+        result[1] = chord.getChord().toRelativeNoteString(null);
+        for (int index = 0; index < pitches.length; index++) result[index + 2] = Integer.toString(pitches[index]);
+        return result;
+    }
+
+    @JSExport
+    public static String[] transposeChordSymbols(String[] names, int delta) throws ParseException
+    {
+        var result = new String[names.length];
+        var accidental = delta < 0 ? Note.Accidental.FLAT : Note.Accidental.SHARP;
+        for (int index = 0; index < names.length; index++)
+        {
+            var chord = ExtChordSymbol.get(names[index]);
+            result[index] = chord instanceof NCExtChordSymbol ? "NC" : chord.getTransposedChordSymbol(delta, accidental).getOriginalName();
+        }
+        return result;
+    }
+
+    /** Render the same chord interpretation and scale as the desktop song. */
+    @JSExport
+    public static byte[] generateSongMidiWithChordRendering(byte[] styleBytes, String[] styleNames, int[] styleLengths,
+                                                       String[] extensionNames, int[] extensionLengths, int[] partSources,
+                                                       String title, int tempo, int bars, String[] sectionNames, int[] sectionBars,
+                                                       String[] sectionMeters, String[] chords, int[] chordBars, float[] chordBeats,
+                                                       String[] partNames, int[] partSections, String[] partParameters,
+                                                       String[] userTrackNames, String[] userPhrases, String[] mix,
+                                                       String[] chordRendering) throws Exception
+    {
+        partMetadata = new String[0];
+        songMix = new String[0];
+        importedMixApplied = false;
+        if (styleNames.length == 0 || styleNames.length != styleLengths.length
+                || styleNames.length != extensionNames.length || styleNames.length != extensionLengths.length)
+        {
+            throw new IllegalArgumentException("Invalid song style columns");
+        }
+        var song = new SongInput(title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats,
+                partNames, partSections, partParameters, userTrackNames, userPhrases, chordRendering);
+        var midi = new ByteArrayOutputStream();
+        var staged = new RawStyleFile[styleNames.length * 2];
+        var files = new File[styleNames.length];
+        var extensions = new File[styleNames.length];
+        MidiGeneration.Result result;
+        int offset = 0;
+        try
+        {
+            for (int index = 0; index < styleNames.length; index++)
+            {
+                int length = styleLengths[index];
+                if (length < 0 || length > styleBytes.length - offset) throw new IllegalArgumentException("Invalid style length");
+                if (!styleNames[index].isEmpty())
+                {
+                    staged[2 * index] = new RawStyleFile(Arrays.copyOfRange(styleBytes, offset, offset + length), styleNames[index]);
+                    files[index] = staged[2 * index].file();
+                }
+                offset += length;
+                int extensionLength = extensionLengths[index];
+                if (extensionLength < 0 || extensionLength > styleBytes.length - offset) throw new IllegalArgumentException("Invalid extension length");
+                if (extensionLength > 0)
+                {
+                    if (files[index] == null) throw new IllegalArgumentException("Missing Yamaha base style");
+                    staged[2 * index + 1] = RawStyleFile.extension(Arrays.copyOfRange(styleBytes, offset, offset + extensionLength), extensionNames[index]);
+                    extensions[index] = staged[2 * index + 1].file();
+                }
+                offset += extensionLength;
+            }
+            if (offset != styleBytes.length) throw new IllegalArgumentException("Invalid packed song styles");
+            result = MidiGeneration.generateSong(files, extensions, partSources, song, mix, midi);
+        } finally
+        {
+            for (var style : staged)
+            {
+                if (style != null) style.close();
+            }
+        }
+        partMetadata = result.metadata();
+        songMix = result.mix();
+        rhythmPhrases = result.rhythmPhrases();
+        importedMixApplied = result.importedMixApplied();
+        return midi.toByteArray();
+    }
+
+    @JSExport
+    public static String[] getSongMix()
+    {
+        return songMix.clone();
+    }
+
+    @JSExport
+    public static String getRhythmTrackPhrase(int channel)
+    {
+        var phrase = rhythmPhrases[channel];
+        return phrase == null ? "" : Phrase.saveAsString(phrase);
+    }
+
+    @JSExport
+    public static String[] getMixerInstruments()
+    {
+        return SongMix.instrumentChoices();
+    }
+
+    @JSExport
+    public static boolean wasImportedMixApplied()
+    {
+        return importedMixApplied;
+    }
+
     /** Available values come from the original jjSwing rhythm parameter. */
     @JSExport
     public static String[] getSwingVariations() throws Exception
     {
         WebServices.install();
         return RP_SYS_Variation.getVariationRp(WebJJSwing.rhythm()).getPossibleValues().toArray(new String[0]);
+    }
+
+    /** Reports the style's meter followed by its available variation names. */
+    @JSExport
+    public static String[] getYamahaStyleInfo(byte[] bytes, String name) throws Exception
+    {
+        try (var style = new RawStyleFile(bytes, name))
+        {
+            return getStyleInfo(style.file(), null);
+        }
+    }
+
+    @JSExport
+    public static String[] getExtendedYamahaStyleInfo(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        try (var style = new RawStyleFile(bytes, name); var extension = RawStyleFile.extension(extensionBytes, extensionName))
+        {
+            return getStyleInfo(style.file(), extension.file());
+        }
+    }
+
+    @JSExport
+    public static String[] getRhythmVoices(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        return voiceInfo(readRhythm(bytes, name, extensionBytes, extensionName));
+    }
+
+    @JSExport
+    public static boolean isTernaryRhythm(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        return readRhythm(bytes, name, extensionBytes, extensionName).getFeatures().division().isTernary();
+    }
+
+    @JSExport
+    public static String[] getRhythmParameters(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        var rhythm = readRhythm(bytes, name, extensionBytes, extensionName);
+        var result = new ArrayList<String>();
+        result.add(rhythm.getTimeSignature().name());
+        rhythm.getRhythmParameters().forEach(parameter -> result.add(describeRhythmParameter(parameter)));
+        return result.toArray(String[]::new);
+    }
+
+    private static <T> String describeRhythmParameter(RhythmParameter<T> parameter)
+    {
+        var prefix = parameter.getId() + "\t" + parameter.getDisplayName() + "\t" + parameter.saveAsString(parameter.getDefaultValue()) + "\t";
+        if (parameter instanceof RP_State states) return prefix + "state\t" + String.join("\t", states.getPossibleValues());
+        if (parameter instanceof RP_Integer numbers) return prefix + "number\t" + numbers.getMinValue() + "\t" + numbers.getMaxValue() + "\t" + numbers.getStep();
+        if (parameter instanceof RP_StringSet set) return prefix + "set\t" + String.join("\t", set.getMaxValue());
+        return prefix + "custom";
+    }
+
+    @JSExport
+    public static float[] quantizeChordDrop(String quantization, String meter, int bar, float beat, int lastBar)
+    {
+        var timeSignature = TimeSignature.valueOf(meter);
+        var position = new Position(bar, Math.clamp(beat, 0, Math.nextDown(timeSignature.getNbNaturalBeats())));
+        var result = Quantizer.getQuantized(Quantization.valueOf(quantization), position, timeSignature, 1f, lastBar);
+        return new float[] { result.getBar(), result.getBeat() };
+    }
+
+    private static Rhythm readRhythm(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        WebServices.install();
+        if (name.isEmpty())
+        {
+            return WebJJSwing.rhythm();
+        }
+        try (var style = new RawStyleFile(bytes, name))
+        {
+            if (extensionName.isEmpty())
+            {
+                return MidiGeneration.createYamahaRhythm(style.file(), null);
+            }
+            try (var extension = RawStyleFile.extension(extensionBytes, extensionName))
+            {
+                return MidiGeneration.createYamahaRhythm(style.file(), extension.file());
+            }
+        }
+    }
+
+    @JSExport
+    public static String[] getDrumTransforms()
+    {
+        WebServices.install();
+        return PhraseTransformManager.getDefault().getPhraseTransforms(PhraseTransformCategory.DRUMS).stream()
+                .filter(transform -> !transform.getInfo().getUniqueId().contains(PhraseTransform.HIDDEN_ID_TOKEN))
+                .map(transform -> transform.getInfo().getUniqueId() + "\t" + transform.getInfo().getName() + "\t"
+                    + transform.getProperties().getProperty(DrumsAccentsTransform.PROP_VELOCITY_OFFSET, ""))
+                .toArray(String[]::new);
+    }
+
+    private static String[] voiceInfo(Rhythm rhythm)
+    {
+        return rhythm.getRhythmVoices().stream().map(voice -> voice.getName() + "\t" + voice.getType().name()).toArray(String[]::new);
+    }
+
+    private static String[] getStyleInfo(File style, File extension) throws Exception
+    {
+        WebServices.install();
+        var rhythm = MidiGeneration.createYamahaRhythm(style, extension);
+        var variations = RP_SYS_Variation.getVariationRp(rhythm).getPossibleValues();
+        var result = new String[variations.size() + 1];
+        result[0] = rhythm.getTimeSignature().name();
+        for (int i = 0; i < variations.size(); i++) result[i + 1] = variations.get(i);
+        return result;
     }
 
     /** Track-indexed entries: drums|melodic, a tab, then the rhythm voice name. */

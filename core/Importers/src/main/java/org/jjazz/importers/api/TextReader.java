@@ -90,7 +90,7 @@ public class TextReader
     static private int counter = 1;
     private final List<String> lines = new ArrayList<>();
     private final String dataSource;  // used for error messages
-    private final Pattern pTitle = Pattern.compile("^\\s*title\\s*=\\s*(\\S.+)", Pattern.CASE_INSENSITIVE);
+    private final Pattern pTitle = Pattern.compile("^\\s*title\\s*=\\s*(\\S.*)", Pattern.CASE_INSENSITIVE);
     private final Pattern pTimeSignature = Pattern.compile("^\\s*timeSignature\\s*=\\s*(\\d+)/(\\d+)", Pattern.CASE_INSENSITIVE);
     private final Pattern pTempo = Pattern.compile("^\\s*tempo(BPM)?\\s*[=:]\\s*(\\d+)", Pattern.CASE_INSENSITIVE);
     private final Pattern pUseBase1 = Pattern.compile("^\\s*useBase1\\s*$", Pattern.CASE_INSENSITIVE);
@@ -110,7 +110,7 @@ public class TextReader
     {
         Preconditions.checkNotNull(text);
         this.dataSource = TEXT_DATASOURCE;
-        for (var line : text.split("\\R+"))
+        for (var line : text.split("\\r\\n|[\\r\\n\\u000B\\u000C\\u0085\\u2028\\u2029]"))
         {
             lines.add(line);
         }
@@ -124,6 +124,26 @@ public class TextReader
      * @return Can be null if no valid input was found
      */
     public Song readSong()
+    {
+        var parsed = readLeadSheet();
+        if (parsed == null) return null;
+        try
+        {
+            var song = SongFactory.getDefault().createSong(parsed.title(), parsed.leadSheet());
+            song.setTempo(parsed.tempo());
+            return song;
+        } catch (UnsupportedEditException ex)
+        {
+            throw new IllegalStateException(ex.getMessage(), ex);
+        }
+    }
+
+    /**
+     * Parse the chord lead sheet and song metadata without resolving default rhythms.
+     */
+    public record ParsedLeadSheet(String title, int tempo, ChordLeadSheet leadSheet) {}
+
+    public ParsedLeadSheet readLeadSheet()
     {
         String title = "NewSongText" + counter;
         counter++;
@@ -173,12 +193,13 @@ public class TextReader
                 ts0 = TimeSignature.get(upper, lower);
                 if (ts0 == null)
                 {
-                    ts0 = TimeSignature.FIVE_FOUR;
+                    ts0 = TimeSignature.FOUR_FOUR;
                     LOGGER.log(Level.WARNING, "readSong()() source={0}, invalid line[{1}]={2}, invalid time signature, using 4/4 instead", new Object[]
                     {
                         dataSource, lineCount, line
                     });
                 }
+                if (barIndex == 0) timeSignature = ts0;
 
 
             } else if (mTempo.find())
@@ -203,7 +224,7 @@ public class TextReader
                 ExtChordSymbol ecs = null;
                 try
                 {
-                    bar = Integer.parseUnsignedInt(mBeatBasedChord.group(1));
+                    bar = Integer.parseInt(mBeatBasedChord.group(1));
                     beat = Float.parseFloat(mBeatBasedChord.group(2));
                     if (bar < beatBarBase || beat < beatBarBase)
                     {
@@ -250,7 +271,7 @@ public class TextReader
                 }
                 if (ecs != null)
                 {
-                    float oneBeatDurInSeconds = tempoBPM / 60f;
+                    float oneBeatDurInSeconds = 60f / tempoBPM;
                     float oneBarDurInSeconds = oneBeatDurInSeconds * ts0.getNbNaturalBeats();
                     int bar = (int) (posInSeconds / oneBarDurInSeconds);
                     float barPosInSeconds = bar * oneBarDurInSeconds;
@@ -364,19 +385,11 @@ public class TextReader
         }
 
 
-        // Create the song object from the collected data
+        // Create the lead sheet from the collected data.
         String sName = "A";
-        ChordLeadSheet cls = SongFactory.getDefault().createEmptyChordLeadSheet(sName, ts0, barIndex, null);
-        SongFactory sf = SongFactory.getDefault();
-        Song song = null;
-        try
-        {
-            song = sf.createSong(title, cls);
-        } catch (UnsupportedEditException ex)
-        {
-            throw new IllegalStateException(ex.getMessage());   // Should never happen
-        }
-        song.setTempo(tempoBPM);
+        long bars = Math.max(barIndex, cliChordSymbols.stream().mapToLong(chord -> chord.getPosition().getBar() + 1L).max().orElse(1));
+        Preconditions.checkArgument(bars <= ChordLeadSheet.MAX_SIZE, "Too many bars: %s", bars);
+        ChordLeadSheet cls = SongFactory.getDefault().createEmptyChordLeadSheet(sName, ts0, (int) bars, null);
 
 
         // Add the extra sections if any
@@ -398,7 +411,7 @@ public class TextReader
         // Add the chord symbols
         cliChordSymbols.forEach(cliCs -> cls.addItem(cliCs));
 
-        return song;
+        return new ParsedLeadSheet(title, tempoBPM, cls);
     }
 
 
@@ -407,7 +420,7 @@ public class TextReader
         int res = defaultValue;
         try
         {
-            res = Integer.parseUnsignedInt(strUInt);
+            res = Integer.parseInt(strUInt);
         } catch (NumberFormatException ex)
         {
             LOGGER.log(Level.WARNING, "readUIntFromString() source={0}, line {1}, ex={2}", new Object[]

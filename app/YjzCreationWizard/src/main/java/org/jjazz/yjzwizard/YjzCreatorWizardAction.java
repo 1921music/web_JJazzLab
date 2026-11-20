@@ -46,6 +46,8 @@ import org.jjazz.rhythm.spi.RhythmProvider;
 import org.jjazz.utilities.api.ResUtil;
 import org.jjazz.utilities.api.Utilities;
 import org.jjazz.yamjjazz.rhythm.api.YamJJazzRhythmProvider;
+import org.jjazz.yamjjazz.rhythm.api.YamJJazzRhythm;
+import org.jjazz.yamjjazz.rhythm.api.YjzFileBuilder;
 import org.openide.DialogDisplayer;
 import org.openide.NotifyDescriptor;
 import org.openide.WizardDescriptor;
@@ -123,10 +125,11 @@ public final class YjzCreatorWizardAction implements ActionListener
 
 
         // Build the sequence
-        YjzFileBuilder builder = new YjzFileBuilder(baseRhythmInfo, nbMainA, nbMainB, nbMainC, nbMainD, includeIntroEndings, includeFills, nbSrcPhrases);
         Sequence sequence;
         try
         {
+            var baseRhythm = (YamJJazzRhythm) RhythmDatabase.getSharedInstance().getRhythmInstance(baseRhythmInfo);
+            var builder = new YjzFileBuilder(baseRhythm, nbMainA, nbMainB, nbMainC, nbMainD, includeIntroEndings, includeFills, nbSrcPhrases);
             sequence = builder.buildSequence();
         } catch (UnavailableRhythmException | InvalidMidiDataException | MusicGenerationException ex)
         {

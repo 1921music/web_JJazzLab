@@ -13,6 +13,7 @@ import org.jjazz.midi.api.MidiAddress;
 import org.jjazz.midi.api.keymap.KeyMapXG;
 import org.jjazz.midi.api.synths.GMSynth;
 import org.jjazz.midimix.api.MidiMix;
+import org.jjazz.midimix.api.UserRhythmVoice;
 import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythmmusicgeneration.api.SongSequenceBuilder.SongSequence;
 import org.jjazz.yamjjazz.rhythm.YamJJazzRhythmImpl;
@@ -91,7 +92,11 @@ final class WebJJSwing
     {
         for (var entry : sequence.mapRvTrackId.entrySet())
         {
-            if (entry.getKey().isDrums()) adaptDrumTrack(sequence.sequence.getTracks()[entry.getValue()]);
+            if (entry.getKey().isDrums() && !(entry.getKey() instanceof UserRhythmVoice)
+                    && entry.getKey().getContainer() instanceof JJSwingRhythm)
+            {
+                adaptDrumTrack(sequence.sequence.getTracks()[entry.getValue()]);
+            }
         }
     }
 

@@ -2,31 +2,44 @@ package org.jjazz.web.engine;
 
 import java.io.File;
 import java.io.OutputStream;
+import java.util.Arrays;
 import java.util.List;
 import javax.sound.midi.MidiSystem;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
 import org.jjazz.harmony.api.Position;
+import org.jjazz.midimix.api.UserRhythmVoice;
+import org.jjazz.midimix.MidiMixManagerImpl;
+import org.jjazz.jjswing.api.JJSwingRhythm;
 import org.jjazz.jjswing.api.RP_BassStyle;
 import org.jjazz.jjswing.api.RP_DrumsStyle;
+import org.jjazz.phrase.api.Phrase;
 import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.jjazz.midimix.spi.MidiMixManager;
 import org.jjazz.rhythmmusicgeneration.api.SongSequenceBuilder;
 import org.jjazz.song.spi.SongContextFactory;
 import org.jjazz.song.spi.SongFactory;
+import org.jjazz.song.api.Song;
 import org.jjazz.songstructure.SongStructureImpl;
 import org.jjazz.yamjjazz.rhythm.YamJJazzRhythmImpl;
 
 final class MidiGeneration
 {
+    record Result(String[] metadata, String[] mix, Phrase[] rhythmPhrases, boolean importedMixApplied) {}
+
     private MidiGeneration()
     {
     }
 
     static String[] generate(File styleFile, String[] chords, int tempo, OutputStream output) throws Exception
     {
+        return generateExtended(styleFile, null, chords, tempo, null, output);
+    }
+
+    static String[] generateExtended(File styleFile, File extension, String[] chords, int tempo, String variation, OutputStream output) throws Exception
+    {
         WebServices.install();
-        return generate(new YamJJazzRhythmImpl(styleFile), chords, tempo, null, null, null, output);
+        return generate(createYamahaRhythm(styleFile, extension), chords, tempo, variation, null, null, output);
     }
 
     static String[] generateSwing(String[] chords, int tempo, String bassStyle, String drumsStyle, OutputStream output) throws Exception
@@ -43,6 +56,26 @@ final class MidiGeneration
             throw new IllegalArgumentException("Unsupported jjSwing variation: " + variation);
         }
         return generate(rhythm, chords, tempo, variation, bassStyle, drumsStyle, output);
+    }
+
+    static Result generateSong(File[] styleFiles, File[] extensions, int[] partSources, SongInput input, String[] mix, OutputStream output) throws Exception
+    {
+        WebServices.install();
+        var rhythms = new Rhythm[styleFiles.length];
+        for (int index = 0; index < styleFiles.length; index++)
+        {
+            var file = styleFiles[index];
+            rhythms[index] = file == null ? WebJJSwing.rhythm() : createYamahaRhythm(file, extensions[index]);
+            rhythms[index].loadResources();
+        }
+        var song = input.createSong(rhythms, partSources);
+        var accompanimentRhythms = Arrays.stream(partSources).distinct().mapToObj(index -> rhythms[index]).toList();
+        return render(accompanimentRhythms, song, mix, output);
+    }
+
+    static YamJJazzRhythmImpl createYamahaRhythm(File style, File extension) throws Exception
+    {
+        return extension == null ? new YamJJazzRhythmImpl(style) : new YamJJazzRhythmImpl(style, extension);
     }
 
     private static String[] generate(Rhythm rhythm, String[] chords, int tempo, String variation, String bassStyle, String drumsStyle, OutputStream output) throws Exception
@@ -74,12 +107,56 @@ final class MidiGeneration
         }
         var song = factory.createSong("Web accompaniment", structure, true);
         song.setTempo(tempo == 0 ? rhythm.getPreferredTempo() : tempo);
-        var mix = MidiMixManager.getDefault().createMix(rhythm);
-        if (bassStyle != null) WebJJSwing.configureMix(rhythm, mix);
+        return render(List.of(rhythm), song, null, output).metadata();
+    }
+
+    private static Result render(List<Rhythm> rhythms, Song song, String[] mixInput, OutputStream output) throws Exception
+    {
+        boolean multiple = rhythms.size() > 1;
+        // Use the desktop's allocator for a whole arrangement. Keep its song registry local to this render.
+        var mix = multiple ? new MidiMixManagerImpl().createMix(song) : MidiMixManager.getDefault().createMix(rhythms.get(0));
+        if (!multiple)
+        {
+            for (var name : song.getUserPhraseNames().stream().sorted().toList())
+            {
+                mix.addUserChannel(name, song.getUserPhrase(name).isDrums());
+            }
+        }
+        for (var rhythm : rhythms)
+        {
+            if (rhythm instanceof JJSwingRhythm) WebJJSwing.configureMix(rhythm, mix);
+        }
+        boolean editableMix = mixInput != null;
+        if (editableMix)
+        {
+            // The Web synthesizer can play each percussion track independently.
+            // Desktop GM rerouting would move the notes to a different mix strip.
+            for (int channel : mix.getDrumsReroutedChannels())
+            {
+                mix.setDrumsReroutedChannel(false, channel);
+            }
+        }
+        boolean importedMixApplied = editableMix && mixInput.length > 0 && SongMix.apply(mix, mixInput);
+        if (importedMixApplied) mix = SongMix.withSavedChannels(mix, mixInput);
         var builder = new SongSequenceBuilder(SongContextFactory.getDefault().of(song, mix));
         var result = builder.buildAll(true);
-        builder.makeSequenceExportable(result, false);
-        if (bassStyle != null) WebJJSwing.adaptDrumNotes(result);
+        var rhythmPhrases = new Phrase[16];
+        if (editableMix)
+        {
+            for (var entry : result.mapRvPhrase.entrySet())
+            {
+                if (!(entry.getKey() instanceof UserRhythmVoice))
+                {
+                    int channel = mix.getChannel(entry.getKey());
+                    if (channel >= 0)
+                    {
+                        rhythmPhrases[channel] = entry.getValue();
+                    }
+                }
+            }
+        }
+        builder.makeSequenceExportable(result, editableMix);
+        WebJJSwing.adaptDrumNotes(result);
         MidiSystem.write(result.sequence, 1, output);
         // Track-indexed metadata keeps percussion outside channel 10 identifiable
         // without changing the exported Standard MIDI File.
@@ -87,8 +164,17 @@ final class MidiGeneration
         for (var entry : result.mapRvTrackId.entrySet())
         {
             var voice = entry.getKey();
-            partMetadata[entry.getValue()] = (voice.isDrums() ? "drums" : "melodic") + "\t" + voice.getName();
+            String kind = voice.isDrums() ? "drums" : "melodic";
+            if (editableMix)
+            {
+                var source = voice instanceof UserRhythmVoice ? "user" : "rhythm";
+                String styleId = multiple && !(voice instanceof UserRhythmVoice) ? "\t" + voice.getContainer().getUniqueId() : "";
+                partMetadata[entry.getValue()] = source + "-" + kind + "\t" + voice.getName() + styleId;
+            } else
+            {
+                partMetadata[entry.getValue()] = kind + "\t" + voice.getName();
+            }
         }
-        return partMetadata;
+        return new Result(partMetadata, editableMix ? SongMix.snapshot(mix) : new String[0], rhythmPhrases, importedMixApplied);
     }
 }
