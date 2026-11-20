@@ -88,14 +88,17 @@ class AccompanimentPlayer {
         });
     }
 
-    async play(song, loop, parts, master, startFromSelection = false) {
+    async play(song, loop, parts, master, startFromSelection = false, settings = {}) {
         if (this.loadedSong !== song) { await this.send("song", { song, loop }); this.loadedSong = song; }
         await this.send("loop", { loop });
         await this.send("mix", { parts, master });
-        await this.send("play", { startFromSelection });
+        await this.send("play", { startFromSelection, ...settings });
     }
 
     async stop() { if (this.ready) await this.send("stop"); }
+    async pause() { if (this.ready) await this.send("pause"); }
+    async panic() { if (this.ready) await this.send("panic"); }
+    async click(enabled) { if (this.ready) await this.send("click", { enabled }); }
     mix(parts, master) { if (this.ready && this.loadedSong) this.send("mix", { parts, master }).catch(error => this.onError(error.message)); }
     loop(loop) { if (this.ready && this.loadedSong) this.send("loop", { loop }).catch(error => this.onError(error.message)); }
 }

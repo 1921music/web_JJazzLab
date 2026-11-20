@@ -56,6 +56,34 @@ test("loop restores controllers before its start, without restarting crossing no
     assert.equal(calls.filter(c => c[0] === "event" && c[2] === 0x90 && c[3] === 64).length, 3);
 });
 
+test("the initial pass starts before the restart bar and pause retains the playhead", async () => {
+    const { processor: p, calls, render } = createProcessor();
+    await p.command({ type: "song", song: song([event(.029, 0x90, 60, 100), event(.19, 0x90, 62, 100)]),
+        loop: { enabled: true, start: 0, restart: .128, end: .256 } });
+    await p.command({ type: "play" });
+    render();
+    await p.command({ type: "pause" });
+    render();
+    assert.equal(p.frame, 128);
+    await p.command({ type: "play", resume: true });
+    render(3);
+    assert.deepEqual(calls.filter(call => call[2] === 0x90).map(call => call[3]), [60, 62, 62, 62]);
+});
+
+test("two-bar count-in produces clicks before the first MIDI note", async () => {
+    const { processor: p, calls, render } = createProcessor();
+    await p.command({ type: "song", song: { ...song([event(0, 0x90, 60, 100)]),
+        beatTimes: Array.from({ length: 8 }, (_, index) => ({ seconds: index * .064, beat: index % 4 + 1 })) },
+        loop: { enabled: false, start: 0, end: .512 } });
+    await p.command({ type: "play", precount: true });
+    assert.ok(render()[0].some(value => value !== 0));
+    render(3);
+    assert.equal(p.frame, 0);
+    assert.ok(!calls.some(call => call[2] === 0x90));
+    render();
+    assert.ok(calls.some(call => call[2] === 0x90));
+});
+
 test("live range changes apply at the old boundary, then use the new range", async () => {
     const { processor: p, render } = createProcessor();
     await p.command({ type: "song", song: song([]), loop: { enabled: true, start: 0, end: .256 } });

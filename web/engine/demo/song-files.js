@@ -63,6 +63,11 @@ const DesktopSongFiles = (() => {
         const structure = resolve(child(root, "spSongStructure"));
         const bars = number(content(leadSheet, "spSize"), "譜面の小節数", 1, 1024);
         const items = Array.from(child(leadSheet, "spItems")?.children ?? []);
+        const annotations = items.filter(item => attr(item, "resolves-to") === "CLI_BarAnnotationImplSP").map(item => ({
+            bar: number(attr(item, "spBarIndex"), "小節メモの位置", 0, bars - 1),
+            text: content(item, "spAnnotation")
+        }));
+        const restart = items.find(item => attr(item, "resolves-to") === "CLI_LoopRestartBarImplSP");
         const sectionNodes = items.filter(item => attr(item, "resolves-to") === "CLI_SectionImplSP");
         const sections = sectionNodes.map(section => ({
             name: attr(section, "spName"),
@@ -101,7 +106,8 @@ const DesktopSongFiles = (() => {
         }
         return validateSong({ title: attr(root, "spName"), comments: content(root, "spComments"),
             tempo: number(attr(root, "spTempo"), "テンポ", 20, 400),
-            bars, sections, chords, parts, userTracks });
+            bars, sections, chords, parts, userTracks, annotations,
+            ...(restart ? { loopRestartBar: number(attr(restart, "spBarIndex"), "ループの折り返し位置", 0, bars - 1) } : {}) });
     }
 
     function validateSong(song) {
@@ -115,6 +121,9 @@ const DesktopSongFiles = (() => {
                 && part.parameters && Object.values(part.parameters).every(value => typeof value === "string"))
             || !Array.isArray(song.chords) || !song.chords.every(chord => chord && typeof chord.name === "string"
                 && Number.isInteger(chord.bar) && chord.bar >= 0 && chord.bar < song.bars && Number.isFinite(chord.beat) && chord.beat >= 0)
+            || (song.annotations !== undefined && (!Array.isArray(song.annotations) || !song.annotations.every(note =>
+                note && Number.isInteger(note.bar) && note.bar >= 0 && note.bar < song.bars && typeof note.text === "string")))
+            || (song.loopRestartBar !== undefined && (!Number.isInteger(song.loopRestartBar) || song.loopRestartBar < 0 || song.loopRestartBar >= song.bars))
             || !Array.isArray(song.userTracks) || !song.userTracks.every(track => track && typeof track.name === "string" && typeof track.phrase === "string")) {
             throw new Error("曲ファイルの譜面または演奏順が不正です。");
         }
@@ -219,7 +228,13 @@ const DesktopSongFiles = (() => {
                 + `<spPos resolves-to="PositionSP" spVERSION="2" spPos="[${chord.bar}:${chord.beat}]"/>`
                 + '<spClientProperties><owner class="CLI_ChordSymbolImpl" reference="../.."/></spClientProperties></CLI__ChordSymbolImpl>' };
         });
-        const items = [...sections, ...chords].sort((a, b) => a.bar - b.bar || a.beat - b.beat).map(item => item.xml);
+        const extras = (song.annotations ?? []).map(note => ({ bar: note.bar, beat: -0.5,
+            xml: `<CLI__BarAnnotationImpl resolves-to="CLI_BarAnnotationImplSP" spVERSION="2" spBarIndex="${note.bar}">`
+                + xmlText("spAnnotation", note.text)
+                + '<spClientProperties><owner class="CLI_BarAnnotationImpl" reference="../.."/></spClientProperties></CLI__BarAnnotationImpl>' }));
+        if (song.loopRestartBar !== undefined) extras.push({ bar: song.loopRestartBar, beat: -0.25,
+            xml: `<CLI__LoopRestartBarImpl resolves-to="CLI_LoopRestartBarImplSP" spVERSION="1" spBarIndex="${song.loopRestartBar}"/>` });
+        const items = [...sections, ...chords, ...extras].sort((a, b) => a.bar - b.bar || a.beat - b.beat).map(item => item.xml);
         let start = 0;
         const arrangement = song.parts.map(part => {
             const section = song.sections[part.section];

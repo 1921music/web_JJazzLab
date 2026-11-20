@@ -77,6 +77,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.pcm = new Float32Array(this.api.memory.buffer);
             } else if (type === "song") {
                 this.playing = false;
+                this.paused = false;
                 this.api.synth_clear_parts();
                 this.parts = message.song.parts.map((part, i) => {
                     if (this.api.synth_part(Number(part.drum)) !== i) throw new Error("音源のパートを作成できません。");
@@ -84,6 +85,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                         chorusSend: 0, reverbSend: 0, midiProgram: 0, bankMsb: 0, bankLsb: 0 };
                 });
                 this.events = message.song.events.map(e => ({ ...e, frame: Math.round(e.seconds * sampleRate) }));
+                this.beats = (message.song.beatTimes ?? []).map(beat => ({ ...beat, frame: Math.round(beat.seconds * sampleRate) }));
                 this.duration = Math.round(message.song.duration * sampleRate);
                 this.frame = this.index = 0;
                 this.loop = this.prepareLoop(message.loop);
@@ -107,12 +109,35 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 else this.loop = loop;
             } else if (type === "play") {
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
-                this.effects.clear();
-                this.seek(this.loop.enabled || message.startFromSelection ? this.loop.start : 0);
+                this.clickEnabled = message.click ?? this.clickEnabled;
+                if (!this.paused || !message.resume) {
+                    this.effects.clear();
+                    const start = this.loop.enabled || message.startFromSelection ? this.loop.start : 0;
+                    this.seek(start);
+                    this.countFrames = 0;
+                    if (message.precount) {
+                        const end = this.beats.find(beat => beat.frame > start && beat.beat === 1)?.frame ?? this.duration;
+                        this.countBeats = this.beats.filter(beat => beat.frame >= start && beat.frame < end).length || 4;
+                        this.countStep = Math.max(1, Math.round((end - start) / this.countBeats));
+                        this.countFrames = this.countStep * this.countBeats * 2;
+                    }
+                }
+                this.paused = false;
                 this.playing = true;
                 this.reportPosition();
+            } else if (type === "pause") {
+                this.paused = this.playing;
+                this.playing = false;
+                this.reportPosition();
+            } else if (type === "click") {
+                this.clickEnabled = message.enabled;
+            } else if (type === "panic") {
+                for (let i = 0; i < this.parts.length; i++) this.api.synth_silence(i);
+                this.effects.clear();
             } else if (type === "stop") {
                 this.playing = false;
+                this.paused = false;
+                this.countFrames = 0;
                 for (let i = 0; i < this.parts.length; i++) this.api.synth_reset(i);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.frame = 0;
@@ -127,9 +152,10 @@ class SoundFontProcessor extends AudioWorkletProcessor {
 
     prepareLoop(loop) {
         const start = Math.round(loop.start * sampleRate), end = Math.round(loop.end * sampleRate);
-        if (start < 0 || end <= start || end > this.duration) throw new Error("ループ範囲が不正です。");
-        return { enabled: loop.enabled, start, end,
-            chase: this.events.filter(e => e.frame < start && [0xb0, 0xc0, 0xe0].includes(e.type)) };
+        const restart = Math.round((loop.restart ?? loop.start) * sampleRate);
+        if (start < 0 || end <= start || end > this.duration || restart < start || restart >= end) throw new Error("ループ範囲が不正です。");
+        const chase = this.events.filter(e => e.frame < restart && [0xb0, 0xc0, 0xe0].includes(e.type));
+        return { enabled: loop.enabled, start, end, restart, chase };
     }
 
     applyProgram(index) {
@@ -155,15 +181,32 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             part.midiProgram = part.bankMsb = part.bankLsb = 0;
             if (part.instrumentChoice) this.applyProgram(index);
         }
-        if (frame) for (const event of this.loop.chase) this.event(event);
+        if (frame) for (const event of this.loop.chase) {
+            if (event.frame >= frame) break;
+            this.event(event);
+        }
         this.frame = frame;
         this.index = 0;
         while (this.index < this.events.length && this.events[this.index].frame < frame) this.index++;
+        this.beatIndex = this.beats.findIndex(beat => beat.frame >= frame);
+        if (this.beatIndex < 0) this.beatIndex = this.beats.length;
+        this.clickRemaining = 0;
         this.fadeStart = frame;
     }
 
     reportPosition() {
-        this.port.postMessage({ type: "position", seconds: this.frame / sampleRate, playing: this.playing });
+        this.port.postMessage({ type: "position", seconds: this.frame / sampleRate, playing: this.playing, paused: Boolean(this.paused), counting: this.countFrames > 0 });
+    }
+
+    clickSample(accent) {
+        if (accent !== undefined) {
+            this.clickRemaining = Math.round(sampleRate * 0.025);
+            this.clickPhase = 0;
+            this.clickStep = (accent ? 1600 : 1040) * 2 * Math.PI / sampleRate;
+        }
+        if (this.clickRemaining <= 0) return 0;
+        this.clickPhase += this.clickStep;
+        return Math.sin(this.clickPhase) * this.clickRemaining-- / sampleRate * 5;
     }
 
     process(inputs, outputs) {
@@ -171,11 +214,19 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (!this.playing || !this.api) return true;
         try {
             let offset = 0;
+            while (offset < left.length && this.countFrames > 0) {
+                const beat = this.countFrames / this.countStep;
+                const value = this.clickSample(Number.isInteger(beat) ? beat % this.countBeats === 0 : undefined);
+                left[offset] = right[offset] = value * this.master;
+                offset++;
+                this.countFrames--;
+                if (!this.countFrames) this.reportPosition();
+            }
             while (offset < left.length && this.playing) {
                 let boundary = this.loop.enabled ? this.loop.end : this.duration;
                 if (this.frame >= boundary) {
                     if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
-                    if (this.loop.enabled) this.seek(this.loop.start);
+                    if (this.loop.enabled) this.seek(this.loop.restart);
                     else if (this.frame >= this.duration) {
                         this.playing = false;
                         for (let i = 0; i < this.parts.length; i++) this.api.synth_reset(i);
@@ -213,9 +264,13 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                         room += mono * p.reverbSend;
                     }
                     this.effects.process(chorus, room);
+                    const beat = this.beats[this.beatIndex];
+                    const click = beat?.frame === this.frame + f;
+                    if (click) this.beatIndex++;
+                    const clickSound = this.clickEnabled ? this.clickSample(click ? beat.beat === 1 : undefined) : 0;
                     const fade = Math.min(1, (this.frame + f - this.fadeStart) / 64, (boundary - this.frame - f) / 64);
-                    left[offset + f] = (l + this.effects.left) * this.master * fade;
-                    right[offset + f] = (r + this.effects.right) * this.master * fade;
+                    left[offset + f] = (l + this.effects.left) * this.master * fade + clickSound * this.master;
+                    right[offset + f] = (r + this.effects.right) * this.master * fade + clickSound * this.master;
                 }
                 this.frame += n; offset += n;
             }

@@ -40,7 +40,7 @@ let engine;
 let downloadUrl;
 
 function showStylePackStatus(message, error = false) {
-    stylePackStatus.textContent = message;
+    localizedText(stylePackStatus, message);
     stylePackStatus.toggleAttribute("data-error", error);
 }
 
@@ -50,21 +50,23 @@ function renderStyleChoices() {
         && words.every(word => `${entry.category} ${entry.name}`.normalize("NFKC").toLowerCase().includes(word)));
     libraryStyle.replaceChildren();
     const option = (value, text) => { const node = document.createElement("option"); node.value = value; node.textContent = text; return node; };
-    libraryStyle.append(option("", "選択なし（ファイルまたは8Beat）"));
-    if (selectedLibraryStyle && !entries.includes(selectedLibraryStyle))
-        libraryStyle.append(option(selectedLibraryStyle.path, `選択中: ${selectedLibraryStyle.category} / ${selectedLibraryStyle.name}`));
+    libraryStyle.append(option("", t("選択なし（ファイルまたは8Beat）")));
+    if (selectedLibraryStyle && !entries.includes(selectedLibraryStyle)) {
+        const name = `${selectedLibraryStyle.category} / ${selectedLibraryStyle.name}`;
+        libraryStyle.append(option(selectedLibraryStyle.path, t(`選択中: ${name}`, `Selected: ${name}`)));
+    }
     let group;
     for (const entry of entries) {
         if (!group || group.label !== entry.category) {
             group = document.createElement("optgroup"); group.label = entry.category; libraryStyle.append(group);
         }
-        const item = option(entry.path, entry.name + (styleIssue(entry) ? "（利用不可）" : ""));
-        item.disabled = Boolean(styleIssue(entry)); item.title = styleIssue(entry) || entry.name;
+        const item = option(entry.path, entry.name + (styleIssue(entry) ? t("（利用不可）") : ""));
+        item.disabled = Boolean(styleIssue(entry)); item.title = t(styleIssue(entry) || entry.name);
         group.append(item);
     }
     libraryStyle.value = selectedLibraryStyle?.path || "";
     const available = entries.filter(entry => !styleIssue(entry)).length;
-    document.querySelector("#style-count").textContent = `（${available}件利用可 / 表示${entries.length}件）`;
+    localizedText(document.querySelector("#style-count"), `（${available}件利用可 / 表示${entries.length}件）`, `(${available} available / ${entries.length} shown)`);
 }
 
 async function loadStylePack() {
@@ -80,12 +82,12 @@ async function loadStylePack() {
             const option = document.createElement("option"); option.value = option.textContent = category; styleCategory.append(option);
         }
         renderStyleChoices(); document.querySelector("#style-library").hidden = false;
-        loadStylePackButton.textContent = "公開スタイル集を読み込み済み";
+        localizedText(loadStylePackButton, "公開スタイル集を読み込み済み");
         const available = styleArchive.entries.filter(entry => !styleIssue(entry)).length;
         showStylePackStatus(`${styleArchive.entries.length}件を読み込みました（${available}件利用可）。ページを開いている間は再取得しません。`);
         libraryStyle.focus();
     } catch (error) {
-        loadStylePackButton.textContent = "公開スタイル集を再試行";
+        localizedText(loadStylePackButton, "公開スタイル集を再試行");
         showStylePackStatus(error.message, true);
     } finally { loadingStylePack = false; loadStylePackButton.disabled = Boolean(styleArchive); }
 }
@@ -99,7 +101,8 @@ libraryStyle.addEventListener("change", () => {
     selectedLibraryStyle = selected;
     if (selectedLibraryStyle) { styleInput.value = ""; bundledExtension.value = ""; }
     extendedVariationField.hidden = true;
-    if (song) showStatus("スタイルを変更しました。「伴奏を生成」で新しい伴奏を作ります。");
+    accompanimentDirty = true;
+    if (song) showStatus("次回の再生から変更を反映します。");
 });
 styleInput.addEventListener("change", () => {
     selectedLibraryStyle = undefined; libraryStyle.value = ""; bundledExtension.value = "";
@@ -116,16 +119,29 @@ rhythmEngine.addEventListener("change", () => {
     document.querySelector("#style-field").hidden = swing;
     styleInput.disabled = swing;
     if (swing || editor.project) extendedVariationField.hidden = true;
-    tempoInput.placeholder = swing ? "120" : "スタイルの既定値";
+    tempoInput.placeholder = swing ? "120" : t("スタイルの既定値");
 });
 let song;
 let generating = false;
 let starting = false;
 let playing = false;
+let paused = false;
+let accompanimentDirty = true;
+let playbackBar = 1;
 let mixerParts = [];
 const savedMix = new Map();
 const playButton = document.querySelector("#play");
 const stopButton = document.querySelector("#stop");
+const pauseButton = document.querySelector("#pause");
+const previousPart = document.querySelector("#previous-part");
+const nextPart = document.querySelector("#next-part");
+const toggleLoop = document.querySelector("#toggle-loop");
+const metronome = document.querySelector("#metronome");
+const precount = document.querySelector("#precount");
+const showPoint = document.querySelector("#show-playback-point");
+const playhead = document.querySelector("#position");
+const structureToggle = document.querySelector("#toggle-structure");
+const menus = [...document.querySelectorAll(".app-menu details, .mixer-menu details")];
 const generateButton = document.querySelector("#generate");
 const workspace = document.querySelector("#workspace");
 const mixer = document.querySelector("#mixer");
@@ -136,6 +152,7 @@ const muteAll = document.querySelector("#mute-all");
 const clearSolo = document.querySelector("#clear-solo");
 const saveMix = document.querySelector("#save-mix");
 const channelEditor = document.querySelector("#channel-editor");
+const mixerContext = document.querySelector("#mixer-context");
 const channelInstrument = document.querySelector("#channel-instrument");
 const channelEffects = [
     { key: "reverb", label: "リバーブ", controller: 91 },
@@ -150,40 +167,73 @@ const masterInput = document.querySelector("#master");
 const playStatus = document.querySelector("#play-status");
 const loopStatus = document.querySelector("#loop-status");
 const player = new AccompanimentPlayer(updatePosition, (message) => {
-    playing = false; starting = false; updateButtons(); showPlayStatus(message, true);
+    paused = playing = false; starting = false; updateButtons(); showPlayStatus(message, true);
 });
 
 function updateButtons() {
     generateButton.disabled = tempoInput.disabled = generating || starting;
     document.querySelector("#new-project").disabled = document.querySelector("#open-project-button").disabled
         = document.querySelector("#open-project").disabled = quickMode.disabled = generating || starting;
-    playButton.disabled = generating || starting || playing || !song;
-    stopButton.disabled = generating || starting || !playing;
+    playButton.disabled = generating || starting || playing;
+    stopButton.disabled = generating || starting || (!playing && !paused && playbackBar === 1);
+    pauseButton.disabled = generating || starting || !playing;
+    playButton.setAttribute("aria-pressed", String(playing));
+    stopButton.setAttribute("aria-pressed", String(!playing && !paused));
+    pauseButton.setAttribute("aria-pressed", String(paused));
+    previousPart.disabled = generating || starting || !editor.project || playbackBar <= 1;
+    nextPart.disabled = generating || starting || !editor.project || !editor.partRanges().some(range => range.from > playbackBar);
+    previousPart.disabled ||= quickMode.getAttribute("aria-pressed") === "true";
+    editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
+    structureToggle.disabled = !editor.project;
+    editor.updateUndo();
+    editor.undoButton.disabled ||= generating || starting;
+    editor.redoButton.disabled ||= generating || starting;
+    updateMixerButtons();
     document.querySelector("#loop-controls").disabled = !song || starting || generating;
+    updateMenus();
+}
+
+function updateMenus() {
+    for (const button of document.querySelectorAll("[data-command]")) {
+        const action = document.getElementById(button.dataset.command);
+        if (action === download) { button.disabled = generating || starting; continue; }
+        button.disabled = action.disabled || action.hidden || Boolean(action.closest("[inert]"))
+            || (!editor.project && action.closest("#song-editor") !== null);
+    }
 }
 
 function showPlayStatus(message, error = false) {
-    playStatus.textContent = message;
+    localizedText(playStatus, message);
     playStatus.toggleAttribute("data-error", error);
 }
 
 function updatePosition(position) {
     if (!song) return;
     playing = position.playing;
+    paused = Boolean(position.paused);
     let bar = song.barTimes.findIndex(time => time > position.seconds);
     if (bar < 0) bar = song.barTimes.length - 1;
-    document.querySelector("#position").textContent = `${Math.max(1, bar)}小節 / ${song.barTimes.length - 1}小節`;
-    if (editor.project) editor.showPlayingBar(playing ? bar : 0);
+    const beat = song.beatTimes.findLast(beat => beat.seconds <= position.seconds + .00002);
+    displayPosition(Math.max(1, bar), beat?.bar === bar ? beat.beat : 1, position.seconds);
+    if (editor.project) editor.showPlayingBar((playing || paused) && showPoint.getAttribute("aria-pressed") === "true" ? bar : 0);
     updateButtons();
-    if (!playing) showPlayStatus("停止中");
+    showPlayStatus(paused ? "一時停止中" : position.counting ? "カウントイン" : playing ? "演奏中" : "停止中");
+}
+
+function displayPosition(bar = 1, beat = 1, seconds = 0) {
+    playbackBar = bar;
+    const mins = String(Math.floor(seconds / 60)).padStart(2, "0");
+    const secs = String(Math.floor(seconds % 60)).padStart(2, "0");
+    playhead.textContent = `${String(bar).padStart(3, "0")}:${beat} ${mins}m${secs}s`;
 }
 
 function readLoop() {
     const start = loopStart.valueAsNumber, end = loopEnd.valueAsNumber;
     const bars = song.barTimes.length - 1;
     if (!Number.isInteger(start) || !Number.isInteger(end) || start < 1 || end < start || end > bars)
-        throw new Error(`ループ範囲は1〜${bars}小節で、開始≦終了にしてください。`);
-    return { enabled: loopEnabled.checked, start: song.barTimes[start - 1], end: song.barTimes[end] };
+        throw new Error(t(`ループ範囲は1〜${bars}小節で、開始≦終了にしてください。`, `Use bars 1–${bars}, with the first bar no later than the last.`));
+    const restart = song.restartBars?.find(bar => bar >= start && bar <= end) ?? start;
+    return { enabled: loopEnabled.checked, start: song.barTimes[start - 1], end: song.barTimes[end], restart: song.barTimes[restart - 1] };
 }
 
 function applyMix() {
@@ -213,14 +263,17 @@ function updateMixerButtons() {
     clearSolo.disabled = !mixerParts.some(part => part.solo);
     document.querySelector("#reset-mixer").disabled = !mixerParts.length;
     saveMix.disabled = !editor.renderedMix || activeProject !== editor.project || !song;
+    document.querySelector("#import-mix-button").disabled = !editor.project || generating || starting || !editor.baseMix?.length
+        || activeProject !== editor.project;
+    document.querySelector("#panic").disabled = !mixerParts.length;
 }
 
-function openChannelEditor(part, button) {
+function openChannelEditor(part) {
     const choices = mixerInstruments.filter(instrument => instrument.drum === part.drum)
         .map(instrument => part.usesDesktopSoundFont ? { ...instrument, ...instrument.desktop } : instrument);
     const current = part.instrumentChoice?.id ?? "";
     document.querySelector("#channel-editor-title").textContent = `CH ${part.channel + 1} · ${part.name}`;
-    channelInstrument.replaceChildren(new Option(`${part.originalPatch}（元の音色）`, ""),
+    channelInstrument.replaceChildren(new Option(t(`${part.originalPatch}（元の音色）`, `${part.originalPatch} (original)`), ""),
         ...choices.map(instrument => new Option(instrument.patch, instrument.id)));
     channelInstrument.value = current;
     const controls = document.querySelector("#channel-effects");
@@ -229,24 +282,24 @@ function openChannelEditor(part, button) {
         const row = document.createElement("div");
         row.className = "effect-control";
         const title = document.createElement("span");
-        title.textContent = label;
+        title.textContent = t(label);
         const slider = document.createElement("input");
         slider.id = `channel-${key}`;
         slider.type = "range";
         slider.min = 0;
         slider.max = 127;
         slider.value = part[key];
-        slider.setAttribute("aria-label", label);
+        slider.setAttribute("aria-label", t(label));
         const output = document.createElement("output");
         output.textContent = slider.value;
         slider.oninput = () => { output.textContent = slider.value; };
         const enabled = document.createElement("input");
         enabled.type = "checkbox";
         enabled.checked = part[`${key}Enabled`];
-        enabled.setAttribute("aria-label", `${label}を有効にする`);
+        enabled.setAttribute("aria-label", t(`${label}を有効にする`, `Enable ${t(label).toLowerCase()}`));
         const toggle = document.createElement("label");
         toggle.className = "check";
-        toggle.append(enabled, "有効");
+        toggle.append(enabled, t("有効"));
         row.append(title, slider, output, toggle);
         controls.append(row);
         return { key, slider, enabled };
@@ -258,20 +311,48 @@ function openChannelEditor(part, button) {
             part[key] = slider.valueAsNumber;
             part[`${key}Enabled`] = enabled.checked;
         }
-        updateChannelButton(part, button);
         applyMix();
         channelEditor.close();
+        renderMixer();
+        document.querySelector(`.strip[data-part-index="${mixerParts.indexOf(part)}"] .channel-edit`)?.focus();
     };
     channelEditor.showModal();
 }
 
 function updateChannelButton(part, button) {
     const patch = part.instrumentChoice?.patch ?? part.originalPatch;
-    const effects = document.createElement("small");
-    effects.textContent = `R ${part.reverbEnabled ? part.reverb : "–"} · C ${part.chorusEnabled ? part.chorus : "–"}`;
-    button.replaceChildren(patch, effects);
-    button.title = `${patch} · リバーブ／コーラス`;
-    button.setAttribute("aria-label", `${part.name}の音色とエフェクト（${patch}）`);
+    button.textContent = patch;
+    button.title = t(`${patch} · チャンネル設定`, `${patch} · Channel settings`);
+    button.setAttribute("aria-label", t(`${part.name}のチャンネル設定（${patch}）`, `Channel settings for ${part.name} (${patch})`));
+}
+
+function mixerKnob(part, key, label, min, max, value, onChange) {
+    const control = document.createElement("label");
+    control.className = "mixer-knob";
+    const caption = document.createElement("span");
+    caption.textContent = label;
+    const input = document.createElement("input");
+    input.type = "range";
+    input.id = `${key}-${mixerParts.indexOf(part)}`;
+    input.min = min;
+    input.max = max;
+    input.value = value;
+    input.setAttribute("aria-label", `${part.name} ${key}`);
+    const display = () => {
+        const proportion = (input.valueAsNumber - min) / (max - min);
+        control.style.setProperty("--angle", `${270 * proportion - 135}deg`);
+        control.title = `${label.toUpperCase()} · ${input.value}`;
+    };
+    input.oninput = () => { onChange(input.valueAsNumber); display(); applyMix(); };
+    input.onwheel = event => {
+        if (document.activeElement !== input) return;
+        event.preventDefault();
+        input.value = Math.max(min, Math.min(max, input.valueAsNumber - Math.sign(event.deltaY)));
+        input.oninput();
+    };
+    display();
+    control.append(input, caption);
+    return control;
 }
 
 function initialMixerParts(song, mix) {
@@ -282,7 +363,13 @@ function initialMixerParts(song, mix) {
         const key = `${event.part}:${setting}`;
         if (!initialEvents.has(key)) initialEvents.set(key, event.type === 0xc0 ? event.a : event.b);
     }
-    return song.parts.map((part, index) => {
+    const activeChannels = new Set(song.parts.map(part => part.channel));
+    const tracks = [...song.parts, ...(mix ?? []).filter(track => !activeChannels.has(track.channel)).map(track => ({
+        id: `silent:${track.rhythmId}:${track.name}`, name: track.name, channel: track.channel,
+        source: /^Sp(?:Drums)?UserChannelRhythmID$/u.test(track.rhythmId) ? "user" : "rhythm",
+        drum: /#_#Drums#_#|\bkit\b/iu.test(track.instrument + " " + track.patch)
+    }))];
+    return tracks.map((part, index) => {
         const track = mix?.find(track => track.channel === part.channel);
         const program = initialEvents.get(`${index}:program`) ?? 0;
         const fallback = mixerInstruments.find(instrument => instrument.drum === part.drum && instrument.program === program);
@@ -292,9 +379,36 @@ function initialMixerParts(song, mix) {
             original[key] = track?.[key] ?? initialEvents.get(`${index}:${key}`) ?? 0;
             original[`${key}Enabled`] = track?.[`${key}Enabled`] ?? true;
         }
-        return { ...part, ...original, original, usesDesktopSoundFont: Boolean(mix) && usesDesktopSoundFont,
+        return { ...part, ...original, original, program, usesDesktopSoundFont: Boolean(mix) && usesDesktopSoundFont,
             ...(!mix ? savedMix.get(part.id) : null) };
     });
+}
+
+function mixerTrackIcon(part) {
+    if (part.source === "user") return "user";
+    if (part.drum) return "drums";
+    const program = part.instrumentChoice?.program ?? part.program;
+    if (program <= 23) return "keyboard";
+    if (program <= 31) return "guitar";
+    if (program <= 39) return "bass";
+    if (program <= 55) return "strings";
+    if (program <= 79) return "hornsection";
+    return "notes";
+}
+
+function openMixerContext(part, strip, x, y) {
+    const edit = strip.querySelector(".channel-edit");
+    mixerContext.onclick = event => {
+        const action = event.target.closest("button")?.dataset.action;
+        mixerContext.hidden = true;
+        if (action === "settings") edit.click();
+        if (action === "mute" || action === "solo") strip.querySelector(`[data-mix="${action}"]`).click();
+        if (action === "reset") { Object.assign(part, part.original); renderMixer(); applyMix(); }
+    };
+    mixerContext.onkeydown = event => {
+        if (event.key === "Escape") { mixerContext.hidden = true; edit.focus(); }
+    };
+    openEditorPopup(mixerContext, x, y);
 }
 
 function renderMixer() {
@@ -304,8 +418,10 @@ function renderMixer() {
     updateMixerButtons();
     const notes = Map.groupBy(song?.events.filter(event => event.type === 0x90 && event.b) ?? [], event => event.part);
     const styleIds = new Set(mixerParts.map(part => part.styleId).filter(Boolean));
-    mixerParts.forEach((part, index) => {
+    const orderedParts = mixerParts.map((part, index) => ({ part, index })).sort((a, b) => a.part.channel - b.part.channel);
+    for (const { part, index } of orderedParts) {
         const strip = document.createElement("div"); strip.className = "strip";
+        strip.dataset.partIndex = index;
         strip.dataset.voice = part.source === "user" ? "user" : part.drum ? "drums" : "rhythm";
         const title = document.createElement("div"); title.className = "part-name"; title.textContent = part.name;
         title.title = part.name;
@@ -315,38 +431,67 @@ function renderMixer() {
             channel.textContent += ` · ${part.styleId.replace(/-ID$/u, "")}`;
         }
         channel.title = channel.textContent;
-        strip.append(channel, title);
         const edit = document.createElement("button");
         edit.type = "button";
         edit.className = "secondary channel-edit";
         updateChannelButton(part, edit);
-        edit.onclick = () => openChannelEditor(part, edit);
-        strip.append(edit);
+        edit.onclick = () => openChannelEditor(part);
         const buttons = document.createElement("div"); buttons.className = "strip-buttons";
         for (const [key, label] of [["mute", "Mute"], ["solo", "Solo"]]) {
-            const button = document.createElement("button"); button.type = "button"; button.className = "secondary";
-            button.textContent = label[0]; button.title = label; button.dataset.mix = key;
+            const button = document.createElement("button"); button.type = "button"; button.className = "tool-button";
+            button.title = label; button.dataset.mix = button.dataset.icon = key;
             button.setAttribute("aria-label", `${part.name} ${label}`); button.setAttribute("aria-pressed", String(part[key]));
             button.addEventListener("click", () => {
                 part[key] = !part[key]; button.setAttribute("aria-pressed", String(part[key])); updateMixerButtons(); applyMix();
             });
             buttons.append(button);
         }
+        const gear = document.createElement("button");
+        gear.type = "button";
+        gear.className = "tool-button";
+        gear.dataset.icon = "channel-settings";
+        gear.title = t("チャンネル設定");
+        gear.setAttribute("aria-label", gear.title);
+        gear.onclick = () => edit.click();
+        gear.onkeydown = event => {
+            if (event.key !== "ContextMenu" && !(event.shiftKey && event.key === "F10")) return;
+            event.preventDefault();
+            const bounds = gear.getBoundingClientRect();
+            openMixerContext(part, strip, bounds.left, bounds.bottom);
+        };
+        buttons.append(gear);
+        strip.oncontextmenu = event => { event.preventDefault(); openMixerContext(part, strip, event.clientX, event.clientY); };
         strip.append(buttons);
-        for (const [key, text, min, max] of [["pan", "Pan", -100, 100], ["volume", "音量", 0, 150]]) {
-            const label = document.createElement("label"); label.htmlFor = `${key}-${index}`;
-            label.className = `strip-${key}`;
-            const caption = document.createElement("span"); caption.textContent = text;
-            const output = document.createElement("output");
-            const input = document.createElement("input"); input.id = label.htmlFor; input.type = "range"; input.min = min; input.max = max; input.step = 1;
-            input.value = Math.round(part[key] * 100); input.setAttribute("aria-label", `${part.name} ${text}`);
-            const display = () => {
-                output.textContent = key === "volume" ? `${input.value}%` : Number(input.value) === 0 ? "中央" : `${Number(input.value) < 0 ? "L" : "R"} ${Math.abs(Number(input.value))}`;
-                if (key === "pan") label.style.setProperty("--pan-angle", `${Number(input.value) * 1.25}deg`);
-            };
-            display(); label.append(caption, input, output); strip.append(label);
-            input.addEventListener("input", () => { part[key] = Number(input.value) / 100; display(); applyMix(); });
+        const pan = mixerKnob(part, "pan", "pan", -100, 100, Math.round(part.pan * 100), value => { part.pan = value / 100; });
+        pan.classList.add("strip-pan");
+        strip.append(pan);
+        for (const { key } of channelEffects) {
+            const knob = mixerKnob(part, key, key === "reverb" ? "rev" : "cho", 0, 127, part[key], value => { part[key] = value; });
+            knob.querySelector("input").disabled = !part[`${key}Enabled`];
+            knob.classList.toggle("disabled-knob", !part[`${key}Enabled`]);
+            strip.append(knob);
         }
+        const fader = document.createElement("label");
+        fader.className = "strip-volume";
+        const volume = document.createElement("input");
+        volume.id = `volume-${index}`;
+        volume.type = "range";
+        volume.min = 0;
+        volume.max = 150;
+        volume.value = Math.round(part.volume * 100);
+        volume.setAttribute("aria-label", `${part.name} ${t("音量", "volume")}`);
+        const level = document.createElement("output");
+        level.textContent = `${volume.value}%`;
+        volume.oninput = () => { part.volume = volume.valueAsNumber / 100; level.textContent = `${volume.value}%`; applyMix(); };
+        fader.append(volume, level);
+        const faderRow = document.createElement("div");
+        faderRow.className = "fader-row";
+        faderRow.append(fader, edit);
+        const icon = document.createElement("span");
+        icon.className = "track-icon";
+        icon.dataset.icon = `track-${mixerTrackIcon(part)}`;
+        icon.setAttribute("aria-hidden", "true");
+        strip.append(faderRow, icon, title, channel);
         const preview = document.createElement("canvas");
         preview.className = "track-preview";
         preview.width = 72;
@@ -361,33 +506,78 @@ function renderMixer() {
         }
         strip.append(preview);
         container.append(strip);
-    });
+    }
 }
 
 async function startPlayback(restart = false) {
-    if (!song || generating || starting || (playing && !restart)) return;
+    if (generating || starting || (playing && !restart)) return;
+    const refresh = !song || accompanimentDirty;
+    if (refresh && !form.reportValidity()) return;
     starting = true; updateButtons(); options.disabled = true;
     try {
-        const loop = readLoop();
-        await player.initialize(showPlayStatus);
-        if (restart && playing) await player.stop();
-        await player.play(song, loop, mixerParts, Number(masterInput.value) / 100, Boolean(editor.project));
-        playing = true;
-        showPlayStatus("演奏中");
+        const audio = player.initialize(showPlayStatus);
+        // Keep the browser's audio activation while the accompaniment is generated.
+        audio.catch(() => {});
+        if (refresh && !await generateAccompaniment(true)) return;
+        await audio;
+        await player.play(song, readLoop(), mixerParts, Number(masterInput.value) / 100, Boolean(editor.project), {
+            resume: paused && !restart && !refresh,
+            click: metronome.getAttribute("aria-pressed") === "true",
+            precount: !restart && precount.getAttribute("aria-pressed") === "true"
+        });
     } catch (error) { showPlayStatus(error.message, true); }
     finally { starting = false; options.disabled = false; updateButtons(); }
 }
 playButton.addEventListener("click", () => startPlayback());
+pauseButton.onclick = () => player.pause().catch(error => showPlayStatus(error.message, true));
+previousPart.onclick = () => jumpPart(-1);
+nextPart.onclick = () => jumpPart(1);
+toggleLoop.onclick = () => {
+    loopEnabled.checked = !loopEnabled.checked;
+    loopEnabled.dispatchEvent(new Event("input", { bubbles: true }));
+};
+for (const button of [metronome, precount]) button.onclick = () => {
+    const enabled = button.getAttribute("aria-pressed") !== "true";
+    button.setAttribute("aria-pressed", String(enabled));
+    if (button === metronome) player.click(enabled).catch(error => showPlayStatus(error.message, true));
+};
+showPoint.onclick = () => {
+    const enabled = showPoint.getAttribute("aria-pressed") !== "true";
+    showPoint.setAttribute("aria-pressed", String(enabled));
+    editor.showPlayingBar(enabled && (playing || paused) ? playbackBar : 0);
+};
+
+function jumpPart(direction) {
+    const ranges = editor.partRanges();
+    const index = ranges.findLastIndex(range => range.from <= playbackBar);
+    const target = direction < 0 && playbackBar > ranges[index]?.from ? index : index + direction;
+    if (!ranges[target]) return;
+    editor.selectPart(target);
+    if (playing || paused) startPlayback(true);
+    else {
+        const bar = ranges[target].from;
+        displayPosition(bar, 1, song?.barTimes[bar - 1] ?? 0);
+        updateButtons();
+    }
+}
 
 stopButton.addEventListener("click", async () => {
-    try { await player.stop(); playing = false; updatePosition({ seconds: 0, playing: false }); }
+    try {
+        await player.stop();
+        playing = paused = false;
+        displayPosition();
+        if (song) updatePosition({ seconds: 0, playing: false });
+        else updateButtons();
+    }
     catch (error) { showPlayStatus(error.message, true); }
 });
 
 document.querySelector("#loop-controls").addEventListener("input", () => {
+    toggleLoop.setAttribute("aria-pressed", String(loopEnabled.checked));
+    if (!song) return;
     try {
         const loop = readLoop(); player.loop(loop);
-        loopStatus.textContent = playing ? "変更は次の折り返しから適用します。" : "終了小節を含めて繰り返します。";
+        localizedText(loopStatus, playing ? "変更は次の折り返しから適用します。" : "終了小節を含めて繰り返します。");
         loopStatus.removeAttribute("data-error");
     } catch (error) { loopStatus.textContent = error.message; loopStatus.setAttribute("data-error", ""); }
 });
@@ -452,8 +642,8 @@ function clearDownload() {
     download.removeAttribute("href");
 }
 
-function showStatus(message, error = false) {
-    status.textContent = message;
+function showStatus(message, error = false, english) {
+    localizedText(status, message, english);
     status.toggleAttribute("data-error", error);
 }
 
@@ -491,12 +681,13 @@ let activeProject;
 let chosenRange;
 let draft;
 function clearPlayback() {
-    playing = false;
+    paused = playing = false;
+    accompanimentDirty = true;
     song = null;
     mixerParts = [];
     player.loadedSong = null;
-    document.querySelector("#position").textContent = "–";
-    loopStatus.textContent = "";
+    displayPosition();
+    localizedText(loopStatus, "");
     loopStatus.removeAttribute("data-error");
     editor.showPlayingBar(0);
     showPlayStatus("");
@@ -533,9 +724,7 @@ const editor = new SongEditor((opened) => {
         loopStart.dispatchEvent(new Event("input", { bubbles: true }));
     }
 }, () => {
-    if (!song) showStatus("伴奏を生成してから再生できます。");
-    else if (!chosenRange) showStatus("選択した小節は曲構成の演奏順に含まれていません。");
-    else if (chosenRange.to >= song.barTimes.length) showStatus("伴奏を生成してから、変更した範囲を再生できます。");
+    if (!chosenRange) showStatus("選択した小節は曲構成の演奏順に含まれていません。");
     else startPlayback(true);
 });
 quickMode.addEventListener("click", () => {
@@ -571,7 +760,104 @@ editor.onMeterChange = meter => {
         rhythmEngine.dispatchEvent(new Event("change"));
     }
 };
-editor.onChanged = updateMixerButtons;
+editor.onChanged = () => { accompanimentDirty = true; updateMixerButtons(); updateMenus(); };
+editor.onStyleChoices = () => new Map([
+    ["jjSwing-ID", "jjSwing"],
+    ...[...bundledStyles.keys(), ...Object.keys(embeddedExtendedStyles)].map(name => [`${name}-ID`, name]),
+    ...editor.attachedStyles.map(style => [style.id, style.name]),
+    ...(styleArchive?.entries.filter(entry => !styleIssue(entry)).map(entry => [`${entry.name}-ID`, entry.name]) ?? [])
+]);
+editor.onUsePartStyles = () => {
+    rhythmEngine.querySelector('option[value="song"]').hidden = false;
+    rhythmEngine.value = "song";
+    rhythmEngine.dispatchEvent(new Event("change"));
+};
+editor.onExport = async () => {
+    if (!form.reportValidity()) return;
+    if (!editor.renderedMix && !await generateAccompaniment()) return;
+    editor.export();
+};
+
+for (const menu of menus) {
+    menu.querySelector("summary").onclick = () => {
+        updateMenus();
+        for (const other of menus) if (other !== menu) other.open = false;
+    };
+    menu.addEventListener("click", event => {
+        const command = event.target.closest("[data-command]");
+        if (command?.dataset.command === "download") {
+            void (async () => {
+                if (!form.reportValidity()) return;
+                if ((download.hidden || accompanimentDirty) && !await generateAccompaniment()) return;
+                download.click();
+            })();
+        } else if (command) document.getElementById(command.dataset.command).click();
+        if (event.target.closest("button, a")) menu.open = false;
+    });
+}
+document.addEventListener("pointerdown", event => {
+    for (const menu of menus) if (!menu.contains(event.target)) menu.open = false;
+    if (!mixerContext.contains(event.target)) mixerContext.hidden = true;
+});
+document.querySelector("#show-generation-controls").onclick = () => {
+    generationControls.open = true;
+    generationControls.scrollIntoView({ block: "nearest" });
+    generationControls.querySelector("summary").focus({ preventScroll: true });
+};
+structureToggle.onclick = () => {
+    const panel = document.querySelector("#structure");
+    panel.hidden = !panel.hidden;
+    structureToggle.setAttribute("aria-pressed", String(!panel.hidden));
+};
+document.addEventListener("keydown", event => {
+    if (event.key === "Escape") for (const menu of menus) menu.open = false;
+    if (event.defaultPrevented || event.target.closest("input, select, textarea, [contenteditable], dialog")) return;
+    const primary = event.ctrlKey || event.metaKey;
+    if (primary && event.key.toLowerCase() === "z") {
+        event.preventDefault(); (event.shiftKey ? editor.redoButton : editor.undoButton).click();
+    } else if (primary && event.key.toLowerCase() === "y") {
+        event.preventDefault(); editor.redoButton.click();
+    } else if (event.code === "Space" && !primary && !event.target.closest("button, summary, a")) {
+        event.preventDefault();
+        (playing ? pauseButton : playButton).click();
+    }
+});
+document.querySelector("#ui-language").onchange = event => {
+    const language = event.target.value;
+    applyLanguage(language);
+    try { localStorage.setItem("jjazzlab.language", language); } catch { /* Preference storage is optional. */ }
+    if (editor.project) editor.render();
+    if (styleArchive) renderStyleChoices();
+    tempoInput.placeholder = rhythmEngine.value === "jjswing" ? "120" : t("スタイルの既定値");
+    renderMixer();
+    updateButtons();
+};
+
+document.querySelector("#panic").onclick = () => player.panic().catch(error => showPlayStatus(error.message, true));
+const importMix = document.querySelector("#import-mix");
+document.querySelector("#import-mix-button").onclick = () => importMix.click();
+importMix.onchange = async () => {
+    const file = importMix.files[0];
+    importMix.value = "";
+    if (!file || !editor.project || activeProject !== editor.project || generating || starting) return;
+    const project = editor.project;
+    try {
+        const key = track => `${track.rhythmId}\t${track.name}`;
+        const incoming = new Map(DesktopSongFiles.readMix(await file.text()).map(track => [key(track), track]));
+        if (editor.project !== project || activeProject !== project || generating || starting) return;
+        const previous = editor.mix;
+        if (!previous.some(track => incoming.has(key(track)))) throw new Error(t("この曲と共通のトラックがありません。", "The mix shares no tracks with this song."));
+        editor.mix = previous.map(track => {
+            const matching = incoming.get(key(track));
+            return matching ? { ...track, ...matching, channel: track.channel, sourceChannel: track.sourceChannel ?? track.channel } : track;
+        });
+        if (!await generateAccompaniment()) {
+            editor.mix = previous;
+            return;
+        }
+        editor.notify(t(`${file.name} を読み込みました。`, `Imported ${file.name}.`));
+    } catch (error) { editor.notify(error.message, true); }
+};
 
 async function defaultArrangementStyle(meter, replaced) {
     const name = meter === "THREE_FOUR" ? bundledJazzWaltz : bundledStyle;
@@ -686,31 +972,37 @@ async function resolveArrangement(project, requestedSwing) {
     return { styles, sources, parts };
 }
 
-form.addEventListener("input", () => {
+form.addEventListener("input", event => {
     if (event.target === styleSearch || event.target === styleCategory) return;
-    if (song) showStatus("入力を変更しました。「伴奏を生成」で現在の演奏を停止し、新しい伴奏を作ります。");
+    accompanimentDirty = true;
+    if (song) showStatus("次回の再生から変更を反映します。");
     if (editor.project) {
         editor.changed();
     }
 });
 tempoInput.addEventListener("input", () => {
+    accompanimentDirty = true;
     if (editor.project) {
         if (tempoInput.validity.valid && tempoInput.value) editor.project.tempo = tempoInput.valueAsNumber;
         editor.changed();
     }
-    if (song) showStatus("テンポを変更しました。「伴奏を生成」で反映します。");
+    if (song) showStatus("次回の再生からテンポを反映します。");
 });
 
-form.addEventListener("submit", async (event) => {
+form.addEventListener("submit", event => {
     event.preventDefault();
-    if (generating || starting) return;
+    void generateAccompaniment();
+});
+
+async function generateAccompaniment(fromPlay = false) {
+    if (generating || (starting && !fromPlay)) return false;
     clearDownload();
     const project = editor.project;
     const chords = chordInput.value.split(/[\s,|]+/u).filter(Boolean);
     if (!project && !chords.length) {
         showStatus("コードを1つ以上入力してください。", true);
         chordInput.focus();
-        return;
+        return false;
     }
 
     const tempo = tempoInput.valueAsNumber || 0;
@@ -735,8 +1027,6 @@ form.addEventListener("submit", async (event) => {
             if (!project.chords.length) throw new Error("コードを1つ以上入力してください。");
             const { styles, sources, parts } = await resolveArrangement(project, requestedSwing);
             style = styles.length === 1 ? styles[0] : { name: project.title };
-            const arrangementChanged = parts.some((part, index) => part.styleId !== project.parts[index].styleId
-                || part.parameters.rpVariationID !== project.parts[index].parameters.rpVariationID);
             const arrangement = { ...project, tempo: tempo || project.tempo, parts };
             const playbackMix = editor.mix.map(track => {
                 const equivalent = mixerInstruments.find(instrument => instrument.desktop.id === track.instrument);
@@ -765,7 +1055,8 @@ form.addEventListener("submit", async (event) => {
             editor.baseMix = editor.renderedMix = editor.mix = completeMix;
             editor.project.parts = arrangement.parts;
             editor.project.tempo = arrangement.tempo;
-            if (arrangementChanged) editor.render();
+            editor.styleVariations = new Map(styles.map(style => [style.id, style.variations]));
+            editor.render();
             editor.style = styles.filter(style => style.attach).map(style => ({ name: style.name, id: style.id,
                 data: Array.from(new Uint8Array(style.bytes.buffer)), ...(style.extension ? { baseName: style.baseName,
                     extensionData: Array.from(new Uint8Array(style.extension.buffer)) } : {}) }));
@@ -794,6 +1085,10 @@ form.addEventListener("submit", async (event) => {
         }
         const metadata = engine.exports.getPartMetadata();
         song = parseMidi(midi, bars, metadata, barBeats);
+        if (project?.loopRestartBar !== undefined) {
+            song.restartBars = editor.partRanges().filter(range => project.loopRestartBar >= range.sheetStart && project.loopRestartBar < range.sheetEnd)
+                .map(range => range.from + project.loopRestartBar - range.sheetStart);
+        }
         const exportedMidi = exportGmMidi(midi, metadata);
         downloadUrl = URL.createObjectURL(new Blob([exportedMidi], { type: "audio/midi" }));
         download.href = downloadUrl;
@@ -803,18 +1098,22 @@ form.addEventListener("submit", async (event) => {
         loopStart.value = chosenRange?.to <= bars ? chosenRange.from : 1;
         loopEnd.value = chosenRange?.to <= bars ? chosenRange.to : bars;
         loopStart.max = loopEnd.max = bars;
-        loopStatus.textContent = "終了小節を含めて繰り返します。"; loopStatus.removeAttribute("data-error");
+        localizedText(loopStatus, "終了小節を含めて繰り返します。"); loopStatus.removeAttribute("data-error");
         renderMixer();
         // Do not send settings to the previous song's worklet parts while stopped.
         player.loadedSong = null;
         updatePosition({ seconds: 0, playing: false });
-        showStatus(`${bars}小節・${song.parts.length}パートの伴奏を生成しました。`);
+        accompanimentDirty = false;
+        showStatus(`${bars}小節・${song.parts.length}パートの伴奏を生成しました。`, false,
+            `Accompaniment ready · ${bars} bars · ${song.parts.length} tracks.`);
+        return true;
     } catch (error) {
         showStatus(error.message, true);
+        return false;
     } finally {
-        options.disabled = false;
+        options.disabled = starting;
         document.querySelector("#song-editor").inert = false;
         generating = false; updateButtons();
     }
-});
+}
 document.querySelector("#new-project").click();

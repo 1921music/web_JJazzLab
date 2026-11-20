@@ -20,6 +20,15 @@ DESKTOP_SOUNDFONT_INS = (
     DEMO.parents[2] / "plugins/FluidSynthEmbeddedSynth/src/main/resources"
     / "org/jjazz/fluidsynthembeddedsynth/api/resources/JJazzLabSoundFont_FluidSynth.ins"
 )
+DESKTOP_TRANSPORT = (
+    DEMO.parents[2] / "app/MusicControlActions/src/main/resources"
+    / "org/jjazz/musiccontrolactions/resources"
+)
+DESKTOP_OPEN = (
+    DEMO.parents[2] / "app/SongEditorManager/src/main/resources"
+    / "org/jjazz/songeditormanager/resources/OpenFile24.png"
+)
+DESKTOP_MIXER = DEMO.parents[2] / "app/MixConsole/src/main/resources/org/jjazz/mixconsole/resources"
 
 
 def encode_gzip(data):
@@ -48,9 +57,37 @@ def desktop_mixer_patches():
     return banks
 
 
+def desktop_icon_styles():
+    icons = {
+        "previous": ("PreviousSongpart-24x24.png",),
+        "stop": ("StopButton-24x24.png", "StopButtonOn-24x24.png"),
+        "play": ("PlayButton-24x24.png", "PlayButtonOn-24x24.png"),
+        "pause": ("PauseButton-24x24.png", "PauseButtonOn-24x24.png"),
+        "next": ("NextSongpart-24x24.png",),
+        "loop": ("Loop-OFF-24x24.png", "Loop-ON-24x24.png"),
+        "point": ("PlaybackPointOFF-24x24.png", "PlaybackPointON-24x24.png"),
+        "click": ("Click-OFF-24x24.png", "Click-ON-24x24.png"),
+        "precount": ("precount2-OFF-24x24.png", "precount2-ON-24x24.png"),
+        "open": (DESKTOP_OPEN,),
+        "mute": (DESKTOP_MIXER / "MuteOff_Icon-21x21.png", DESKTOP_MIXER / "MuteOn_Icon-21x21.png"),
+        "solo": (DESKTOP_MIXER / "SoloOff_Icon-21x21.png", DESKTOP_MIXER / "SoloOn_Icon-21x21.png"),
+        "channel-settings": (DESKTOP_MIXER / "Settings11x11.png",),
+    }
+    for family in ("User", "Drums", "Bass", "Guitar", "Keyboard", "HornSection", "Strings", "Notes"):
+        icons[f"track-{family.lower()}"] = (DESKTOP_MIXER / f"{family}-48x48.png",)
+    rules = []
+    for icon, images in icons.items():
+        for index, image in enumerate(images):
+            encoded = base64.b64encode((DESKTOP_TRANSPORT / image).read_bytes()).decode("ascii")
+            pressed = '[aria-pressed="true"]' if index else ""
+            rules.append(f'[data-icon="{icon}"]{pressed} {{ background-image: url(data:image/png;base64,{encoded}); }}')
+    return "\n".join(rules)
+
+
 def package(engine_dir, output):
     template = (DEMO / "index.html").read_text(encoding="utf-8")
-    stylesheet = (DEMO / "demo.css").read_text(encoding="utf-8")
+    stylesheet = (DEMO / "demo.css").read_text(encoding="utf-8") + "\n" + desktop_icon_styles()
+    locale = (DEMO / "locale.js").read_text(encoding="utf-8")
     runtime = (engine_dir / "engine.wasm-runtime.js").read_text(encoding="utf-8")
     demo = (DEMO / "demo.js").read_text(encoding="utf-8")
     wasm = encode_gzip((engine_dir / "engine.wasm").read_bytes())
@@ -82,7 +119,7 @@ def package(engine_dir, output):
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, midi, song_files, archive, player, song_editor, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, player, song_editor, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:

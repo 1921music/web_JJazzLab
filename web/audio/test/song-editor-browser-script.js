@@ -8,6 +8,17 @@
         check(song && !status.hasAttribute("data-error"), status.textContent);
     }
     try {
+        const initialLanguage = (navigator.languages?.[0] ?? navigator.language).toLowerCase().startsWith("ja") ? "ja" : "en";
+        check(document.documentElement.lang === initialLanguage, "Initial language did not follow the browser");
+        const language = document.querySelector("#ui-language");
+        language.value = "en";
+        language.dispatchEvent(new Event("change"));
+        check(document.querySelector(".app-menu summary").textContent === "File" && editor.selection.textContent === "Bar 1",
+            "English did not apply to the menu and the live lead sheet");
+        language.value = "ja";
+        language.dispatchEvent(new Event("change"));
+        check(document.querySelector(".app-menu summary").textContent === "ファイル" && localStorage.getItem("jjazzlab.language") === "ja",
+            "Japanese did not apply or persist");
         const first = document.querySelector("#lead-sheet > div");
         check(first?.getAttribute("aria-selected") === "true" && !document.querySelector("#song-editor").hidden,
             "Startup did not open the chord sheet");
@@ -27,20 +38,51 @@
         editor.contextMenu.querySelector('[data-action="section"]').click();
         editor.sectionField.value = "B";
         document.querySelector("#bar-editor-form").requestSubmit();
+        check(editor.project.parts[1].name === "B", "Creating a section did not insert its corresponding song part");
         document.querySelector("#add-song-part").click();
-        document.querySelector("#add-song-part").click();
-        const third = document.querySelector("#song-parts > li:nth-child(3) select");
-        third.value = "1";
-        third.dispatchEvent(new Event("change"));
+        const second = document.querySelector("#song-parts > li:nth-child(2) select");
+        second.value = "0";
+        second.dispatchEvent(new Event("change"));
         document.querySelector("#add-song-part").click();
         const fourth = document.querySelector("#song-parts > li:nth-child(4) select");
         fourth.value = "0";
         fourth.dispatchEvent(new Event("change"));
+        check(!song && !playButton.disabled && document.querySelector("#generate").hidden, "Play requires a manual generation step");
+        playButton.click();
+        while (starting || generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(playing, `Play did not prepare the song: ${status.textContent} ${playStatus.textContent}`);
+        await player.pause();
+        check(!playing && paused, "Pause did not retain the active song");
+        playButton.click();
+        while (starting) await new Promise(resolve => setTimeout(resolve, 20));
+        check(playing && !paused, "Play did not resume from pause");
+        await player.stop();
+
+        const compact = document.querySelector("#structure-compact");
+        compact.click();
+        check(editor.parts.classList.contains("compact-view"), "Compact view did not switch");
+        compact.click();
+        const part = editor.parts.firstElementChild;
+        part.dispatchEvent(new MouseEvent("contextmenu"));
+        check(!editor.partMenu.hidden, "Song part context menu did not open");
+        editor.partMenu.querySelector('[data-action="duplicate"]').click();
+        check(editor.parts.children.length === 5, "Duplicate did not insert a song part");
+        editor.undoButton.click();
+        check(editor.parts.children.length === 4, "Undo did not reverse the part duplication");
+        editor.grid.children[0].dispatchEvent(new MouseEvent("contextmenu"));
+        editor.contextMenu.querySelector('[data-action="annotation"]').click();
+        editor.annotationField.value = "Play softly";
+        document.querySelector("#bar-editor-form").requestSubmit();
+        editor.grid.children[1].click();
+        editor.barAction("restart");
+        const annotated = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+        check(annotated.annotations[0].text === "Play softly" && annotated.loopRestartBar === 1, "Annotation or restart bar did not round-trip");
+        editor.undoButton.click();
         await generate();
         check(song.barTimes.length === 11, "AABA with 3-bar A and 1-bar B must produce ten bars");
         check(editor.project.chords[1].beat === 2, "Editing the arrangement lost the second chord");
         check(editor.renderedMix.length > 0, "New song does not have a writable mix");
-        document.querySelector("#song-parts > li:nth-child(2) button:last-child").click();
+        document.querySelector("#song-parts > li:nth-child(2) .part-controls button:last-child").click();
         document.querySelector("#lead-sheet > div:nth-child(2)").click();
         check(loopStart.value === "5" && loopEnd.value === "6", "Sheet selection did not use the second A");
         editor.grid.lastElementChild.dispatchEvent(new MouseEvent("click", { shiftKey: true }));
@@ -51,8 +93,8 @@
         check(mixerPanel.hidden, "Mixer did not hide");
         mixerToggle.click();
         check(!mixerPanel.hidden, "Mixer did not reopen");
-        const volume = document.querySelector(".strip-volume input");
-        const pan = document.querySelector(".strip-pan input");
+        const volume = document.querySelector("#volume-0");
+        const pan = document.querySelector("#pan-0");
         check(getComputedStyle(volume).writingMode === "vertical-lr" && document.querySelector(".track-preview"), "No vertical fader or note preview");
         volume.value = "75"; volume.dispatchEvent(new Event("input"));
         pan.value = "-25"; pan.dispatchEvent(new Event("input"));
@@ -60,7 +102,7 @@
         document.querySelector("#mute-all").click();
         check(mixerParts.every(part => part.mute && editor.renderedMix.find(track => track.channel === part.channel)?.mute),
             "Bulk mute did not reach the exported mix for each active channel");
-        document.querySelector('#mixer-parts [data-mix="solo"]').click();
+        document.querySelector('.strip[data-part-index="0"] [data-mix="solo"]').click();
         check(mixerParts[0].solo, "Solo button did not set the track state");
         document.querySelector("#clear-solo").click();
         check(mixerParts.every(part => !part.solo), "Bulk solo clear did not reset the track");
@@ -89,7 +131,7 @@
         const bass = mixerParts.findIndex(part => part.name === "Bass");
         const bassChannel = mixerParts[bass].channel;
         const originalBass = editor.renderedMix.find(track => track.channel === bassChannel);
-        const bassButton = document.querySelectorAll(".channel-edit")[bass];
+        const bassButton = document.querySelector(`.strip[data-part-index="${bass}"] .channel-edit`);
         bassButton.click();
         check(channelEditor.open && document.querySelector("#channel-reverb").valueAsNumber === originalBass.reverb,
             "Channel editor did not load the imported effect values");

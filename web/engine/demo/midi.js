@@ -89,16 +89,26 @@ function parseMidi(input, barCount, metadata = [], barBeats) {
         bars.push({ tick: barTick, bar: index + 1 });
     }
     const endTick = barBeats || barCount ? barTick : lastTick;
-    const timeline = [...events, ...bars].sort((a, b) => a.tick - b.tick || (a.order ?? -1) - (b.order ?? -1));
+    const beats = [];
+    let meterIndex = 0;
+    for (let bar = 0; bar + 1 < bars.length; bar++) {
+        const start = bars[bar].tick, end = bars[bar + 1].tick;
+        while (meterChanges[meterIndex + 1]?.tick <= start) meterIndex++;
+        const meter = meterChanges[meterIndex]?.tick <= start ? meterChanges[meterIndex] : { numerator, denominator };
+        const count = meter.denominator === 8 && meter.numerator % 3 === 0 ? meter.numerator / 3 : meter.numerator;
+        for (let beat = 0; beat < count; beat++) beats.push({ tick: start + (end - start) * beat / count, beat: beat + 1, barIndex: bar });
+    }
+    const timeline = [...events, ...bars, ...beats].sort((a, b) => a.tick - b.tick || (a.order ?? -1) - (b.order ?? -1));
     let tempo = 500000, tick = 0, seconds = 0;
-    const barTimes = [], playable = [];
+    const barTimes = [], beatTimes = [], playable = [];
     for (const e of timeline) {
         seconds += (e.tick - tick) * tempo / ppq / 1000000; tick = e.tick;
         if (e.tempo !== undefined) { if (e.tempo <= 0) throw new Error("MIDIテンポが不正です。"); tempo = e.tempo; }
         else if (e.bar !== undefined) barTimes[e.bar] = seconds;
+        else if (e.beat !== undefined) beatTimes.push({ seconds, beat: e.beat, bar: e.barIndex + 1 });
         else if (e.tick <= endTick) playable.push({ ...e, seconds });
     }
-    return { parts, events: playable, barTimes, duration: barTimes.at(-1), meterChanges };
+    return { parts, events: playable, barTimes, beatTimes, duration: barTimes.at(-1), meterChanges };
 }
 
 // Read event bytes for an export-only rewrite. Expand running status so a
