@@ -1415,6 +1415,41 @@
             }
             report.legacyDesktopFiles = { songVersions: [1, 2], mixFixture: Boolean(desktopFixture.legacyMix) };
         }
+        {
+            editor.grid.children[0].querySelector(".chord-symbol").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+            editor.contextMenu.querySelector('[data-action="chord-tools"]').click();
+            const dialog = document.querySelector("#chord-tools");
+            const chordTools = dialog.querySelector("form");
+            const type = chordTools.elements.chordType;
+            for (let attempt = 0; type.disabled && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+            check(dialog.open && type.querySelector('[value="m7"]') && document.querySelector("#chord-preview-notes").textContent.includes("E"),
+                `The chord catalog or constituent notes did not load: ${document.querySelector("#chord-tools-status").textContent}`);
+            type.value = "m7";
+            await type.onchange();
+            const playOriginal = player.play;
+            let pitches;
+            player.play = async (previewSong, ...args) => {
+                if (args.at(-1)?.preview) pitches = [...new Set(previewSong.events.filter(event => event.type === 0x90).map(event => event.a))];
+                return playOriginal.call(player, previewSong, ...args);
+            };
+            try {
+                await chordTools.elements.previewChord.onclick();
+                check(pitches?.join() === "60,63,67,70", `The audition did not play the native C minor seventh notes: ${document.querySelector("#chord-tools-status").textContent}`);
+            } finally { player.play = playOriginal; }
+            chordTools.requestSubmit();
+            check(editor.project.chords[0].name === "Cm7", "The selected chord type was not applied");
+            await pendingAudition;
+            editor.undoButton.click();
+            const before = editor.project.chords.map(chord => chord.name);
+            editor.selectBar(4);
+            editor.selectBar(5, true);
+            await editor.transposeChords(1);
+            check(editor.project.chords.filter(chord => chord.bar === 4 || chord.bar === 5).map(chord => chord.name).join() === "F#m7,G#7"
+                && editor.project.chords[0].name === before[0], "The selected chord range did not transpose by one semitone");
+            editor.undoButton.click();
+            check(editor.project.chords.map(chord => chord.name).join() === before.join(), "Chord range transposition did not undo cleanly");
+            report.chordTypeTransposeAndPreview = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

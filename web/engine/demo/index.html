@@ -639,9 +639,25 @@
             <div class="dialog-actions"><button name="cancel" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
         </form>
     </dialog>
+    <dialog id="chord-tools" aria-labelledby="chord-tools-title">
+        <form method="dialog">
+            <h2 id="chord-tools-title">コードタイプと試聴</h2>
+            <label class="field">コードタイプ <select name="chordType"></select></label>
+            <ul id="chord-preview-notes" aria-label="構成音（実音）"></ul>
+            <p id="chord-tools-status" class="editor-error" role="status"></p>
+            <div class="dialog-actions">
+                <button name="previewChord" type="button" class="secondary">コードを試聴</button>
+                <button name="cancelChordTools" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
     <div id="bar-context" class="bar-context" role="group" aria-label="小節の操作" hidden>
         <button type="button" data-action="edit" data-target="bar">小節を編集 <kbd>Enter</kbd></button>
         <button type="button" data-action="chord" data-target="chord">コードを編集</button>
+        <button type="button" data-action="chord-tools" data-chord-tools data-target="bar chord">コードタイプと試聴…</button>
+        <button type="button" data-action="transpose-up" data-chord-tools data-target="bar chord">半音上げる</button>
+        <button type="button" data-action="transpose-down" data-chord-tools data-target="bar chord">半音下げる</button>
         <button type="button" data-action="section" data-target="bar section">セクションを編集</button>
         <button type="button" data-action="appearance" data-target="bar chord section">コード譜の表示設定</button>
         <button type="button" data-action="section-break" data-target="section" aria-pressed="false">セクションの前で改行</button>

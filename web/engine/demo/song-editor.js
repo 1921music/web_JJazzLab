@@ -603,6 +603,7 @@ class SongEditor {
             menu.querySelector('[data-action="end"]').disabled = last === this.project.bars - 1;
             menu.querySelector('[data-action="clear"]').disabled = !this.selectedChord
                 && !this.project.chords.some(chord => chord.bar >= first && chord.bar <= last);
+            for (const button of menu.querySelectorAll("[data-chord-tools]")) button.disabled = !this.chordsForTools().length;
             const section = this.project.sections.findLast(item => item.bar <= this.selectedBar);
             menu.querySelector('[data-action="section-break"]').setAttribute("aria-pressed", String(section?.clientProperties?.PropSectionStartOnNewLine === "true"));
             const restart = menu.querySelector('[data-action="restart"]');
@@ -672,6 +673,9 @@ class SongEditor {
             case "practice": this.openPracticeSong(); break;
             case "edit": case "section": case "chord": case "annotation": this.openBarEditor(action); break;
             case "appearance": this.openScoreAppearance(); break;
+            case "chord-tools": this.openChordTools(); break;
+            case "transpose-up": void this.transposeChords(1); break;
+            case "transpose-down": void this.transposeChords(-1); break;
             case "section-break": {
                 const section = this.project.sections.findLast(item => item.bar <= this.selectedBar);
                 if (!section) break;
@@ -743,6 +747,109 @@ class SongEditor {
                     this.project.sections.splice(removed);
                 });
         }
+    }
+
+    chordsForTools() {
+        const [first, last] = this.selectedRange();
+        const chords = this.selectedChord ? [this.selectedChord] : this.project.chords.filter(chord => chord.bar >= first && chord.bar <= last);
+        return chords.filter(chord => chord.name !== "NC").sort((a, b) => a.bar - b.bar || a.beat - b.beat);
+    }
+
+    async transposeChords(delta) {
+        const project = this.project;
+        const chords = this.chordsForTools();
+        if (!chords.length) return;
+        const names = chords.flatMap(chord => [chord, ...(chord.alternate?.name && chord.alternate.name !== "NC" ? [chord.alternate] : [])]);
+        const original = names.map(chord => chord.originalName ?? chord.name);
+        try {
+            const transposed = await this.onTransposeChords(original, delta);
+            if (this.project !== project || chords.some(chord => !project.chords.includes(chord))
+                || names.some((chord, index) => (chord.originalName ?? chord.name) !== original[index])) return;
+            this.editArrangement(() => {
+                for (const [index, chord] of names.entries()) {
+                    chord.name = transposed[index];
+                    delete chord.originalName;
+                    if (chord.scale) chord.scale.pitch = String(Math.max(0, Math.min(127, Number(chord.scale.pitch) + delta)));
+                }
+            });
+        } catch (error) { this.notify(error.message, true); }
+    }
+
+    async openChordTools() {
+        const chords = this.chordsForTools();
+        if (!chords.length) return;
+        const dialog = document.querySelector("#chord-tools");
+        const form = dialog.querySelector("form");
+        const type = form.elements.chordType;
+        const preview = form.elements.previewChord;
+        const apply = form.querySelector('[type="submit"]');
+        const notes = document.querySelector("#chord-preview-notes");
+        const status = document.querySelector("#chord-tools-status");
+        const unchanged = "__unchanged__";
+        const project = this.project;
+        const initialTypes = new Map();
+        const session = {};
+        this.chordToolsSession = session;
+        const valid = () => dialog.open && this.project === project && this.chordToolsSession === session;
+        const withType = chord => {
+            if (type.value === unchanged) return chord.name;
+            const root = /^[A-G][#b]?/iu.exec(chord.name)?.[0];
+            const bass = /\/[A-G][#b]?$/iu.exec(chord.name)?.[0] ?? "";
+            return root ? root + type.value + bass : chord.name;
+        };
+        const show = chords => {
+            notes.replaceChildren(...chords.map(({ name, tones }) => {
+                const item = document.createElement("li");
+                item.textContent = `${name} · ${tones}`;
+                return item;
+            }));
+        };
+        notes.replaceChildren();
+        status.textContent = "";
+        type.replaceChildren();
+        preview.disabled = apply.disabled = type.disabled = true;
+        form.elements.cancelChordTools.onclick = () => dialog.close();
+        dialog.onclose = () => this.onStopChordAudition();
+        preview.onclick = async () => {
+            status.textContent = "";
+            preview.disabled = true;
+            try { await this.onAuditionChords(chords.map(withType), valid); }
+            catch (error) { if (valid()) status.textContent = error.message; }
+            finally { if (valid()) preview.disabled = false; }
+        };
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (apply.disabled || !valid() || chords.some(chord => !project.chords.includes(chord))) return;
+            const changed = type.value === unchanged ? [] : chords.filter(chord => initialTypes.get(chord) !== type.value);
+            if (changed.length) this.editArrangement(() => {
+                for (const chord of changed) {
+                    chord.name = withType(chord);
+                    delete chord.originalName;
+                    delete chord.scale;
+                }
+            });
+            dialog.close();
+        };
+        dialog.showModal();
+        try {
+            const data = await this.onReadChordTools(chords.map(chord => chord.name));
+            if (!valid()) return;
+            chords.forEach((chord, index) => initialTypes.set(chord, data.chords[index].type));
+            const sameType = data.chords.every(chord => chord.type === data.chords[0].type);
+            const current = sameType ? data.chords[0].type || t("メジャー", "Major") : "";
+            const keep = current ? t(`現在のタイプ（${current}）`, `Current type (${current})`) : t("変更しない", "Keep current types");
+            type.replaceChildren(new Option(keep, unchanged),
+                ...data.types.map(name => new Option(name || t("メジャー", "Major"), name)));
+            show(data.chords);
+            preview.disabled = apply.disabled = type.disabled = false;
+            type.onchange = async () => {
+                const value = type.value;
+                try {
+                    const changed = await this.onReadChordTools(chords.map(withType));
+                    if (valid() && type.value === value) show(changed.chords);
+                } catch (error) { if (valid()) status.textContent = error.message; }
+            };
+        } catch (error) { if (valid()) status.textContent = error.message; }
     }
 
     openPracticeSong() {

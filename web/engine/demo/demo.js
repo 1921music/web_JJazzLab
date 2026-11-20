@@ -1087,6 +1087,38 @@ editor.onReadTextSong = async contents => {
     });
 };
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
+editor.onTransposeChords = async (names, delta) => (await getEngine()).exports.transposeChordSymbols(names, delta);
+editor.onReadChordTools = async names => {
+    const wasm = (await getEngine()).exports;
+    const chords = names.map(name => {
+        const [type, tones] = wasm.getChordPreview(name);
+        return { name, type, tones };
+    });
+    return { types: Array.from(wasm.getChordTypes()), chords };
+};
+editor.onStopChordAudition = stopAudition;
+editor.onAuditionChords = async (names, valid) => {
+    if (playing || paused || starting || generating) throw new Error(t("再生を停止してから試聴してください。", "Stop playback before previewing."));
+    const [wasm] = await Promise.all([getEngine(), player.initialize(showPlayStatus)]);
+    if (!valid()) return;
+    const notes = [];
+    let position = 0;
+    for (const name of names) {
+        const pitches = Array.from(wasm.exports.getChordPreview(name)).slice(2).map(Number);
+        for (const pitch of pitches) {
+            notes.push({ pitch, position, duration: .5, velocity: 80 });
+            position += .5;
+        }
+        position += 1;
+        for (const pitch of pitches) {
+            notes.push({ pitch, position, duration: 2, velocity: 75 });
+            position += .1;
+        }
+        position += 1.5;
+    }
+    const piano = mixerParts.find(part => !part.drum && (part.instrumentChoice?.program ?? part.program) < 8);
+    await queueAudition(notes, false, piano?.instrumentChoice?.program ?? piano?.program ?? 0, 120, valid);
+};
 editor.onQuantizeChordDrop = async (project, section, bar, beat) => {
     const wasm = (await getEngine()).exports;
     let quantization = section.clientProperties?.PropSectionQuantization;

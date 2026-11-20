@@ -27,6 +27,13 @@ MP3を書き出す|Export MP3
 既定の色|Default color
 セクションの前で改行|Start section on a new line
 コード移動のクオンタイズ|Quantize chord placement
+コードタイプと試聴|Chord type and preview
+コードタイプと試聴…|Chord type and preview…
+コードタイプ|Chord type
+構成音（実音）|Chord tones (concert pitch)
+コードを試聴|Preview chords
+半音上げる|Transpose up a semitone
+半音下げる|Transpose down a semitone
 リズムに合わせる|Follow rhythm
 全セクションにクオンタイズを適用|Apply quantization to all sections
 半小節|Half bar

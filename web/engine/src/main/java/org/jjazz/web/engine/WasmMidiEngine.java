@@ -15,6 +15,8 @@ import org.jjazz.chordleadsheet.api.item.CLI_ChordSymbol;
 import org.jjazz.chordleadsheet.api.item.CLI_Section;
 import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
 import org.jjazz.harmony.spi.ScaleManager;
+import org.jjazz.harmony.spi.ChordTypeDatabase;
+import org.jjazz.harmony.api.Note;
 import org.jjazz.harmony.api.TimeSignature;
 import org.jjazz.harmony.api.Position;
 import org.jjazz.humanizer.api.Humanizer;
@@ -264,6 +266,45 @@ public final class WasmMidiEngine
         return manager.getMatchingScales(chord).stream()
                 .map(scale -> scales.indexOf(scale.getScale()) + "\t" + scale.getStartNote().getPitch() + "\t" + scale.getScale().getName())
                 .toArray(String[]::new);
+    }
+
+    @JSExport
+    public static String[] getChordTypes()
+    {
+        var database = ChordTypeDatabase.getDefault();
+        var types = new String[database.getSize()];
+        for (int index = 0; index < types.length; index++) types[index] = database.getChordType(index).getName();
+        return types;
+    }
+
+    @JSExport
+    public static String[] getChordPreview(String name) throws ParseException
+    {
+        var chord = ExtChordSymbol.get(name);
+        if (chord instanceof NCExtChordSymbol) return new String[] { "", "" };
+        int relativeRoot = chord.getRootNote().getRelativePitch();
+        var root = new Note(relativeRoot + (relativeRoot < 7 ? 60 : 38));
+        var pitches = chord.getChord().getNotes().stream()
+                .mapToInt(note -> root.getUpperPitch(note.getRelativePitch(), true)).sorted().toArray();
+        var suffix = chord.getChordType().getName();
+        var result = new String[pitches.length + 2];
+        result[0] = suffix;
+        result[1] = chord.getChord().toRelativeNoteString(null);
+        for (int index = 0; index < pitches.length; index++) result[index + 2] = Integer.toString(pitches[index]);
+        return result;
+    }
+
+    @JSExport
+    public static String[] transposeChordSymbols(String[] names, int delta) throws ParseException
+    {
+        var result = new String[names.length];
+        var accidental = delta < 0 ? Note.Accidental.FLAT : Note.Accidental.SHARP;
+        for (int index = 0; index < names.length; index++)
+        {
+            var chord = ExtChordSymbol.get(names[index]);
+            result[index] = chord instanceof NCExtChordSymbol ? "NC" : chord.getTransposedChordSymbol(delta, accidental).getOriginalName();
+        }
+        return result;
     }
 
     /** Render the same chord interpretation and scale as the desktop song. */
