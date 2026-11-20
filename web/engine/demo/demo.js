@@ -138,6 +138,7 @@ let accompanimentDirty = true;
 let playbackBar = 1;
 let playbackFraction = 0;
 let mixerParts = [];
+let generatedMidi;
 const savedMix = new Map();
 const playButton = document.querySelector("#play");
 const stopButton = document.querySelector("#stop");
@@ -441,6 +442,9 @@ function openMixerContext(part, strip, x, y) {
     const clone = mixerContext.querySelector('[data-action="clone-rhythm"]');
     clone.hidden = !editor.project || part.source !== "rhythm";
     clone.disabled = generating || starting || editor.unresolvedStyleMix !== undefined;
+    const exportMidi = mixerContext.querySelector('[data-action="export-rhythm-midi"]');
+    exportMidi.hidden = part.source !== "rhythm";
+    exportMidi.disabled = generating || starting || part.trackIndex === undefined;
     mixerContext.onclick = event => {
         const action = event.target.closest("button")?.dataset.action;
         mixerContext.hidden = true;
@@ -450,11 +454,25 @@ function openMixerContext(part, strip, x, y) {
         if (action === "edit-user") pianoRoll.open(part.name);
         if (action === "rename-user" || action === "remove-user") pianoRoll.editTrack(action.split("-")[0], part.name);
         if (action === "clone-rhythm") void cloneRhythmTrack(part);
+        if (action === "export-rhythm-midi") void exportRhythmTrack(part);
     };
     mixerContext.onkeydown = event => {
         if (event.key === "Escape") { mixerContext.hidden = true; edit.focus(); }
     };
     openEditorPopup(mixerContext, x, y);
+}
+
+async function exportRhythmTrack(part) {
+    if (!generatedMidi || generating || starting) return;
+    try {
+        if (accompanimentDirty || editor.mix !== editor.baseMix) {
+            if (!await generateAccompaniment()) return;
+            part = mixerParts.find(candidate => candidate.id === part.id);
+        }
+        if (part?.trackIndex === undefined) return;
+        const bytes = exportMidiTrack(generatedMidi, part);
+        downloadSongFile(`${editor.fileStem()}-${part.name.replace(/[<>:"/\\|?*]/gu, "_")}.mid`, bytes, "audio/midi");
+    } catch (error) { editor.notify(error.message, true); }
 }
 
 async function cloneRhythmTrack(part) {
@@ -512,6 +530,17 @@ function renderMixer() {
         strip.dataset.voice = part.source === "user" ? "user" : part.drum ? "drums" : "rhythm";
         const title = document.createElement("div"); title.className = "part-name"; title.textContent = part.name;
         title.title = part.name;
+        if (part.source === "rhythm" && part.trackIndex !== undefined) {
+            title.draggable = true;
+            title.title = `${part.name} · ${t("ピアノロールへドラッグして音符をコピー", "Drag to the piano roll to copy notes")}`;
+            title.ondragstart = event => {
+                if (generating || starting) return event.preventDefault();
+                const phrase = engine.exports.getRhythmTrackPhrase(part.channel);
+                if (!phrase) return event.preventDefault();
+                event.dataTransfer.effectAllowed = "copy";
+                event.dataTransfer.setData(rhythmPhraseDragType, phrase);
+            };
+        }
         const channel = document.createElement("small");
         channel.textContent = `CH ${part.channel + 1}${part.source === "user" ? " · User" : part.drum ? " · Drums" : ""}`;
         if (styleIds.size > 1 && part.styleId) {
@@ -799,6 +828,7 @@ function clearPlayback() {
     paused = playing = false;
     accompanimentDirty = true;
     song = null;
+    generatedMidi = null;
     mixerParts = [];
     player.loadedSong = null;
     displayPosition();
@@ -1402,6 +1432,7 @@ async function generateAccompaniment(fromPlay = false) {
         }
         const metadata = engine.exports.getPartMetadata();
         song = parseMidi(midi, bars, metadata, barBeats);
+        generatedMidi = midi;
         if (project?.loopRestartBar !== undefined) {
             song.restartBars = editor.partRanges().filter(range => project.loopRestartBar >= range.sheetStart && project.loopRestartBar < range.sheetEnd)
                 .map(range => range.from + project.loopRestartBar - range.sheetStart);

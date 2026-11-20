@@ -1,6 +1,7 @@
 "use strict";
 
 const compareUserNotes = (a, b) => a.position - b.position || a.pitch - b.pitch || a.duration - b.duration || a.velocity - b.velocity;
+const rhythmPhraseDragType = "application/x-jjazzlab-rhythm-phrase";
 
 // Desktop Phrase.saveAsString and NoteEvent.saveAsString use absolute song beats.
 const UserPhrase = {
@@ -148,13 +149,22 @@ class PianoRoll {
             midiFile.value = "";
             if (file) this.importMidi(file);
         };
-        const hasFiles = event => event.dataTransfer.types.includes("Files");
+        const canImport = event => event.dataTransfer.types.some(type => type === "Files" || type === rhythmPhraseDragType);
         this.scroll.ondragover = event => {
-            if (hasFiles(event)) event.preventDefault();
+            if (canImport(event)) {
+                event.preventDefault();
+                event.dataTransfer.dropEffect = "copy";
+            }
         };
         this.scroll.ondrop = event => {
-            if (!hasFiles(event)) return;
+            if (!canImport(event)) return;
             event.preventDefault();
+            const phrase = event.dataTransfer.getData(rhythmPhraseDragType);
+            if (phrase) {
+                try { this.importNotes(UserPhrase.read(phrase).notes); }
+                catch (error) { this.editor.notify(error.message, true); }
+                return;
+            }
             const files = event.dataTransfer.files;
             if (files.length === 1) this.importMidi(files[0]);
             else this.editor.notify(t("MIDIファイルを1つ選択してください。", "Select one MIDI file."), true);
@@ -184,15 +194,20 @@ class PianoRoll {
                 throw new Error(t(`MIDIチャンネル ${channel + 1} に取り込める音符がありません。`,
                     `There are no notes to import on MIDI channel ${channel + 1}.`));
             }
-            this.commit([...this.phrase.notes, ...notes], notes);
-            this.scroll.scrollLeft = Math.max(0, notes[0].position * this.pixels - PIANO_KEYS);
-            this.scroll.scrollTop = (127 - notes[0].pitch + .5) * PIANO_ROW - (this.scroll.clientHeight - PIANO_RULER) / 2;
-            this.scroll.focus({ preventScroll: true });
+            this.importNotes(notes);
         } catch (error) {
             if (!this.panel.hidden && this.savedTrack === target) {
                 localizedText(this["roll-status"], `MIDIを読み込めません。 ${error.message}`, `Unable to import MIDI. ${error.message}`);
             }
         }
+    }
+
+    importNotes(notes) {
+        if (!notes.length || this.panel.hidden || this.editor.grid.closest("[inert]")) return;
+        this.commit([...this.phrase.notes, ...notes], notes);
+        this.scroll.scrollLeft = Math.max(0, notes[0].position * this.pixels - PIANO_KEYS);
+        this.scroll.scrollTop = (127 - notes[0].pitch + .5) * PIANO_ROW - (this.scroll.clientHeight - PIANO_RULER) / 2;
+        this.scroll.focus({ preventScroll: true });
     }
 
     addTrack() {

@@ -71,8 +71,9 @@ function parseMidi(input, barCount, metadata = [], barBeats) {
                 const styleId = match?.[1] === "rhythm" && info?.length > 2 ? info.at(-1) : undefined;
                 const label = (styleId ? info.slice(1, -1) : info?.slice(1))?.join("\t") || name.replace(/-channel\d+\/16$/u, "") || `パート ${part + 1}`;
                 const drum = info ? isDrumMetadata(metadata[track]) : channel === 9;
-                parts.push(match ? { id: styleId ? `${match[1]}:${styleId}:${label}` : `${match[1]}:${label}`, name: label, channel, drum, source: match[1], ...(styleId ? { styleId } : {}) }
-                    : { id: `${label}:${channel}`, name: label, channel, drum });
+                parts.push(match ? { id: styleId ? `${match[1]}:${styleId}:${label}` : `${match[1]}:${label}`, name: label, channel, drum,
+                    trackIndex: track, source: match[1], ...(styleId ? { styleId } : {}) }
+                    : { id: `${label}:${channel}`, name: label, channel, drum, trackIndex: track });
                 for (const e of trackEvents) if (e.channel === channel) events.push({ ...e, part });
             }
         }
@@ -173,6 +174,36 @@ function midiVariableLength(value) {
     return bytes;
 }
 
+function writeMidiTracks(header, tracks) {
+    header = header.slice();
+    new DataView(header.buffer).setUint16(10, tracks.length);
+    const chunks = [header];
+    for (const events of tracks) {
+        const output = [];
+        let previousTick = 0;
+        for (const { tick, data } of events) {
+            output.push(...midiVariableLength(tick - previousTick));
+            previousTick = tick;
+            // Avoid argument-count limits for large text/SysEx events.
+            for (const byte of data) output.push(byte);
+        }
+        const length = output.length;
+        chunks.push(new Uint8Array([0x4d, 0x54, 0x72, 0x6b, length >>> 24, length >>> 16, length >>> 8, length]), new Uint8Array(output));
+    }
+    const result = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
+    let offset = 0;
+    for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
+    return result;
+}
+
+function exportMidiTrack(input, { trackIndex, channel, drum }) {
+    const { header, tracks } = readMidiForExport(input);
+    const events = tracks[trackIndex].filter(event => event.status >= 0xf0 || (event.status & 15) === channel);
+    const conductor = tracks[0].filter(event => event.status >= 0xf0);
+    const isolated = writeMidiTracks(header, trackIndex === 0 ? [events] : [conductor, events]);
+    return drum ? exportGmMidi(isolated, trackIndex === 0 ? ["drums\t"] : [null, "drums\t"]) : isolated;
+}
+
 // Download path only: keep browser playback's original channels and drum flags.
 // A GM drum channel has one shared set of controllers, so retain the primary
 // rhythm's channel settings, rather than let secondary tracks overwrite them.
@@ -189,38 +220,26 @@ function exportGmMidi(input, metadata = []) {
         }
     });
     if (!primary) return new Uint8Array(input);
-    const chunks = [header];
-    tracks.forEach((events, track) => {
-        const output = [];
-        let previousTick = 0;
-        for (const event of events) {
-            let data = event.data;
-            if (isDrum(event, track)) {
-                const type = event.status & 0xf0;
-                const owner = track === primary.track && (event.status & 15) === primary.channel;
-                // Notes and polyphonic key pressure belong to the individual
-                // part. CC/program/channel pressure/pitch bend are shared.
-                if (!owner && ![0x80, 0x90, 0xa0].includes(type)) continue;
-                data = data.slice(); data[0] = type | 9;
-            } else if (event.meta === 3 && isDrumMetadata(metadata[track])) {
-                // Keep the exported track-name channel annotation accurate.
-                let offset = 2;
-                while (data[offset++] & 128) { /* skip the original name length */ }
-                const name = new TextDecoder().decode(data.subarray(offset)).replace(/-channel\d+\/16$/u, "-channel10/16");
-                const encoded = new TextEncoder().encode(name);
-                data = new Uint8Array([255, 3, ...midiVariableLength(encoded.length), ...encoded]);
-            }
-            output.push(...midiVariableLength(event.tick - previousTick)); previousTick = event.tick;
-            // Avoid argument-count limits for large text/SysEx events.
-            for (const byte of data) output.push(byte);
+    const rewritten = tracks.map((events, track) => events.flatMap(event => {
+        let data = event.data;
+        if (isDrum(event, track)) {
+            const type = event.status & 0xf0;
+            const owner = track === primary.track && (event.status & 15) === primary.channel;
+            // Notes and polyphonic key pressure belong to the individual
+            // part. CC/program/channel pressure/pitch bend are shared.
+            if (!owner && ![0x80, 0x90, 0xa0].includes(type)) return [];
+            data = data.slice(); data[0] = type | 9;
+        } else if (event.meta === 3 && isDrumMetadata(metadata[track])) {
+            // Keep the exported track-name channel annotation accurate.
+            let offset = 2;
+            while (data[offset++] & 128) { /* skip the original name length */ }
+            const name = new TextDecoder().decode(data.subarray(offset)).replace(/-channel\d+\/16$/u, "-channel10/16");
+            const encoded = new TextEncoder().encode(name);
+            data = new Uint8Array([255, 3, ...midiVariableLength(encoded.length), ...encoded]);
         }
-        const length = output.length;
-        chunks.push(new Uint8Array([0x4d, 0x54, 0x72, 0x6b, length >>> 24, length >>> 16, length >>> 8, length]), new Uint8Array(output));
-    });
-    const result = new Uint8Array(chunks.reduce((length, chunk) => length + chunk.length, 0));
-    let offset = 0;
-    for (const chunk of chunks) { result.set(chunk, offset); offset += chunk.length; }
-    return result;
+        return [{ tick: event.tick, data }];
+    }));
+    return writeMidiTracks(header, rewritten);
 }
 
-if (typeof module !== "undefined") module.exports = { parseMidi, exportGmMidi };
+if (typeof module !== "undefined") module.exports = { parseMidi, exportGmMidi, exportMidiTrack };

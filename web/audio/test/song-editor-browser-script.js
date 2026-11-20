@@ -419,6 +419,36 @@
         check(findMixTrack("Bass-1")?.patch === "Cello" && findMixTrack("Bass").mute, "Redo did not restore clone settings");
         report.userTrackManagement = true;
 
+        const sourceIndex = mixerParts.findIndex(part => part.name === "Bass");
+        const sourceStrip = document.querySelector(`.strip[data-part-index="${sourceIndex}"]`);
+        pianoRoll.open("User2");
+        const dropData = new DataTransfer();
+        sourceStrip.querySelector(".part-name").dispatchEvent(new DragEvent("dragstart", { dataTransfer: dropData }));
+        const dragged = UserPhrase.read(dropData.getData(rhythmPhraseDragType)).notes;
+        const countBeforeDrop = pianoRoll.phrase.notes.length;
+        pianoRoll.scroll.dispatchEvent(new DragEvent("drop", { dataTransfer: dropData, cancelable: true }));
+        check(dragged.length && pianoRoll.phrase.notes.length === countBeforeDrop + dragged.length
+            && pianoRoll.phrase.notes.some(note => note.pitch === dragged[0].pitch && note.position === dragged[0].position),
+            "Dragging the mixer track did not copy its notes at their original beats");
+        editor.undoButton.click();
+        check(pianoRoll.phrase.notes.length === countBeforeDrop, "Undo did not remove the dragged notes");
+        await generate();
+        let isolated;
+        const originalDownload = downloadSongFile;
+        try {
+            downloadSongFile = (name, bytes) => { isolated = { name, bytes }; };
+            await exportRhythmTrack(mixerParts.find(part => part.name === "Bass"));
+        } finally { downloadSongFile = originalDownload; }
+        const parsedTrack = parseMidi(isolated.bytes, song.barTimes.length - 1);
+        check(isolated.name.endsWith("-Bass.mid") && parsedTrack.parts.length === 1
+            && parsedTrack.events.some(event => event.type === 0xc0 && event.a === 42)
+            && parsedTrack.barTimes.length === song.barTimes.length
+            && parsedTrack.barTimes.every((time, index) => Math.abs(time - song.barTimes[index]) < 1e-6),
+            `Isolated MIDI lost its channel, patch or tempo: ${isolated.name}, ${parsedTrack.parts.length} tracks, `
+            + `programs ${parsedTrack.events.filter(event => event.type === 0xc0).map(event => event.a)}, `
+            + `last bar ${parsedTrack.barTimes.at(-1)} vs ${song.barTimes.at(-1)}`);
+        report.mixerTrackMidi = true;
+
         const converted = DesktopSongFiles.readSong(desktopFixture.song);
         const variationExamples = ["Intro C-1", "Main B-1", "Main D-4", "Ending B-1"];
         for (const [index, part] of converted.parts.entries()) {

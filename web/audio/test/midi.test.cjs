@@ -1,6 +1,6 @@
 const { test } = require("node:test");
 const assert = require("node:assert/strict");
-const { parseMidi, exportGmMidi } = require("../../engine/demo/midi.js");
+const { parseMidi, exportGmMidi, exportMidiTrack } = require("../../engine/demo/midi.js");
 
 const vlq = n => { const a = [n & 127]; while (n >>= 7) a.unshift((n & 127) | 128); return a; };
 const be = (n, length) => Array.from({ length }, (_, i) => (n >>> ((length - i - 1) * 8)) & 255);
@@ -96,4 +96,17 @@ test("a single non-channel-10 drum part keeps its own settings; melodic-only MID
     assert.ok(result.events.every(e => e.channel === 9));
     assert.equal(result.events[0].a, 7); assert.equal(result.events[0].b, 60);
     assert.deepEqual(Buffer.from(exportGmMidi(midi, ["melodic\tPiano"])), midi);
+});
+
+test("single-track export keeps the conductor and only the requested rhythm channel", () => {
+    const midi = smf([
+        [0, 255, 81, 3, 15, 66, 64, ...end],
+        [0, 0x98, 36, 90, 0, 0x91, 64, 100, ...vlq(480), 0x88, 36, 0, 0, 0x81, 64, 0, ...end],
+        [0, 0x92, 32, 80, ...end]
+    ]);
+    const original = parseMidi(midi, 1, [null, "drums\tSubRhythm", null]);
+    const output = parseMidi(exportMidiTrack(midi, original.parts[0]), 1);
+    assert.equal(output.parts.length, 1);
+    assert.deepEqual(output.events.map(event => [event.channel, event.a, event.seconds]), [[9, 36, 0], [9, 36, 1]]);
+    assert.deepEqual(output.barTimes, original.barTimes);
 });

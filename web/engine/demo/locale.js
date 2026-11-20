@@ -131,6 +131,8 @@ Solo解除|Clear solo
 ドラム|Drums
 音符を編集|Edit notes
 ユーザートラックに複製|Clone as user track
+このトラックをMIDIで書き出す|Export this track as MIDI
+ピアノロールへドラッグして音符をコピー|Drag to the piano roll to copy notes
 コード進行|Chord progression
 1小節に1コード。空白、改行、カンマ、または | で区切ります。|One chord per bar. Separate chords with a space, newline, comma, or a vertical bar.
 リズムエンジン|Rhythm engine
