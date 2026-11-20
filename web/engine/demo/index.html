@@ -686,10 +686,16 @@
 
     <dialog id="app-diagnostics" aria-labelledby="app-diagnostics-title">
         <h2 id="app-diagnostics-title">バージョンと診断</h2>
+        <details id="build-history" open>
+            <summary>コミット履歴</summary>
+            <p id="build-source-dirty" hidden>このビルドには未コミットの変更が含まれます。</p>
+            <p id="build-history-empty" hidden>このビルドにはコミット履歴がありません。</p>
+            <pre id="build-commits"></pre>
+        </details>
         <label class="field">診断ログの記録レベル
             <select id="diagnostics-level"><option value="off">無効</option><option value="error">エラーのみ</option><option value="info">情報とエラー</option></select>
         </label>
-        <pre aria-label="環境情報と診断ログ"></pre>
+        <pre id="diagnostic-report" aria-label="環境情報と診断ログ"></pre>
         <div class="dialog-actions">
             <button id="clear-diagnostics" type="button" class="secondary">診断ログを消去</button>
             <button id="save-diagnostics" type="button" class="secondary">診断情報を保存</button>

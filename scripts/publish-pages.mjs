@@ -26,9 +26,14 @@ const inputPath = path.resolve(input);
 const isPwa = fs.statSync(inputPath).isDirectory();
 let html = fs.readFileSync(isPwa ? path.join(inputPath, "index.html") : inputPath, "utf8").replace(/\r\n/gu, "\n");
 if (!/^<!doctype html>/iu.test(html) || html.includes("JJAZZ_SMOKE_RESULT")) throw new Error("Expected a production demo HTML, without test instrumentation");
-for (const file of ["demo.js", "locale.js", "midi.js", "song-files.js", "song-editor.js", "piano-roll.js", "style-archive.js", "player.js"]) {
+for (const file of ["demo.js", "locale.js", "midi.js", "song-files.js", "song-editor.js", "piano-roll.js", "style-archive.js", "player.js", "app-diagnostics.js"]) {
     const expected = readSource("web/engine/demo/" + file).trim().replace(/<\/script/giu, "<\\/script");
     if (!html.includes(expected)) throw new Error("Build is stale: " + file + ". Rebuild and test before publishing.");
+}
+const buildInfo = JSON.parse(html.match(/^const embeddedBuildInfo = (.*);$/mu)?.[1] ?? "null");
+if (buildInfo?.source?.commit !== sourceCommit || buildInfo.source.dirty !== false
+    || buildInfo.source.commits?.[0]?.hash !== sourceCommit) {
+    throw new Error("Build source does not match clean HEAD. Build again from the committed source.");
 }
 const worklet = JSON.parse(html.match(/const embeddedWorklet = (.*);/u)?.[1] || "null");
 if (worklet !== readSource("web/engine/demo/synth-worklet.js")) throw new Error("Build is stale: synth-worklet.js");

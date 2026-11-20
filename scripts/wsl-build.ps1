@@ -31,11 +31,12 @@ if [ "$1" = sync ]; then
 fi
 test_mode="$2"
 build_mode="$1"
+source_info="$3"
 cd -- "$workspace"
 if [ "$build_mode" = demo ]; then
     bash web/audio/build.sh
     python3 web/engine/demo/package-demo.py web/engine/target/wasm-diagnostics \
-        "$windows_checkout/WSL_image/midi-demo.html" --pwa-dir "$windows_checkout/WSL_image/pwa"
+        "$windows_checkout/WSL_image/midi-demo.html" --pwa-dir "$windows_checkout/WSL_image/pwa" --source-info "$source_info"
     exit 0
 fi
 if [ "$1" = broad ]; then
@@ -70,11 +71,27 @@ fi
 bash web/audio/build.sh
 mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 python3 web/engine/demo/package-demo.py web/engine/target/wasm-diagnostics \
-    "$windows_checkout/WSL_image/midi-demo.html" --pwa-dir "$windows_checkout/WSL_image/pwa"
+    "$windows_checkout/WSL_image/midi-demo.html" --pwa-dir "$windows_checkout/WSL_image/pwa" --source-info "$source_info"
 '@
 $command = $command -replace "`r`n", "`n"
 $action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } elseif ($Engine) { 'engine' } elseif ($DemoOnly) { 'demo' } else { 'build' }
 $testMode = if ($SkipTests) { 'skip' } else { 'run' }
+$sourceInfo = '-'
+if ($Engine -or $DemoOnly) {
+    $head = git -C $repo rev-parse HEAD
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read the source commit' }
+    $lines = @(git -C $repo -c i18n.logOutputEncoding=UTF-8 log $head --first-parent -20 --format='%H%x09%cs%x09%s')
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read the commit history' }
+    $dirty = @(git -C $repo status --porcelain).Count -ne 0
+    if ($LASTEXITCODE -ne 0) { throw 'Could not read the source working tree status' }
+    $commits = @(foreach ($line in $lines) {
+        $hash, $date, $subject = $line -split "`t", 3
+        if ($subject.Length -gt 200) { $subject = $subject.Substring(0, 199) + [char]0x2026 }
+        @{ hash = $hash; date = $date; subject = $subject }
+    })
+    $json = @{ commit = $head; dirty = $dirty; commits = $commits } | ConvertTo-Json -Depth 4 -Compress
+    $sourceInfo = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
+}
 $launcher = @'
 set -euo pipefail
 cg=/sys/fs/cgroup
@@ -109,11 +126,11 @@ printf '%s\n' '12884901888' > "$job/memory.max"
 (
     printf '%s\n' "$BASHPID" > "$job/cgroup.procs"
     exec setpriv --reuid=jjazzdev --regid="$(id -g jjazzdev)" --init-groups --reset-env \
-        /bin/bash -c "$1" bash "$2" "$3"
+        /bin/bash -c "$1" bash "$2" "$3" "$4"
 )
 '@
 $launcher = $launcher -replace "`r`n", "`n"
-& wsl.exe -d wasm_jjazzlab_dev -u root --cd $repo --exec bash -c $launcher bash $command $action $testMode
+& wsl.exe -d wasm_jjazzlab_dev -u root --cd $repo --exec bash -c $launcher bash $command $action $testMode $sourceInfo
 if ($LASTEXITCODE -ne 0) {
     throw "WSL $action failed with exit code $LASTEXITCODE"
 }

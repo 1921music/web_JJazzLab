@@ -2,7 +2,8 @@
 
 class AppDiagnostics {
     constructor(build, getState) {
-        this.build = build;
+        const { source, ...buildDetails } = build;
+        this.build = { ...buildDetails, sourceCommit: source?.commit, sourceDirty: source?.dirty };
         this.getState = getState;
         this.events = [];
         this.key = "jjazzlab.diagnosticLevel";
@@ -12,7 +13,12 @@ class AppDiagnostics {
             if (["off", "error", "info"].includes(level)) this.level = level;
         } catch { /* Optional storage. */ }
         this.dialog = document.querySelector("#app-diagnostics");
-        this.details = this.dialog.querySelector("pre");
+        this.details = this.dialog.querySelector("#diagnostic-report");
+        const commits = source?.commits ?? [];
+        this.dialog.querySelector("#build-commits").textContent =
+            commits.map(({ hash, date, subject }) => `${hash.slice(0, 9)}  ${date}  ${subject}`).join("\n");
+        this.dialog.querySelector("#build-history-empty").hidden = commits.length > 0;
+        this.dialog.querySelector("#build-source-dirty").hidden = !source?.dirty;
         const level = this.dialog.querySelector("#diagnostics-level");
         level.value = this.level;
         level.onchange = () => {

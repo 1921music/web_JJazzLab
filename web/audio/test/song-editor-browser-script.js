@@ -2450,16 +2450,29 @@ AbM7 | G7 Cm7 |
                 const privateText = "private chord title for diagnostics test";
                 showPlayStatus(privateText, true);
                 document.querySelector("#open-app-diagnostics").click();
-                const displayed = JSON.parse(dialog.querySelector("pre").textContent);
+                const diagnosticsReport = dialog.querySelector("#diagnostic-report");
+                const displayed = JSON.parse(diagnosticsReport.textContent);
                 check(dialog.open && /^[0-9a-f]{12}$/u.test(displayed.build.buildId) && displayed.build.engineBytes > 0
                     && displayed.events.at(-1).event === "playback-error" && !JSON.stringify(displayed).includes(privateText),
                 "The diagnostics dialog did not identify the build and omit document-specific error text");
+                const source = embeddedBuildInfo.source;
+                const history = dialog.querySelector("#build-commits").textContent;
+                if (source) {
+                    check(displayed.build.sourceCommit === source.commit && displayed.build.sourceDirty === source.dirty
+                        && source.commits.length <= 20 && source.commits[0]?.hash === source.commit
+                        && history.startsWith(source.commit.slice(0, 9)) && history.includes(source.commits[0].subject)
+                        && dialog.querySelector("#build-source-dirty").hidden === !source.dirty,
+                    "The version dialog did not render the packaged source and commit history");
+                } else {
+                    check(dialog.querySelector("#build-history-empty").hidden === false && !history,
+                        "The version dialog did not handle build metadata without Git history");
+                }
                 dialog.querySelector("#save-diagnostics").click();
                 const exported = await downloaded;
                 check(exported.build.buildId === displayed.build.buildId && exported.capabilities.audioWorklet,
                     "The diagnostic download did not include build and browser capabilities");
                 dialog.querySelector("#clear-diagnostics").click();
-                check(JSON.parse(dialog.querySelector("pre").textContent).events.length === 0, "The diagnostic log did not clear");
+                check(JSON.parse(diagnosticsReport.textContent).events.length === 0, "The diagnostic log did not clear");
                 appDiagnostics.record("test-info", "info");
                 check(!appDiagnostics.events.length, "The error level should skip informational events");
                 level.value = "info";

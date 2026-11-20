@@ -25,7 +25,7 @@ The default TimGM6mb SoundFont (about 6 MB) downloads the first time you play. T
 
 The standalone build is distributed through [GitHub Releases](https://github.com/1921music/web_JJazzLab/releases). When the file is available, download `midi-demo.html` from the release's **Assets** and open it directly in Chrome or Edge. It runs from `file://` without a web server.
 
-The standalone HTML for this build is **2,070,673 bytes (about 2.07 MB)**. It contains the accompaniment engine and the synthesizer code. The default SoundFont downloads at playback time, so the first download requires an internet connection. You can also choose a compatible local `.sf2` file.
+The standalone HTML for this build is **2,074,794 bytes (about 2.07 MB)**. It contains the accompaniment engine and the synthesizer code. The default SoundFont downloads at playback time, so the first download requires an internet connection. You can also choose a compatible local `.sf2` file.
 
 ## Differences from the Java desktop app
 

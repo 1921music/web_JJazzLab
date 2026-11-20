@@ -147,7 +147,7 @@ def package_pwa(html, output):
     print(f"Packaged PWA {output}")
 
 
-def package(engine_dir, output, pwa_dir=None):
+def package(engine_dir, output, pwa_dir=None, source_info=None):
     template = (DEMO / "index.html").read_text(encoding="utf-8")
     stylesheet = (DEMO / "demo.css").read_text(encoding="utf-8") + "\n" + desktop_icon_styles()
     locale = (DEMO / "locale.js").read_text(encoding="utf-8")
@@ -220,7 +220,9 @@ def package(engine_dir, output, pwa_dir=None):
     root_pom = ElementTree.parse(DEMO.parents[2] / "pom.xml")
     build_info = {"engineVersion": root_pom.findtext("{*}version"), "engineBytes": len(engine_wasm),
                   "buildId": hashlib.sha256(html.encode("utf-8")).hexdigest()[:12]}
-    html = html.replace(build_marker, json.dumps(build_info), 1)
+    if source_info is not None:
+        build_info["source"] = source_info
+    html = html.replace(build_marker, json.dumps(build_info).replace("<", "\\u003c"), 1)
     standalone = html.replace("<!-- PWA_HEAD -->", "").replace("<!-- PWA_INSTALL -->", "")
     write_output(output, standalone.encode("utf-8"))
     print(f"Packaged {output}")
@@ -233,5 +235,7 @@ if __name__ == "__main__":
     parser.add_argument("engine_dir", type=Path)
     parser.add_argument("output", type=Path)
     parser.add_argument("--pwa-dir", type=Path)
+    parser.add_argument("--source-info", help="Base64-encoded Git metadata from the source checkout")
     args = parser.parse_args()
-    package(args.engine_dir, args.output, args.pwa_dir)
+    source_info = json.loads(base64.b64decode(args.source_info)) if args.source_info else None
+    package(args.engine_dir, args.output, args.pwa_dir, source_info)
