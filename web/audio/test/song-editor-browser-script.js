@@ -301,7 +301,17 @@
         check(channelEditor.open && document.querySelector("#channel-reverb").valueAsNumber === originalBass.reverb,
             "Channel editor did not load the imported effect values");
         const cello = mixerInstruments.find(instrument => instrument.program === 42 && !instrument.drum).desktop;
+        const instrumentSearch = document.querySelector("#channel-instrument-search");
+        instrumentSearch.value = "ｃｅｌｌｏ";
+        instrumentSearch.dispatchEvent(new Event("input", { bubbles: true }));
+        check(channelInstrument.options.length === 2 && [...channelInstrument.options].some(option => option.value === cello.id),
+            "Instrument search did not find the requested patch");
         channelInstrument.value = cello.id;
+        document.querySelector("#channel-preview").click();
+        await pendingAudition;
+        check(player.previewing && !playing && player.loadedSong.events[0].a === 42
+            && player.loadedSong.events.filter(event => event.type === 0x90).length === 4, "The instrument preview did not use the selected patch");
+        report.instrumentSearch = true;
         document.querySelector("#channel-reverb").value = "96";
         document.querySelector("#channel-chorus").value = "57";
         document.querySelector("#channel-effects .effect-control:first-child input[type=checkbox]").checked = true;

@@ -340,9 +340,28 @@ function openChannelEditor(part) {
         .map(instrument => part.usesDesktopSoundFont ? { ...instrument, ...instrument.desktop } : instrument);
     const current = part.instrumentChoice?.id ?? "";
     document.querySelector("#channel-editor-title").textContent = `CH ${part.outputChannel + 1} · ${part.name}`;
-    channelInstrument.replaceChildren(new Option(t(`${part.originalPatch}（元の音色）`, `${part.originalPatch} (original)`), ""),
-        ...choices.map(instrument => new Option(instrument.patch, instrument.id)));
-    channelInstrument.value = current;
+    const search = document.querySelector("#channel-instrument-search");
+    const preview = document.querySelector("#channel-preview");
+    const visibleInstruments = selected => {
+        const terms = search.value.normalize("NFKC").trim().toLowerCase().split(/\s+/u).filter(Boolean);
+        const filtered = choices.filter(instrument => {
+            const keywords = `${instrument.patch} ${instrument.program + 1}`.normalize("NFKC").toLowerCase();
+            return selected === instrument.id || terms.every(term => keywords.includes(term));
+        });
+        channelInstrument.replaceChildren(new Option(t(`${part.originalPatch}（元の音色）`, `${part.originalPatch} (original)`), ""),
+            ...filtered.map(instrument => new Option(instrument.patch, instrument.id)));
+        channelInstrument.value = selected;
+    };
+    search.value = "";
+    search.oninput = () => visibleInstruments(channelInstrument.value);
+    visibleInstruments(current);
+    preview.disabled = playing || paused || starting || generating;
+    preview.onclick = () => {
+        const program = choices.find(instrument => instrument.id === channelInstrument.value)?.program ?? part.program;
+        const pitches = part.drum ? [36, 38, 42, 51] : [60, 64, 67, 72];
+        const notes = pitches.map((pitch, index) => ({ pitch, position: index * .5, duration: .4, velocity: 90 }));
+        queueAudition(notes, part.drum, program, 120, () => channelEditor.open);
+    };
     const detailed = activeProject === editor.project && Boolean(editor.baseMix?.length);
     const midiFields = document.querySelector("#channel-midi-settings");
     midiFields.hidden = midiFields.disabled = !detailed;
@@ -974,42 +993,50 @@ pianoRoll.onSolo = async name => {
     applyMix();
 };
 pianoRoll.onAudition = notes => {
+    const name = pianoRoll.name, project = editor.project, custom = pianoRoll.custom;
+    const drum = pianoRoll.phrase.drum;
+    const source = rollMixPart();
+    const saved = editor.mix.find(track => DesktopSongFiles.isUserMixTrack(track) && track.name === name);
+    const defaultPatch = mixerInstruments.find(instrument =>
+        instrument.drum === drum && (instrument.patch === saved?.patch || instrument.desktop.id === saved?.instrument));
+    const program = source?.instrumentChoice?.program ?? (source?.trackIndex !== undefined ? source.program : defaultPatch?.program) ?? 0;
+    queueAudition(notes, drum, program, project.tempo, () =>
+        name === pianoRoll.name && project === editor.project && custom === pianoRoll.custom);
+};
+
+function queueAudition(notes, drum, program, tempo, stillValid) {
     if (playing || paused || starting || generating) return;
     const request = ++auditionRequest;
-    const name = pianoRoll.name, project = editor.project;
-    const drum = pianoRoll.phrase.drum;
     const audio = player.initialize(showPlayStatus);
     audio.catch(() => {});
     pendingAudition = pendingAudition.then(async () => {
         await audio;
-        if (request !== auditionRequest || name !== pianoRoll.name || project !== editor.project
-                || playing || paused || starting || generating) return;
-        const source = rollMixPart();
-        const saved = editor.mix.find(track => DesktopSongFiles.isUserMixTrack(track) && track.name === name);
-        const defaultPatch = mixerInstruments.find(instrument =>
-            instrument.drum === drum && (instrument.patch === saved?.patch || instrument.desktop.id === saved?.instrument));
-        const program = source?.instrumentChoice?.program ?? (source?.trackIndex !== undefined ? source.program : defaultPatch?.program) ?? 0;
-        const secondsPerBeat = 60 / project.tempo;
+        if (request !== auditionRequest || !stillValid() || playing || paused || starting || generating) return;
+        const secondsPerBeat = 60 / tempo;
         const start = notes.reduce((min, note) => Math.min(min, note.position), Infinity);
-        const events = [{ seconds: 0, part: 0, type: 0xc0, a: program, b: 0 }];
+        const events = [];
         for (const note of notes) {
             events.push({ seconds: (note.position - start) * secondsPerBeat, part: 0, type: 0x90, a: note.pitch, b: note.velocity },
                 { seconds: (note.position - start + note.duration) * secondsPerBeat, part: 0, type: 0x80, a: note.pitch, b: 0 });
         }
         events.sort((a, b) => a.seconds - b.seconds || a.type - b.type);
         const duration = events.at(-1).seconds + .15;
+        events.unshift({ seconds: 0, part: 0, type: 0xc0, a: program, b: 0 });
         const part = { drum, volume: 1, pan: 0 };
         await player.play({ parts: [part], events, duration }, { enabled: false, start: 0, end: duration },
             [part], Number(masterInput.value) / 100, false, { preview: true, click: false });
         showPlayStatus("");
     }).catch(error => showPlayStatus(error.message, true));
-};
-pianoRoll.onStopAudition = () => {
+}
+
+function stopAudition() {
     auditionRequest++;
     pendingAudition = pendingAudition.then(() => {
         if (player.previewing) return player.stop();
     }).catch(error => showPlayStatus(error.message, true));
-};
+}
+pianoRoll.onStopAudition = stopAudition;
+channelEditor.addEventListener("close", stopAudition);
 const reader = document.querySelector("#easy-reader");
 const toggleReader = document.querySelector("#toggle-reader");
 const readerLocation = document.querySelector("#reader-location");

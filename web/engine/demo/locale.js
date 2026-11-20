@@ -172,6 +172,8 @@ MIDIチャンネル|MIDI channel
 移調（半音）|Transpose (semitones)
 ベロシティ補正|Velocity shift
 音色を送信|Send instrument
+音色を検索|Search instruments
+音色を試聴|Audition instrument
 音量を送信|Send volume
 パンを送信|Send pan
 コード進行|Chord progression
