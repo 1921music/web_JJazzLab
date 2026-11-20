@@ -394,6 +394,8 @@ dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display
 #drum-transform-chain > div { display: flex; align-items: center; gap: .3rem; }
 #drum-transform-chain > div > span { flex: 1; }
 #drum-transform-offsets { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: .5rem; }
+#channel-midi-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: .5rem; }
+#channel-midi-flags { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin-top: .65rem; }
 #song-memo-text { width: 100%; resize: vertical; }
 #song-memo-links { overflow-wrap: anywhere; }
 #chord-interpretation:not([hidden]) { display: grid; gap: .5rem; }

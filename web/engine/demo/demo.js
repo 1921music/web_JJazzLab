@@ -283,8 +283,15 @@ function applyMix() {
             const part = mixerParts.find(part => part.channel === base.channel);
             if (!part) return track;
             const instrument = part.instrumentChoice;
+            if (part.outputChannel !== (track.sourceChannel ?? track.channel) || part.transpose !== track.transpose
+                    || part.velocityShift !== track.velocityShift || part.instrumentEnabled !== track.instrumentEnabled
+                    || part.volumeEnabled !== track.volumeEnabled || part.panEnabled !== track.panEnabled) {
+                accompanimentDirty = true;
+            }
             return { ...base, volume: limit(base.volume * part.volume), pan: limit(base.pan + part.pan * 64), mute: part.mute,
-                ...(instrument ? { patch: instrument.patch, instrument: instrument.id, instrumentEnabled: true } : {}),
+                ...(instrument ? { patch: instrument.patch, instrument: instrument.id } : {}),
+                sourceChannel: part.outputChannel, transpose: part.transpose, velocityShift: part.velocityShift,
+                instrumentEnabled: part.instrumentEnabled, volumeEnabled: part.volumeEnabled, panEnabled: part.panEnabled,
                 reverb: part.reverb, chorus: part.chorus, reverbEnabled: part.reverbEnabled, chorusEnabled: part.chorusEnabled };
         });
         if (editor.renderedMix) editor.renderedMix = editor.mix;
@@ -326,10 +333,29 @@ function openChannelEditor(part) {
     const choices = mixerInstruments.filter(instrument => instrument.drum === part.drum)
         .map(instrument => part.usesDesktopSoundFont ? { ...instrument, ...instrument.desktop } : instrument);
     const current = part.instrumentChoice?.id ?? "";
-    document.querySelector("#channel-editor-title").textContent = `CH ${part.channel + 1} · ${part.name}`;
+    document.querySelector("#channel-editor-title").textContent = `CH ${part.outputChannel + 1} · ${part.name}`;
     channelInstrument.replaceChildren(new Option(t(`${part.originalPatch}（元の音色）`, `${part.originalPatch} (original)`), ""),
         ...choices.map(instrument => new Option(instrument.patch, instrument.id)));
     channelInstrument.value = current;
+    const detailed = activeProject === editor.project && Boolean(editor.baseMix?.length);
+    const midiFields = document.querySelector("#channel-midi-settings");
+    midiFields.hidden = midiFields.disabled = !detailed;
+    const outputChannel = document.querySelector("#channel-output");
+    const transpose = document.querySelector("#channel-transpose");
+    const velocity = document.querySelector("#channel-velocity-shift");
+    const flags = [
+        ["instrumentEnabled", document.querySelector("#channel-program-enabled")],
+        ["volumeEnabled", document.querySelector("#channel-volume-enabled")],
+        ["panEnabled", document.querySelector("#channel-pan-enabled")]
+    ];
+    const used = new Set(mixerParts.filter(item => item !== part).map(item => item.outputChannel));
+    outputChannel.replaceChildren(...Array.from({ length: 16 }, (_, channel) => channel)
+        .filter(channel => !used.has(channel) && (channel !== 9 || part.drum || channel === part.outputChannel))
+        .map(channel => new Option(channel + 1, channel)));
+    outputChannel.value = part.outputChannel;
+    transpose.value = part.transpose;
+    velocity.value = part.velocityShift;
+    for (const [key, field] of flags) field.checked = part[key];
     const controls = document.querySelector("#channel-effects");
     controls.replaceChildren();
     const fields = channelEffects.map(({ key, label }) => {
@@ -361,11 +387,18 @@ function openChannelEditor(part) {
     document.querySelector("#channel-editor-form").onsubmit = event => {
         event.preventDefault();
         part.instrumentChoice = choices.find(instrument => instrument.id === channelInstrument.value);
+        if (detailed) {
+            part.outputChannel = Number(outputChannel.value);
+            part.transpose = transpose.valueAsNumber;
+            part.velocityShift = velocity.valueAsNumber;
+            for (const [key, field] of flags) part[key] = field.checked;
+        }
         for (const { key, slider, enabled } of fields) {
             part[key] = slider.valueAsNumber;
             part[`${key}Enabled`] = enabled.checked;
         }
         applyMix();
+        if (accompanimentDirty && (playing || paused)) showStatus("次回の再生から変更を反映します。");
         channelEditor.close();
         renderMixer();
         document.querySelector(`.strip[data-part-index="${mixerParts.indexOf(part)}"] .channel-edit`)?.focus();
@@ -429,7 +462,9 @@ function initialMixerParts(song, mix) {
         const program = initialEvents.get(`${index}:program`) ?? 0;
         const fallback = mixerInstruments.find(instrument => instrument.drum === part.drum && instrument.program === program);
         const original = { volume: 1, pan: 0, solo: false, mute: track?.mute ?? false,
-            instrumentChoice: undefined, originalPatch: track?.patch ?? fallback?.patch ?? `Program ${program + 1}` };
+            instrumentChoice: undefined, originalPatch: track?.patch ?? fallback?.patch ?? `Program ${program + 1}`,
+            outputChannel: track?.sourceChannel ?? part.channel, transpose: track?.transpose ?? 0, velocityShift: track?.velocityShift ?? 0,
+            instrumentEnabled: track?.instrumentEnabled ?? true, volumeEnabled: track?.volumeEnabled ?? true, panEnabled: track?.panEnabled ?? true };
         for (const { key } of channelEffects) {
             original[key] = track?.[key] ?? initialEvents.get(`${index}:${key}`) ?? 0;
             original[`${key}Enabled`] = track?.[`${key}Enabled`] ?? true;
@@ -467,7 +502,12 @@ function openMixerContext(part, strip, x, y) {
         mixerContext.hidden = true;
         if (action === "settings") edit.click();
         if (action === "mute" || action === "solo") strip.querySelector(`[data-mix="${action}"]`).click();
-        if (action === "reset") { Object.assign(part, part.original); renderMixer(); applyMix(); }
+        if (action === "reset") {
+            const reserved = mixerParts.some(other => other !== part && other.outputChannel === part.original.outputChannel);
+            Object.assign(part, part.original, { outputChannel: reserved ? part.outputChannel : part.original.outputChannel });
+            renderMixer();
+            applyMix();
+        }
         if (action === "edit-user") pianoRoll.open(part.name);
         if (action === "rename-user" || action === "remove-user") pianoRoll.editTrack(action.split("-")[0], part.name);
         if (action === "clone-rhythm") void cloneRhythmTrack(part);
@@ -540,7 +580,7 @@ function renderMixer() {
     }));
     mixerRhythm.hidden = styleIds.size < 2;
     mixerRhythm.value = styleIds.has(selectedMixerRhythm) ? selectedMixerRhythm : "";
-    const orderedParts = mixerParts.map((part, index) => ({ part, index })).sort((a, b) => a.part.channel - b.part.channel);
+    const orderedParts = mixerParts.map((part, index) => ({ part, index })).sort((a, b) => a.part.outputChannel - b.part.outputChannel);
     for (const { part, index } of orderedParts) {
         if (mixerRhythm.value && part.source !== "user" && part.styleId !== mixerRhythm.value) continue;
         const strip = document.createElement("div"); strip.className = "strip";
@@ -560,7 +600,7 @@ function renderMixer() {
             };
         }
         const channel = document.createElement("small");
-        channel.textContent = `CH ${part.channel + 1}${part.source === "user" ? " · User" : part.drum ? " · Drums" : ""}`;
+        channel.textContent = `CH ${part.outputChannel + 1}${part.source === "user" ? " · User" : part.drum ? " · Drums" : ""}`;
         if (styleIds.size > 1 && part.styleId) {
             channel.textContent += ` · ${part.styleId.replace(/-ID$/u, "")}`;
         }

@@ -1,18 +1,21 @@
 package org.jjazz.web.engine;
 
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
 import java.util.HashSet;
 import java.util.stream.Stream;
 import org.jjazz.midi.api.DrumKit;
 import org.jjazz.midi.api.Instrument;
+import org.jjazz.midi.api.InstrumentMix;
 import org.jjazz.midi.api.MidiAddress;
 import org.jjazz.midi.api.keymap.KeyMapGM;
 import org.jjazz.midi.api.synths.GMSynth;
 import org.jjazz.midi.api.synths.GM2Synth;
 import org.jjazz.midimix.api.MidiMix;
 import org.jjazz.midimix.api.UserRhythmVoice;
+import org.jjazz.midimix.MidiMixImpl;
 
 /** Browser mix adapter. Channel assignments come from the song, while settings follow the voice. */
 final class SongMix
@@ -49,7 +52,7 @@ final class SongMix
         for (String row : settings)
         {
             var fields = row.split("\t", -1);
-            if (fields.length != 15 || imported.put(fields[0] + '\t' + fields[1], fields) != null)
+            if ((fields.length != 15 && fields.length != 16) || imported.put(fields[0] + '\t' + fields[1], fields) != null)
             {
                 throw new IllegalArgumentException("Invalid or duplicated mix entry");
             }
@@ -86,6 +89,46 @@ final class SongMix
             if (patch != null) instrumentMix.setInstrument(patch);
         }
         return true;
+    }
+
+    static MidiMix withSavedChannels(MidiMix mix, String[] settings)
+    {
+        var saved = new HashMap<String, Integer>();
+        for (String row : settings)
+        {
+            var fields = row.split("\t", -1);
+            if (fields.length == 16 && !fields[15].isEmpty())
+            {
+                int channel = Integer.parseInt(fields[15]);
+                if (channel >= 0 && channel < 16)
+                {
+                    saved.put(fields[0] + '\t' + fields[1], channel);
+                }
+            }
+        }
+        var used = new HashSet<Integer>();
+        var assignments = new LinkedHashMap<Integer, Integer>();
+        for (int channel : mix.getUsedChannels())
+        {
+            var target = saved.get(key(mix, channel));
+            if (target != null && used.add(target)) assignments.put(channel, target);
+        }
+        for (int channel : mix.getUsedChannels())
+        {
+            if (!assignments.containsKey(channel) && used.add(channel)) assignments.put(channel, channel);
+        }
+        for (int channel : mix.getUsedChannels())
+        {
+            if (assignments.containsKey(channel)) continue;
+            int available = 0;
+            while (!used.add(available)) available++;
+            assignments.put(channel, available);
+        }
+        if (assignments.entrySet().stream().allMatch(entry -> entry.getKey().equals(entry.getValue()))) return mix;
+        var reassigned = new MidiMixImpl();
+        assignments.forEach((source, target) -> reassigned.setInstrumentMix(target, mix.getRhythmVoice(source),
+                new InstrumentMix(mix.getInstrumentMix(source))));
+        return reassigned;
     }
 
     private static Instrument getMelodicInstrument(String name)

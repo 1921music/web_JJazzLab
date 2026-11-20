@@ -477,6 +477,19 @@
         <form id="channel-editor-form" method="dialog">
             <h2 id="channel-editor-title"></h2>
             <label class="field">音色 <select id="channel-instrument"></select></label>
+            <fieldset id="channel-midi-settings">
+                <legend>MIDI設定</legend>
+                <div id="channel-midi-values">
+                    <label class="field">MIDIチャンネル <select id="channel-output"></select></label>
+                    <label class="field">移調（半音） <input id="channel-transpose" type="number" min="-36" max="36" required></label>
+                    <label class="field">ベロシティ補正 <input id="channel-velocity-shift" type="number" min="-64" max="64" required></label>
+                </div>
+                <div id="channel-midi-flags">
+                    <label class="check"><input id="channel-program-enabled" type="checkbox"> 音色を送信</label>
+                    <label class="check"><input id="channel-volume-enabled" type="checkbox"> 音量を送信</label>
+                    <label class="check"><input id="channel-pan-enabled" type="checkbox"> パンを送信</label>
+                </div>
+            </fieldset>
             <div id="channel-effects"></div>
             <div class="dialog-actions">
                 <button id="cancel-channel-edit" type="button" class="secondary">キャンセル</button>

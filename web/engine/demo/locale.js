@@ -167,6 +167,13 @@ Solo解除|Clear solo
 クラッシュ|Crash
 シンバル|Cymbals
 パーカッション|Percussion
+MIDI設定|MIDI settings
+MIDIチャンネル|MIDI channel
+移調（半音）|Transpose (semitones)
+ベロシティ補正|Velocity shift
+音色を送信|Send instrument
+音量を送信|Send volume
+パンを送信|Send pan
 コード進行|Chord progression
 1小節に1コード。空白、改行、カンマ、または | で区切ります。|One chord per bar. Separate chords with a space, newline, comma, or a vertical bar.
 リズムエンジン|Rhythm engine

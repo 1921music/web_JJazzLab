@@ -510,6 +510,30 @@
             + `last bar ${parsedTrack.barTimes.at(-1)} vs ${song.barTimes.at(-1)}`);
         report.mixerTrackMidi = true;
 
+        const userIndex = mixerParts.findIndex(part => part.name === "User2");
+        const oldUserChannel = mixerParts[userIndex].channel;
+        document.querySelector(`.strip[data-part-index="${userIndex}"] .channel-edit`).click();
+        const userOutput = document.querySelector("#channel-output");
+        const newChannel = Number([...userOutput.options].find(option => Number(option.value) !== oldUserChannel).value);
+        userOutput.value = String(newChannel);
+        document.querySelector("#channel-transpose").value = "2";
+        document.querySelector("#channel-velocity-shift").value = "-10";
+        for (const id of ["channel-program-enabled", "channel-volume-enabled", "channel-pan-enabled"]) {
+            document.getElementById(id).checked = false;
+        }
+        document.querySelector("#channel-editor-form").requestSubmit();
+        const advancedMix = DesktopSongFiles.readMix(editor.desktopMixXml()).find(track => track.name === "User2");
+        check(advancedMix.channel === newChannel && advancedMix.transpose === 2 && advancedMix.velocityShift === -10
+            && !advancedMix.instrumentEnabled && !advancedMix.volumeEnabled && !advancedMix.panEnabled,
+            "Advanced channel settings did not reach the .mix file");
+        await generate();
+        const userPart = song.parts.findIndex(part => part.name === "User2");
+        const userEvents = song.events.filter(event => event.part === userPart);
+        check(song.parts[userPart].channel === newChannel && userEvents.some(event => event.type === 0x90 && event.a === 66 && event.b === 88)
+            && !userEvents.some(event => event.type === 0xc0 || (event.type === 0xb0 && [7, 10].includes(event.a))),
+            `Edited channel assignment, note changes or disabled controllers were missing from playback: ${JSON.stringify(userEvents.slice(0, 8))}`);
+        report.advancedMixer = true;
+
         const converted = DesktopSongFiles.readSong(desktopFixture.song);
         const variationExamples = ["Intro C-1", "Main B-1", "Main D-4", "Ending B-1"];
         for (const [index, part] of converted.parts.entries()) {

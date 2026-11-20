@@ -98,10 +98,14 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     const p = this.parts[i], settings = message.parts[i];
                     const enabled = !settings.mute && (!solo || settings.solo);
                     if (p.enabled && !enabled) this.api.synth_silence(i);
-                    const program = settings.instrumentChoice?.program;
-                    const changedProgram = program !== p.instrumentChoice?.program;
+                    const changedProgram = settings.instrumentChoice?.program !== p.instrumentChoice?.program
+                        || settings.instrumentEnabled !== p.instrumentEnabled;
+                    const changedVolume = settings.volumeEnabled !== p.volumeEnabled;
+                    const changedPan = settings.panEnabled !== p.panEnabled;
                     Object.assign(p, settings, { enabled, instrumentChoice: settings.instrumentChoice });
                     if (changedProgram) this.applyProgram(i);
+                    if (changedVolume) this.api.synth_event(i, 0xb0, 7, p.volumeEnabled === false ? 127 : p.midiVolume ?? 127);
+                    if (changedPan) this.api.synth_event(i, 0xb0, 10, p.panEnabled === false ? 64 : p.midiPan ?? 64);
                 }
                 this.masterTarget = message.master;
             } else if (type === "loop") {
@@ -168,6 +172,12 @@ class SoundFontProcessor extends AudioWorkletProcessor {
 
     applyProgram(index) {
         const part = this.parts[index];
+        if (part.instrumentEnabled === false) {
+            this.api.synth_event(index, 0xb0, 0, 0);
+            this.api.synth_event(index, 0xb0, 32, 0);
+            this.api.synth_event(index, 0xc0, 0, 0);
+            return;
+        }
         const program = part.instrumentChoice?.program;
         this.api.synth_event(index, 0xb0, 0, program === undefined ? part.bankMsb : 0);
         this.api.synth_event(index, 0xb0, 32, program === undefined ? part.bankLsb : 0);
@@ -179,7 +189,12 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (type === 0xc0) part.midiProgram = a;
         if (type === 0xb0 && a === 0) part.bankMsb = b;
         if (type === 0xb0 && a === 32) part.bankLsb = b;
-        if (part.instrumentChoice && (type === 0xc0 || (type === 0xb0 && (a === 0 || a === 32)))) return;
+        if (type === 0xb0 && a === 7) part.midiVolume = b;
+        if (type === 0xb0 && a === 10) part.midiPan = b;
+        if ((part.instrumentChoice || part.instrumentEnabled === false)
+            && (type === 0xc0 || (type === 0xb0 && (a === 0 || a === 32)))) return;
+        if (type === 0xb0 && ((part.volumeEnabled === false && (a === 7 || a === 39))
+                || (part.panEnabled === false && (a === 10 || a === 42)))) return;
         if (type !== 0x90 || !b || part.enabled) this.api.synth_event(index, type, a, b);
     }
 
@@ -187,6 +202,8 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         for (const [index, part] of this.parts.entries()) {
             this.api.synth_reset(index);
             part.midiProgram = part.bankMsb = part.bankLsb = 0;
+            part.midiVolume = 127;
+            part.midiPan = 64;
             if (part.instrumentChoice) this.applyProgram(index);
         }
         if (frame) for (const event of this.loop.chase) {
@@ -255,8 +272,9 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     let l = 0, r = 0, chorus = 0, room = 0;
                     for (let i = 0; i < this.parts.length; i++) {
                         const p = this.parts[i];
-                        p.gain += ((p.enabled ? p.volume : 0) - p.gain) * 0.01;
-                        p.balance += (p.pan - p.balance) * 0.01;
+                        const volume = p.volumeEnabled === false ? 1 : p.volume;
+                        p.gain += ((p.enabled ? volume : 0) - p.gain) * 0.01;
+                        p.balance += ((p.panEnabled === false ? 0 : p.pan) - p.balance) * 0.01;
                         const a = this.pcm[pointer + i * 256 + f * 2];
                         const b = this.pcm[pointer + i * 256 + f * 2 + 1];
                         // Stereo panning preserves the original stereo image at center.

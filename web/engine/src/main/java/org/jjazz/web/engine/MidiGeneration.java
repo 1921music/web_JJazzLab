@@ -137,6 +137,7 @@ final class MidiGeneration
             }
         }
         boolean importedMixApplied = editableMix && mixInput.length > 0 && SongMix.apply(mix, mixInput);
+        if (importedMixApplied) mix = SongMix.withSavedChannels(mix, mixInput);
         var builder = new SongSequenceBuilder(SongContextFactory.getDefault().of(song, mix));
         var result = builder.buildAll(true);
         var rhythmPhrases = new Phrase[16];

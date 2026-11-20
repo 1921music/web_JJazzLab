@@ -208,7 +208,7 @@ const DesktopSongFiles = (() => {
                 mute: attr(mix, "spMute") === "true", instrumentEnabled: attr(mix, "spInsEnabled") !== "false",
                 volume: number(attr(values, "spVolume"), "音量", 0, 127),
                 pan: number(content(values, "spPanoramic"), "パン", 0, 127),
-                transpose: number(attr(values, "spTransposition"), "移調", -48, 48),
+                transpose: number(attr(values, "spTransposition"), "移調", -36, 36),
                 velocityShift: number(attr(values, "spVelocityShift"), "ベロシティ補正", -64, 64),
                 reverb: number(content(values, "spReverb"), "リバーブ", 0, 127),
                 chorus: number(content(values, "spChorus"), "コーラス", 0, 127),
@@ -280,7 +280,8 @@ const DesktopSongFiles = (() => {
                 .filter(([id]) => playableParameters.has(id))
                 .map(([id, value]) => `${id}\t${value}`).join("\n")),
             song.userTracks.map(track => track.name), song.userTracks.map(track => track.phrase),
-            mix.map(track => [track.rhythmId, track.name, track.mute, ...mixValues.map(key => track[key])].join("\t"))];
+            mix.map(track => [track.rhythmId, track.name, track.mute, ...mixValues.map(key => track[key]),
+                track.sourceChannel ?? track.channel].join("\t"))];
     }
 
     function multiStyleEngineArgs(song, styles, sources, mix) {
