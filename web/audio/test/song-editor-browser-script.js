@@ -2113,6 +2113,22 @@ AbM7 | G7 Cm7 |
                 "The imported three-chorus arrangement did not generate accompaniment");
             report.bandInABox = true;
         }
+        {
+            const asScore = sounds => new File([`<score-partwise><part id="p1">${sounds.map((sound, index) =>
+                `<measure number="${index + 1}"><harmony><root><root-step>${"CDEFG"[index]}</root-step></root><kind>major</kind></harmony>
+                ${sound ? `<direction><sound ${sound}/></direction>` : ""}</measure>`).join("")}</part></score-partwise>`], "navigation.musicxml");
+            const order = project => project.parts.flatMap(part => {
+                const from = project.sections[part.section].bar, to = project.sections[part.section + 1]?.bar ?? project.bars;
+                return Array.from({ length: to - from }, (_, index) => from + index);
+            }).join();
+            const dalSegno = (await editor.readSongFiles([asScore(["", 'segno="S"', 'tocoda="C"', 'dalsegno="S"', 'coda="C"'])])).song;
+            const daCapo = (await editor.readSongFiles([asScore(["", 'fine="yes"', "", 'dacapo="yes"'])])).song;
+            check(order(dalSegno) === "0,1,2,3,1,2,4" && order(daCapo) === "0,1,2,3,0,1",
+                "MusicXML did not follow the named Segno and Coda or did not stop at Fine after D.C.");
+            const roundTrip = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(dalSegno));
+            check(order(roundTrip) === order(dalSegno), "Saving as .sng lost the MusicXML navigation order");
+            report.musicXmlNavigation = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

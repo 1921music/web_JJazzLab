@@ -68,12 +68,21 @@ function musicXmlPlaybackOrder(bars) {
             nextBeginning = index + 1;
         }
     }
-    const counters = new Map(), ordered = [];
+    const counters = new Map(), ordered = [], navigate = musicXmlNavigation(bars);
     let pass = 1, cursor = 0, steps = 0;
     while (cursor < bars.length) {
         if (++steps > 8192) throw new Error(t("MusicXMLの反復が多すぎます。", "The MusicXML contains too many repeats."));
         const measure = bars[cursor];
-        if (!measure.ending || measure.ending.has(pass)) ordered.push(cursor);
+        if (!measure.ending || measure.ending.has(pass)) {
+            ordered.push(cursor);
+            const jump = navigate(cursor);
+            if (jump) {
+                counters.clear();
+                pass = 1;
+                cursor = jump.bar;
+                continue;
+            }
+        }
         const repeat = ends.get(cursor);
         if (repeat) {
             const count = (counters.get(cursor) ?? 0) + 1;
@@ -117,7 +126,7 @@ function readMusicXml(text, filename, rhythmForMeter, canonicalize) {
         const compound = /_EIGHT$/u.test(meter);
         let cursor = 0, repeatStart = false, repeatEnd = 0;
         let endingStops = false;
-        const local = new Map();
+        const local = new Map(), navigation = [];
         for (const node of measure.children) {
             const duration = Number(musicXmlText(node, "duration")) || 0;
             switch (node.localName) {
@@ -136,6 +145,10 @@ function readMusicXml(text, filename, rhythmForMeter, canonicalize) {
                 case "direction":
                 case "sound": {
                     const sound = node.localName === "sound" ? node : musicXmlChild(node, "sound");
+                    for (const mark of readMusicXmlNavigation(node, sound)) {
+                        navigation.push(mark);
+                        cuts.add(mark.type === "segno" || mark.type === "coda" ? bar : bar + 1);
+                    }
                     const metronome = musicXmlChild(musicXmlChild(node, "direction-type"), "metronome");
                     const quarterLength = { eighth: .5, quarter: 1, half: 2, whole: 4 }[musicXmlText(metronome, "beat-unit")] ?? 1;
                     const bpm = Number(sound?.getAttribute("tempo")) || Number(musicXmlText(metronome, "per-minute")) * quarterLength
@@ -160,7 +173,7 @@ function readMusicXml(text, filename, rhythmForMeter, canonicalize) {
                 }
             }
         }
-        bars.push({ meter, repeatStart, repeatEnd, ending });
+        bars.push({ meter, repeatStart, repeatEnd, ending, navigation });
         if (endingStops) ending = undefined;
         chords.push(...local.values());
     }

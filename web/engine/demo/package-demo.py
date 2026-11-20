@@ -123,6 +123,7 @@ def package(engine_dir, output):
     piano_roll = (DEMO / "piano-roll.js").read_text(encoding="utf-8")
     piano_score = (DEMO / "piano-score.js").read_text(encoding="utf-8")
     music_xml = (DEMO / "musicxml.js").read_text(encoding="utf-8")
+    music_xml_navigation = (DEMO / "musicxml-navigation.js").read_text(encoding="utf-8")
     archive = (DEMO / "style-archive.js").read_text(encoding="utf-8")
     rhythm_library = (DEMO / "rhythm-library.js").read_text(encoding="utf-8")
     click_settings = (DEMO / "click-settings.js").read_text(encoding="utf-8")
@@ -155,7 +156,7 @@ def package(engine_dir, output):
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
                             "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_tabs, piano_score, piano_roll, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_tabs, piano_score, piano_roll, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:
