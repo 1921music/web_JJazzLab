@@ -79,6 +79,24 @@
         compact.click();
         check(editor.parts.classList.contains("compact-view"), "Compact view did not switch");
         compact.click();
+        const variation = index => document.querySelector(`input[list="part-${index}-rpVariationID"]`);
+        const context = action => document.querySelector(`#parameter-context [data-action="${action}"]`);
+        const firstVariation = variation(0).value;
+        variation(0).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        context("next").click();
+        check(variation(0).value !== firstVariation, "Next rhythm parameter value did not apply");
+        variation(0).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        context("copy").click();
+        variation(1).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        context("paste").click();
+        check(variation(1).value === variation(0).value, "Pasting the variation to another song part did not apply");
+        variation(0).dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        context("reset").click();
+        check(variation(0).value === firstVariation && !Object.hasOwn(editor.project.parts[0].parameters, "rpVariationID"),
+            "Reset did not return the variation to the rhythm default");
+        editor.undoButton.click();
+        editor.undoButton.click();
+        editor.undoButton.click();
         const part = editor.parts.firstElementChild;
         part.dispatchEvent(new MouseEvent("contextmenu"));
         check(!editor.partMenu.hidden, "Song part context menu did not open");
@@ -90,6 +108,18 @@
         editor.contextMenu.querySelector('[data-action="annotation"]').click();
         editor.annotationField.value = "Play softly";
         document.querySelector("#bar-editor-form").requestSubmit();
+        check(editor.grid.querySelector(".bar-annotation")?.textContent === "Play softly",
+            "The first annotation was not made visible");
+        const annotationLines = document.querySelector("#bar-annotation-lines");
+        annotationLines.value = "3";
+        annotationLines.dispatchEvent(new Event("change"));
+        document.querySelector("#show-bar-annotations").click();
+        const annotationView = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project)).clientProperties;
+        check(editor.grid.querySelector(".bar-annotation-marker")?.title === "Play softly"
+            && annotationView.PropBarAnnotationsVisible === "false" && annotationView.PropBarAnnotationsNbLines === "3",
+            "Annotation markers or native view settings were not saved");
+        editor.undoButton.click();
+        editor.undoButton.click();
         editor.grid.children[1].click();
         editor.barAction("restart");
         const annotated = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
@@ -112,8 +142,54 @@
         check(song.barTimes.length === 11, "AABA with 3-bar A and 1-bar B must produce ten bars");
         check(editor.project.chords[1].beat === 2, "Editing the arrangement lost the second chord");
         check(editor.renderedMix.length > 0, "New song does not have a writable mix");
+        const testAnnotation = editor.project.annotations[0];
+        const originalAnnotation = testAnnotation.text;
+        testAnnotation.text = "Always\n# Verse one\n# Verse two";
+        document.querySelector("#toggle-reader").click();
+        updateReader(1, 0);
+        check(!reader.hidden && readerCurrent.textContent === "Cmaj7" && readerNext.textContent === "G7"
+            && readerAnnotation.textContent === "Always\nVerse one", "Easy Reader did not display the current and next chord");
+        updateReader(4, 0);
+        check(readerAnnotation.textContent === "Always\nVerse two", "Easy Reader did not switch lyrics on a repeated section");
+        document.querySelector("#close-reader").click();
+        testAnnotation.text = originalAnnotation;
+        editor.selectBar(1);
+        editor.selectBar(3, true);
+        document.querySelector("#create-practice-song").click();
+        document.querySelector("#practice-start").value = "60";
+        document.querySelector("#practice-end").value = "120";
+        document.querySelector("#practice-steps").value = "3";
+        const previousDownload = downloadSongFile;
+        let practice;
+        try {
+            downloadSongFile = (_name, data) => { practice = JSON.parse(data).song; };
+            document.querySelector("#practice-song-form").requestSubmit();
+        } finally { downloadSongFile = previousDownload; }
+        check(practice?.bars === 3 && practice.sections[1].bar === 2
+            && practice.parts.map(part => part.parameters.rpTempoID).join() === "50,50,75,75,100,100"
+            && editor.project.bars === 4, "Practice song did not preserve the source and repeat the selection at stepped tempos");
+        const practiceStyles = [{ id: "jjSwing-ID", name: "jjSwing", bytes: new Int8Array() }];
+        const practiceMidi = engine.exports.generateSongMidiWithChordRendering(
+            ...DesktopSongFiles.multiStyleEngineArgs(practice, practiceStyles, Array(practice.parts.length).fill(0), []));
+        const practiceBeats = DesktopSongFiles.barBeats(practice);
+        const practiceTimeline = parseMidi(practiceMidi, practiceBeats.length, [], practiceBeats);
+        for (const [index, expected] of [[3, 12], [6, 20], [9, 26]]) {
+            check(Math.abs(practiceTimeline.barTimes[index] - expected) < 0.015,
+                `Practice excerpt tempo ramp did not reach the expected time: ${practiceTimeline.barTimes[index]} vs ${expected}`);
+        }
+        editor.selectBar(0);
         const customBass = editor.renderedMix.find(track => /bass/iu.test(track.name));
         check(customBass, "The rhythm does not expose a bass voice for the custom phrase test");
+        document.querySelector("[data-part-mute]").click();
+        const mute = [...document.querySelectorAll("#part-mute-tracks input")].find(field => field.value === customBass.name);
+        check(mute, "The bass voice did not appear in song part mute");
+        mute.checked = true;
+        document.querySelector("#part-mute-form").requestSubmit();
+        await generate();
+        const bassNotes = song.events.filter(event => event.type === 0x90 && event.b && song.parts[event.part].name === customBass.name);
+        check(bassNotes.length && bassNotes.every(note => note.seconds >= song.barTimes[3] - 1e-6),
+            "Song part mute did not silence just the chosen song part");
+        editor.undoButton.click();
         const customPhrase = `${customBass.name}%[0|95,61,0.5:0.5]`;
         editor.project.parts[0].parameters.RP_SYS_CustomPhraseId = customPhrase;
         editor.changed();
@@ -150,6 +226,15 @@
         check(loopStart.value === "5" && loopEnd.value === "6", "Sheet selection did not use the second A");
         editor.grid.lastElementChild.dispatchEvent(new MouseEvent("click", { shiftKey: true }));
         check(loopStart.value === "5" && loopEnd.value === "7", "Range selection did not span two sections");
+        const startSelection = editor.onPlay;
+        try {
+            editor.onPlay = () => {};
+            editor.grid.children[1].click();
+            editor.grid.children[1].dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", ctrlKey: true, bubbles: true }));
+            check(loopStart.value === "5" && loopEnd.value === "10", "Play from here did not include the remainder of the song");
+            editor.grid.children[1].dispatchEvent(new KeyboardEvent("keydown", { code: "Space", key: " ", ctrlKey: true, shiftKey: true, bubbles: true }));
+            check(loopStart.value === "5" && loopEnd.value === "5", "Play selection did not restrict a one-bar selection");
+        } finally { editor.onPlay = startSelection; }
         const mixerPanel = document.querySelector("#mixer");
         const mixerToggle = document.querySelector("#toggle-mixer");
         mixerToggle.click();

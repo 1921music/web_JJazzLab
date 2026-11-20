@@ -195,7 +195,7 @@ button:disabled { opacity: .5; cursor: default; }
 .score-bar {
     position: relative;
     min-width: 0;
-    min-height: 5.3rem;
+    min-height: calc(5.3rem + var(--annotation-extra-height, 0rem));
     overflow: hidden;
     color: #171715;
     background: #eeeae1;
@@ -249,7 +249,9 @@ button:disabled { opacity: .5; cursor: default; }
     font-size: .67rem;
     font-weight: 750;
 }
-.bar-annotation { position: absolute; left: .5rem; right: .65rem; bottom: 1.65rem; color: #754c33; font-size: .75rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.bar-annotation { position: absolute; left: .5rem; right: .65rem; bottom: 1.65rem; color: #754c33; font-size: .75rem; line-height: .9rem; max-height: calc(var(--annotation-lines, 1) * .9rem); white-space: pre-wrap; overflow: hidden; overflow-wrap: anywhere; }
+.bar-annotation-marker { position: absolute; right: .35rem; bottom: 1.7rem; width: .55rem; height: .63rem; border: 1px solid #70531d; border-radius: 1px; background: #fadc79; }
+#bar-annotation-lines { width: 3.5rem; }
 .restart-marker { position: absolute; color: #7a3726; font-weight: 750; bottom: .77rem; right: .3rem; font-size: .8rem; }
 .arrangement-heading { min-height: 2.55rem; justify-content: space-between; }
 .arrangement-heading h3 { margin-inline-end: auto; }
@@ -377,7 +379,7 @@ summary { cursor: pointer; }
 footer { grid-area: footer; padding: .6rem .75rem; color: var(--muted); border-top: 1px solid var(--border); }
 footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; font-size: .85rem; }
 
-#bar-editor, #channel-editor, #part-editor, #song-memo {
+#bar-editor, #channel-editor, #part-editor, #song-memo, #part-mute-editor, #practice-song {
     width: min(30rem, calc(100% - 2rem));
     padding: 1rem;
     border: 1px solid #747a81;
@@ -385,8 +387,8 @@ footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; 
     background: var(--chrome);
     color: inherit;
 }
-#bar-editor::backdrop, #channel-editor::backdrop, #part-editor::backdrop, #song-memo::backdrop { background: #10131780; }
-#bar-editor-form, #channel-editor-form, #channel-effects, #part-editor-form, #bar-section-field, #song-memo-form { display: grid; gap: .65rem; }
+#bar-editor::backdrop, #channel-editor::backdrop, #part-editor::backdrop, #song-memo::backdrop, #part-mute-editor::backdrop, #practice-song::backdrop { background: #10131780; }
+#bar-editor-form, #channel-editor-form, #channel-effects, #part-editor-form, #bar-section-field, #song-memo-form, #part-mute-form, #part-mute-tracks, #practice-song-form { display: grid; gap: .65rem; }
 #song-memo-text { width: 100%; resize: vertical; }
 #song-memo-links { overflow-wrap: anywhere; }
 #chord-interpretation:not([hidden]) { display: grid; gap: .5rem; }
@@ -406,6 +408,15 @@ footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; 
     border: 1px solid #777e86;
     box-shadow: 0 4px 14px #0007;
 }
+
+.reader-heading { display: flex; align-items: center; gap: 1rem; }
+.reader-heading h2, #reader-annotation { margin: 0; }
+.reader-heading button { margin-inline-start: auto; }
+.reader-chords { display: grid; grid-template-columns: minmax(0, 2fr) minmax(0, 1fr); gap: 1rem; margin-block: .75rem; }
+.reader-chords > div { display: grid; gap: .25rem; }
+.reader-chords strong { font-size: clamp(1.8rem, 5vw, 4.5rem); overflow-wrap: anywhere; }
+.reader-chords #reader-next { font-size: clamp(1.4rem, 4vw, 3.3rem); }
+#reader-annotation { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 1.2rem; }
 .bar-context button { display: flex; justify-content: space-between; align-items: center; gap: .7rem; color: inherit; background: transparent; border-color: transparent; text-align: left; }
 .bar-context button:hover, .bar-context button:focus-visible { background: #4a4e54; }
 .bar-context kbd { font-size: .8em; color: var(--muted); }

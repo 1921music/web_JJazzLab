@@ -96,6 +96,17 @@ test("one-bar and automatic count-in respect the starting meter and tempo", asyn
     }
 });
 
+test("play selection stops at its end with looping disabled", async () => {
+    const { processor: p, calls, render } = createProcessor();
+    await p.command({ type: "song", song: song([event(.064, 0x90, 60, 100), event(.192, 0x90, 61, 100)]),
+        loop: { enabled: false, start: 0, end: .128 } });
+    await p.command({ type: "play", startFromSelection: true, stopAtEnd: true });
+    render(3);
+    assert.equal(p.playing, false);
+    assert.ok(calls.some(call => call[2] === 0x90 && call[3] === 60));
+    assert.ok(!calls.some(call => call[2] === 0x90 && call[3] === 61));
+});
+
 test("live range changes apply at the old boundary, then use the new range", async () => {
     const { processor: p, render } = createProcessor();
     await p.command({ type: "song", song: song([]), loop: { enabled: true, start: 0, end: .256 } });

@@ -4,6 +4,28 @@ const labels = new Map(`
 メインメニュー|Main menu
 ファイル|File
 編集|Edit
+選択範囲のみ再生|Play selected bars
+選択区間のみ再生|Play selected song part
+小節メモを表示|Show bar annotations
+メモの行数|Annotation lines
+選択小節から練習曲を作成…|Create practice song from selected bars…
+練習曲を作成|Create practice song
+開始テンポ（BPM）|Starting tempo (BPM)
+終了テンポ（BPM）|Ending tempo (BPM)
+段階数|Number of steps
+練習曲を保存|Save practice song
+練習ビュー|Easy Reader
+現在のコード|Current chord
+次のコード|Next chord
+閉じる|Close
+区間のミュート|Song part mute
+ミュートなし|No tracks muted
+区間パラメーターの操作|Song part parameter actions
+値をコピー|Copy value
+値を貼り付け|Paste value
+既定値に戻す|Reset to default
+前の値|Previous value
+次の値|Next value
 選択小節を削除|Delete selected bars
 コードの発音|Chord interpretation
 曲のメモ|Song memo

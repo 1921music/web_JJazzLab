@@ -27,6 +27,8 @@
                 <details><summary>ツール</summary><div>
                     <button id="show-generation-controls" type="button">伴奏設定…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
+                    <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
+                    <button id="create-practice-song" type="button">選択小節から練習曲を作成…</button>
                     <button data-command="quick-mode" type="button">簡易入力</button>
                     <label class="language-picker">言語 <select id="ui-language" aria-label="画面の言語"><option value="ja">日本語</option><option value="en">English</option></select></label>
                 </div></details>
@@ -89,6 +91,18 @@
             <div class="playback-status"><p id="status" role="status"></p><p id="play-status" role="status"></p><p id="loop-status" role="status"></p>
                 <a id="download" hidden>MIDI（GM）</a></div>
         </section>
+        <section id="easy-reader" class="panel" aria-labelledby="easy-reader-title" hidden>
+            <div class="reader-heading">
+                <h2 id="easy-reader-title">練習ビュー</h2>
+                <span id="reader-location"></span>
+                <button id="close-reader" class="secondary" type="button">閉じる</button>
+            </div>
+            <div class="reader-chords">
+                <div><span>現在のコード</span><strong id="reader-current">—</strong></div>
+                <div><span>次のコード</span><strong id="reader-next">—</strong></div>
+            </div>
+            <p id="reader-annotation" hidden></p>
+        </section>
         <section id="song-editor" class="panel" aria-labelledby="song-editor-title">
             <p id="project-status" role="status"></p>
             <div id="project-editor" hidden>
@@ -108,6 +122,8 @@
                     <label for="project-meter">拍子</label>
                     <select id="project-meter"></select>
                     <label class="zoom-control">1段の小節数 <input id="sheet-columns" type="range" min="2" max="8" value="4" aria-label="1段の小節数"></label>
+                    <button id="show-bar-annotations" type="button" class="secondary" aria-pressed="false">小節メモを表示</button>
+                    <label class="zoom-control">メモの行数 <input id="bar-annotation-lines" type="number" min="1" max="6" value="1"></label>
                     <output id="sheet-selection" aria-live="polite"></output>
                 </div>
                 <div class="score-scroll">
@@ -292,6 +308,20 @@
             </div>
         </form>
     </dialog>
+    <dialog id="practice-song" aria-labelledby="practice-song-title">
+        <form id="practice-song-form" method="dialog">
+            <h2 id="practice-song-title">練習曲を作成</h2>
+            <p id="practice-song-range"></p>
+            <label class="field">開始テンポ（BPM） <input id="practice-start" type="number" min="30" max="350" required></label>
+            <label class="field">終了テンポ（BPM） <input id="practice-end" type="number" min="30" max="350" required></label>
+            <label class="field">段階数 <input id="practice-steps" type="number" min="2" max="32" value="6" required></label>
+            <p id="practice-error" class="editor-error" role="alert"></p>
+            <div class="dialog-actions">
+                <button id="cancel-practice-song" type="button" class="secondary">キャンセル</button>
+                <button type="submit">練習曲を保存</button>
+            </div>
+        </form>
+    </dialog>
 
     <dialog id="bar-editor" aria-labelledby="bar-editor-title">
         <form id="bar-editor-form" method="dialog">
@@ -345,6 +375,17 @@
             <div class="dialog-actions"><button id="cancel-part-edit" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
         </form>
     </dialog>
+
+    <dialog id="part-mute-editor" aria-labelledby="part-mute-title">
+        <form id="part-mute-form" method="dialog">
+            <h2 id="part-mute-title">区間のミュート</h2>
+            <div id="part-mute-tracks"></div>
+            <div class="dialog-actions">
+                <button id="cancel-part-mute" class="secondary" type="button">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
     <dialog id="channel-editor" aria-labelledby="channel-editor-title">
         <form id="channel-editor-form" method="dialog">
             <h2 id="channel-editor-title"></h2>
@@ -368,13 +409,23 @@
         <button type="button" data-action="remove-bars">選択小節を削除</button>
         <button type="button" data-action="end">最終小節にする</button>
         <button type="button" data-action="restart" aria-pressed="false">ループの折り返し位置にする</button>
+        <button type="button" data-action="practice">選択小節から練習曲を作成…</button>
         <button type="button" data-action="play">ここから再生 <kbd>Ctrl+Space</kbd></button>
+        <button type="button" data-action="play-selection">選択範囲のみ再生 <kbd>Ctrl+Shift+Space</kbd></button>
     </div>
     <div id="part-context" class="bar-context" role="group" aria-label="曲構成の操作" hidden>
         <button type="button" data-action="edit">演奏区間を編集</button>
         <button type="button" data-action="duplicate">複製</button>
         <button type="button" data-action="remove">削除</button>
         <button type="button" data-action="play">ここから再生</button>
+        <button type="button" data-action="play-selection">選択区間のみ再生</button>
+    </div>
+    <div id="parameter-context" class="bar-context" role="group" aria-label="区間パラメーターの操作" hidden>
+        <button type="button" data-action="copy">値をコピー</button>
+        <button type="button" data-action="paste">値を貼り付け</button>
+        <button type="button" data-action="reset">既定値に戻す</button>
+        <button type="button" data-action="previous">前の値</button>
+        <button type="button" data-action="next">次の値</button>
     </div>
     <div id="mixer-context" class="bar-context" role="group" aria-label="チャンネル設定" hidden>
         <button type="button" data-action="settings">チャンネル設定…</button>

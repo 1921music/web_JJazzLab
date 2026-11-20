@@ -114,6 +114,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     this.effects.clear();
                     const start = this.loop.enabled || message.startFromSelection ? this.loop.start : 0;
                     this.seek(start);
+                    this.playbackEnd = message.stopAtEnd ? this.loop.end : this.duration;
                     this.countFrames = 0;
                     if (message.precount) {
                         const end = this.beats.find(beat => beat.frame > start && beat.beat === 1)?.frame ?? this.duration;
@@ -229,17 +230,17 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 if (!this.countFrames) this.reportPosition();
             }
             while (offset < left.length && this.playing) {
-                let boundary = this.loop.enabled ? this.loop.end : this.duration;
+                let boundary = this.loop.enabled ? this.loop.end : this.playbackEnd;
                 if (this.frame >= boundary) {
                     if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                     if (this.loop.enabled) this.seek(this.loop.restart);
-                    else if (this.frame >= this.duration) {
+                    else if (this.frame >= this.playbackEnd) {
                         this.playing = false;
                         for (let i = 0; i < this.parts.length; i++) this.api.synth_reset(i);
                         this.reportPosition();
                         break;
                     }
-                    boundary = this.loop.enabled ? this.loop.end : this.duration;
+                    boundary = this.loop.enabled ? this.loop.end : this.playbackEnd;
                 }
                 while (this.index < this.events.length && this.events[this.index].frame <= this.frame) {
                     this.event(this.events[this.index++]);

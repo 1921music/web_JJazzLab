@@ -81,6 +81,7 @@ class SongEditor {
         this.barError = document.querySelector("#bar-editor-error");
         this.contextMenu = document.querySelector("#bar-context");
         this.partMenu = document.querySelector("#part-context");
+        this.parameterMenu = document.querySelector("#parameter-context");
         this.partDialog = document.querySelector("#part-editor");
         this.sectionMeter = document.querySelector("#edit-section-meter");
         this.sectionMeter.replaceChildren(...Object.entries(DesktopSongFiles.meters).map(([id, [name]]) => new Option(name, id)));
@@ -107,17 +108,19 @@ class SongEditor {
             if (action === "edit") this.openPartEditor(index);
             if (action === "duplicate") this.duplicatePart(index);
             if (action === "remove") this.removePart(index);
-            if (action === "play") { this.selectPart(index); this.onPlay(); }
+            if (action === "play" || action === "play-selection") this.playPart(index, action === "play");
         };
+        const popupMenus = [this.contextMenu, this.partMenu, this.parameterMenu];
         document.addEventListener("pointerdown", event => {
-            if (!this.contextMenu.contains(event.target)) this.contextMenu.hidden = true;
-            if (!this.partMenu.contains(event.target)) this.partMenu.hidden = true;
+            for (const menu of popupMenus) if (!menu.contains(event.target)) menu.hidden = true;
         });
-        for (const menu of [this.contextMenu, this.partMenu]) menu.onkeydown = event => {
+        for (const menu of popupMenus) menu.onkeydown = event => {
             const buttons = [...menu.querySelectorAll("button:not(:disabled):not([hidden])")];
             if (event.key === "Escape") {
                 event.preventDefault(); menu.hidden = true;
-                (menu === this.contextMenu ? this.grid.children[this.selectedBar] : this.parts.children[this.selectedPart]?.querySelector(".part-name-button"))?.focus();
+                const returnTo = menu === this.parameterMenu ? this.parameterField
+                    : menu === this.contextMenu ? this.grid.children[this.selectedBar] : this.parts.children[this.selectedPart]?.querySelector(".part-name-button");
+                returnTo?.focus();
             } else if (event.key === "ArrowDown" || event.key === "ArrowUp") {
                 event.preventDefault();
                 const direction = event.key === "ArrowDown" ? 1 : -1;
@@ -155,6 +158,15 @@ class SongEditor {
         document.querySelector("#save-project").onclick = () => this.save();
         this.exportButton.onclick = () => this.onExport?.();
         document.querySelector("#sheet-columns").oninput = event => this.grid.style.setProperty("--sheet-columns", event.target.value);
+        this.showAnnotations = document.querySelector("#show-bar-annotations");
+        this.annotationLines = document.querySelector("#bar-annotation-lines");
+        this.showAnnotations.onclick = () => this.setSheetProperty("PropBarAnnotationsVisible",
+            String(this.showAnnotations.getAttribute("aria-pressed") !== "true"));
+        this.annotationLines.onchange = () => {
+            if (this.annotationLines.value && this.annotationLines.validity.valid) {
+                this.setSheetProperty("PropBarAnnotationsNbLines", this.annotationLines.value);
+            } else this.render();
+        };
         const compact = document.querySelector("#structure-compact");
         const zoom = document.querySelector("#structure-zoom");
         compact.onclick = () => compact.setAttribute("aria-pressed", String(this.parts.classList.toggle("compact-view")));
@@ -163,6 +175,7 @@ class SongEditor {
             this.parts.style.setProperty("--structure-zoom", zoom.valueAsNumber / 100);
         };
         document.querySelector("#structure-fit").onclick = () => this.parts.classList.toggle("fit-view");
+        document.querySelector("#create-practice-song").onclick = () => this.openPracticeSong();
     }
 
     notify(message = "", error = false) {
@@ -190,8 +203,14 @@ class SongEditor {
     }
 
     captureEdit() {
-        const { bars, sections, chords, parts, annotations, comments, loopRestartBar, userTracks } = this.project;
-        return structuredClone({ bars, sections, chords, parts, annotations, comments, loopRestartBar, userTracks });
+        const { bars, sections, chords, parts, annotations, comments, clientProperties, loopRestartBar, userTracks } = this.project;
+        return structuredClone({ bars, sections, chords, parts, annotations, comments, clientProperties, loopRestartBar, userTracks });
+    }
+
+    setSheetProperty(key, value) {
+        this.rememberEdit(this.captureEdit());
+        this.project.clientProperties = { ...this.project.clientProperties, [key]: value };
+        this.render();
     }
 
     rememberEdit(before) {
@@ -284,7 +303,7 @@ class SongEditor {
         });
     }
 
-    chooseBar(bar, selectedPart = null, throughBar) {
+    chooseBar(bar, selectedPart = null, throughBar, toEnd = false) {
         const occurrences = this.partRanges();
         const contains = (occurrence, value) => value >= occurrence.sheetStart && value < occurrence.sheetEnd;
         const matching = occurrences.filter(occurrence => contains(occurrence, bar));
@@ -292,7 +311,7 @@ class SongEditor {
         if (!first) { this.onChooseBar(null); return; }
         const last = throughBar === undefined ? null : occurrences.find(occurrence => occurrence.index >= first.index && contains(occurrence, throughBar));
         this.onChooseBar({ from: first.from + bar - first.sheetStart,
-            to: last ? last.from + throughBar - last.sheetStart : first.to });
+            to: toEnd ? occurrences.at(-1).to : last ? last.from + throughBar - last.sheetStart : first.to });
     }
 
     selectBar(bar, extend = false, focus = false) {
@@ -309,10 +328,19 @@ class SongEditor {
         return [Math.min(this.selectedBar, this.selectionAnchor), Math.max(this.selectedBar, this.selectionAnchor)];
     }
 
-    playSelection() {
+    playSelection(toEnd = false) {
         const [first, last] = this.selectedRange();
-        this.chooseBar(first, this.selectedPart, first === last ? undefined : last);
-        this.onPlay();
+        this.chooseBar(first, this.selectedPart, last, toEnd);
+        this.onPlay(!toEnd);
+    }
+
+    playPart(index, toEnd) {
+        const ranges = this.partRanges();
+        const range = ranges[index];
+        if (!range) return;
+        this.selectPart(index);
+        this.onChooseBar({ from: range.from, to: toEnd ? ranges.at(-1).to : range.to });
+        this.onPlay(!toEnd);
     }
 
     markSelection() {
@@ -351,8 +379,8 @@ class SongEditor {
             }
             this.selectBar(nextBar, event.shiftKey, true);
         } else if (event.code === "Space" && (event.ctrlKey || event.metaKey)) {
-            event.preventDefault(); this.playSelection();
-        } else if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault(); this.playSelection(!event.shiftKey);
+        } else if (event.key === "Enter" || (event.key === " " && !event.shiftKey)) {
             event.preventDefault(); this.openBarEditor(this.selectedChord ? "chord" : "edit");
         } else if (event.key === "Delete" || ((event.ctrlKey || event.metaKey) && /^(c|v)$/iu.test(event.key))) {
             event.preventDefault();
@@ -367,7 +395,7 @@ class SongEditor {
     }
 
     openContext(x, y, menu = this.contextMenu) {
-        this.contextMenu.hidden = this.partMenu.hidden = true;
+        this.contextMenu.hidden = this.partMenu.hidden = this.parameterMenu.hidden = true;
         if (menu === this.contextMenu) {
             menu.querySelector('[data-action="chord"]').hidden = !this.selectedChord;
             menu.querySelector('[data-action="paste"]').disabled = !this.barClipboard;
@@ -380,10 +408,64 @@ class SongEditor {
         openEditorPopup(menu, x, y);
     }
 
+    openParameterMenu(field, key, options, write, x, y) {
+        this.contextMenu.hidden = this.partMenu.hidden = true;
+        this.parameterField = field;
+        const numbered = field.type === "number";
+        const current = options?.indexOf(field.value) ?? -1;
+        const valueForDirection = direction => numbered
+            ? String(field.valueAsNumber + direction)
+            : options?.[current + direction];
+        const buttons = Object.fromEntries([...this.parameterMenu.querySelectorAll("button")].map(button => [button.dataset.action, button]));
+        buttons.paste.disabled = this.parameterClipboard?.key !== key
+            || Boolean(options?.length && !options.includes(this.parameterClipboard.value));
+        for (const [action, direction] of [["previous", -1], ["next", 1]]) {
+            const value = valueForDirection(direction);
+            buttons[action].disabled = value === undefined || (numbered && (!Number.isFinite(Number(value))
+                || Number(value) < Number(field.min) || Number(value) > Number(field.max)));
+        }
+        this.parameterMenu.onclick = event => {
+            const action = event.target.closest("button")?.dataset.action;
+            if (!action) return;
+            this.parameterMenu.hidden = true;
+            if (action === "copy") this.parameterClipboard = { key, value: field.value };
+            else if (action === "paste") write(this.parameterClipboard.value);
+            else if (action === "reset") write("");
+            else write(valueForDirection(action === "previous" ? -1 : 1));
+            field.focus();
+        };
+        openEditorPopup(this.parameterMenu, x, y);
+    }
+
+    openPartMute(part, choices, selected) {
+        const dialog = document.querySelector("#part-mute-editor");
+        const fields = document.querySelector("#part-mute-tracks");
+        fields.replaceChildren(...choices.map(name => {
+            const label = document.createElement("label");
+            const input = document.createElement("input");
+            input.type = "checkbox";
+            input.value = name;
+            input.checked = selected.includes(name);
+            label.append(input, " ", name);
+            return label;
+        }));
+        document.querySelector("#cancel-part-mute").onclick = () => dialog.close();
+        document.querySelector("#part-mute-form").onsubmit = () => {
+            const muted = [...fields.querySelectorAll(":checked")].map(input => input.value);
+            this.editArrangement(() => {
+                if (muted.length) part.parameters.RpSysMuteID = `[${muted.join(",")}]`;
+                else delete part.parameters.RpSysMuteID;
+            });
+        };
+        dialog.showModal();
+    }
+
     barAction(action) {
         const [first, last] = this.selectedRange();
         switch (action) {
-            case "play": this.playSelection(); break;
+            case "play": this.playSelection(true); break;
+            case "play-selection": this.playSelection(); break;
+            case "practice": this.openPracticeSong(); break;
             case "edit": case "section": case "chord": case "annotation": this.openBarEditor(action); break;
             case "restart":
                 this.editArrangement(() => {
@@ -441,6 +523,66 @@ class SongEditor {
                     this.project.sections.splice(removed);
                 });
         }
+    }
+
+    openPracticeSong() {
+        if (!this.project) return;
+        const [first, last] = this.selectedRange();
+        const dialog = document.querySelector("#practice-song");
+        const start = document.querySelector("#practice-start");
+        const end = document.querySelector("#practice-end");
+        const steps = document.querySelector("#practice-steps");
+        const error = document.querySelector("#practice-error");
+        document.querySelector("#practice-song-range").textContent =
+            t(`コード譜の ${first + 1}–${last + 1} 小節`, `Lead sheet bars ${first + 1}–${last + 1}`);
+        end.value = Math.max(30, Math.min(350, this.project.tempo));
+        start.value = Math.max(30, Number(end.value) - 30);
+        error.textContent = "";
+        document.querySelector("#cancel-practice-song").onclick = () => dialog.close();
+        document.querySelector("#practice-song-form").onsubmit = event => {
+            try {
+                const data = this.createPracticeSong(first, last, start.valueAsNumber, end.valueAsNumber, steps.valueAsNumber);
+                downloadSongFile(`${this.fileStem()}-${t("練習", "practice")}.jjazzweb`, JSON.stringify(data), "application/json");
+            } catch (failure) {
+                event.preventDefault();
+                error.textContent = failure.message;
+            }
+        };
+        dialog.showModal();
+    }
+
+    createPracticeSong(first, last, start, end, steps) {
+        const project = this.project;
+        if (Math.max(start, end) > 4 * Math.min(start, end)) {
+            throw new Error(t("開始テンポと終了テンポの比を4倍以内にしてください。", "The faster tempo can be at most four times the slower tempo."));
+        }
+        const initial = project.sections.findLastIndex(section => section.bar <= first);
+        const sections = project.sections.slice(initial).filter(section => section.bar <= last)
+            .map(section => ({ ...section, bar: Math.max(0, section.bar - first) }));
+        const inRange = item => item.bar >= first && item.bar <= last;
+        const chordByPosition = (a, b) => a.bar - b.bar || a.beat - b.beat;
+        const chords = project.chords.filter(inRange).map(chord => ({ ...chord, bar: chord.bar - first })).sort(chordByPosition);
+        if (chords[0]?.bar !== 0 || chords[0]?.beat !== 0) {
+            const previous = project.chords.filter(chord => chord.bar < first).sort(chordByPosition).at(-1);
+            if (previous) chords.unshift({ ...previous, bar: 0, beat: 0 });
+        }
+        if (!chords.length) throw new Error(t("練習曲に使うコードがありません。", "The practice song has no chords."));
+        const baseParts = sections.map((section, index) => {
+            const part = project.parts.find(candidate => candidate.section === initial + index);
+            if (!part) throw new Error(t(`「${section.name}」は曲構成にありません。`, `“${section.name}” has no song part.`));
+            return { ...part, section: index };
+        });
+        const tempo = start >= end / 2 && start <= end * 2 ? end : Math.round(Math.max(start, end) / 2);
+        const parts = Array.from({ length: steps }, (_, step) => {
+            const bpm = start + (end - start) * step / (steps - 1);
+            return baseParts.map(part => ({ ...part, parameters: { ...part.parameters, rpTempoID: String(Math.round(100 * bpm / tempo)) } }));
+        }).flat();
+        const song = DesktopSongFiles.validateSong({ title: `${project.title} – ${t("練習", "Practice")}`, tempo,
+            bars: last - first + 1, sections, chords, parts, userTracks: [],
+            annotations: (project.annotations ?? []).filter(inRange).map(note => ({ ...note, bar: note.bar - first })) });
+        const rhythms = new Set(parts.map(part => part.styleId));
+        const mix = (this.unresolvedStyleMix ?? this.mix).filter(track => rhythms.has(track.rhythmId));
+        return { version: 1, song, mix, style: this.style };
     }
 
     removeBars(first, last) {
@@ -590,7 +732,12 @@ class SongEditor {
                 const notes = this.project.annotations ?? [];
                 const previous = notes.find(note => note.bar === bar);
                 this.project.annotations = notes.filter(note => note.bar !== bar);
-                if (text) this.project.annotations.push({ ...previous, bar, text });
+                if (text) {
+                    this.project.annotations.push({ ...previous, bar, text });
+                    if (!notes.length) {
+                        this.project.clientProperties = { ...this.project.clientProperties, PropBarAnnotationsVisible: "true" };
+                    }
+                }
             } else if (this.editingSection) this.setSectionName(bar, this.sectionField.value.trim(), this.sectionMeter.value);
             else if (this.editingChord) {
                 const parsed = this.parseBarChords(bar, this.chordField.value);
@@ -763,6 +910,10 @@ class SongEditor {
         name.title = part.name;
         name.ondblclick = () => this.openPartEditor(index);
         name.onkeydown = event => {
+            if (event.code === "Space" && (event.ctrlKey || event.metaKey)) {
+                event.preventDefault();
+                this.playPart(index, !event.shiftKey);
+            }
             if (event.key === "Enter" && !event.ctrlKey) { event.preventDefault(); this.openPartEditor(index); }
             if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
                 event.preventDefault();
@@ -857,16 +1008,44 @@ class SongEditor {
                 field.min = key === "rpIntensityID" ? -10 : 50;
                 field.max = key === "rpIntensityID" ? 10 : 200;
             }
-            field.onchange = () => {
+            const write = value => {
+                field.value = value;
                 if (!field.validity.valid) { field.value = part.parameters[key] ?? fallback; return; }
                 this.rememberEdit(this.captureEdit());
-                if (field.value === "") delete part.parameters[key];
-                else part.parameters[key] = field.value;
+                if (value === "") delete part.parameters[key];
+                else part.parameters[key] = value;
+                field.value = part.parameters[key] ?? fallback;
                 this.changed();
+            };
+            field.onchange = () => write(field.value);
+            field.oncontextmenu = event => {
+                if (field.disabled) return;
+                event.stopPropagation();
+                event.preventDefault();
+                this.openParameterMenu(field, key, options, write, event.clientX, event.clientY);
+            };
+            field.onkeydown = event => {
+                if (event.key !== "ContextMenu" && !(event.key === "F10" && event.shiftKey)) return;
+                event.preventDefault();
+                const bounds = field.getBoundingClientRect();
+                this.openParameterMenu(field, key, options, write, bounds.left, bounds.bottom);
             };
             row.append(title, field);
             item.append(row);
         }
+        const muteRow = document.createElement("div");
+        muteRow.className = "rp-row";
+        const muteTitle = document.createElement("span");
+        muteTitle.textContent = t("区間のミュート");
+        const muted = (part.parameters.RpSysMuteID ?? "[]").slice(1, -1).split(",").filter(Boolean);
+        const matchStyle = track => DesktopSongFiles.sourceStyleId(track.rhythmId) === source;
+        const choices = [...new Set([...(this.unresolvedStyleMix ?? this.mix).filter(matchStyle).map(track => track.name),
+            "UserTrack1", "UserTrack2", "UserTrack3", ...muted])];
+        const muteButton = this.button(muted.join(", ") || t("ミュートなし"), () => this.openPartMute(part, choices, muted));
+        muteButton.dataset.partMute = "";
+        muteButton.setAttribute("aria-label", t(`${index + 1}番目の区間のミュート`, `Mute tracks in song part ${index + 1}`));
+        muteRow.append(muteTitle, muteButton);
+        item.append(muteRow);
         const controls = document.createElement("div");
         controls.className = "part-controls";
         const up = this.button("←", () => this.movePart(index, index - 1)); up.disabled = index === 0;
@@ -894,6 +1073,13 @@ class SongEditor {
         this.meter.options[0].textContent = t("曲中で変化");
         this.meter.value = sections.some(section => section.meter !== sections[0].meter) ? "" : sections[0].meter;
         this.removeBar.disabled = bars < 2 || sections.at(-1).bar === bars - 1;
+        const showAnnotations = this.project.clientProperties?.PropBarAnnotationsVisible === "true";
+        const lines = Math.min(6, Math.max(1, Number.parseInt(this.project.clientProperties?.PropBarAnnotationsNbLines, 10) || 1));
+        this.showAnnotations.setAttribute("aria-pressed", String(showAnnotations));
+        this.annotationLines.value = lines;
+        this.annotationLines.disabled = !showAnnotations;
+        this.grid.style.setProperty("--annotation-lines", lines);
+        this.grid.style.setProperty("--annotation-extra-height", `${showAnnotations ? (lines - 1) * .9 : 0}rem`);
         this.grid.replaceChildren();
         const chordsByBar = Map.groupBy(chords, chord => chord.bar);
         const defaultColors = ["#e7ac83", "#9bb487", "#8bbab5", "#b1a7d0", "#d4c381", "#9cb5d6"];
@@ -995,8 +1181,8 @@ class SongEditor {
             const annotation = this.project.annotations?.find(note => note.bar === bar);
             if (annotation) {
                 const note = document.createElement("span");
-                note.className = "bar-annotation";
-                note.textContent = annotation.text;
+                note.className = showAnnotations ? "bar-annotation" : "bar-annotation-marker";
+                if (showAnnotations) note.textContent = annotation.text;
                 note.title = annotation.text;
                 note.ondblclick = event => { event.stopPropagation(); this.selectBar(bar); this.openBarEditor("annotation"); };
                 cell.append(note);

@@ -136,6 +136,7 @@ let playing = false;
 let paused = false;
 let accompanimentDirty = true;
 let playbackBar = 1;
+let playbackFraction = 0;
 let mixerParts = [];
 const savedMix = new Map();
 const playButton = document.querySelector("#play");
@@ -208,6 +209,8 @@ function updateButtons() {
     structureToggle.disabled = !editor.project;
     document.querySelector("#add-user-track").disabled = !editor.project || generating || starting;
     document.querySelector("#open-song-memo").disabled = !editor.project || generating || starting;
+    document.querySelector("#toggle-reader").disabled = !editor.project;
+    document.querySelector("#create-practice-song").disabled = !editor.project || generating || starting;
     editor.updateUndo();
     editor.undoButton.disabled ||= generating || starting;
     editor.redoButton.disabled ||= generating || starting;
@@ -240,7 +243,9 @@ function updatePosition(position) {
     displayPosition(Math.max(1, bar), beat?.bar === bar ? beat.beat : 1, position.seconds);
     if (editor.project) editor.showPlayingBar((playing || paused) && showPoint.getAttribute("aria-pressed") === "true" ? bar : 0);
     const from = song.barTimes[bar - 1], to = song.barTimes[bar];
-    pianoRoll.position(bar, Math.max(0, Math.min(1, (position.seconds - from) / (to - from))), playing || paused);
+    playbackFraction = Math.max(0, Math.min(1, (position.seconds - from) / (to - from)));
+    pianoRoll.position(bar, playbackFraction, playing || paused);
+    updateReader(bar, playbackFraction);
     updateButtons();
     showPlayStatus(paused ? "一時停止中" : position.counting ? "カウントイン" : playing ? "演奏中" : "停止中");
 }
@@ -543,7 +548,7 @@ function renderMixer() {
     }
 }
 
-async function startPlayback(restart = false) {
+async function startPlayback(restart = false, stopAtEnd = false) {
     if (generating || starting || (playing && !restart)) return;
     const refresh = !song || accompanimentDirty;
     if (refresh && !form.reportValidity()) return;
@@ -556,6 +561,7 @@ async function startPlayback(restart = false) {
         await audio;
         await player.play(song, readLoop(), mixerParts, Number(masterInput.value) / 100, Boolean(editor.project), {
             resume: paused && !restart && !refresh,
+            stopAtEnd,
             click: metronome.getAttribute("aria-pressed") === "true",
             precount: !restart && precount.getAttribute("aria-pressed") === "true" && precountMode.value,
             tempo: tempoInput.valueAsNumber
@@ -731,6 +737,8 @@ function clearPlayback() {
     mixerParts = [];
     player.loadedSong = null;
     displayPosition();
+    playbackFraction = 0;
+    updateReader(1, 0);
     localizedText(loopStatus, "");
     loopStatus.removeAttribute("data-error");
     editor.showPlayingBar(0);
@@ -769,9 +777,9 @@ const editor = new SongEditor((opened, useSavedStyles) => {
         loopEnd.value = range.to;
         loopStart.dispatchEvent(new Event("input", { bubbles: true }));
     }
-}, () => {
+}, stopAtEnd => {
     if (!chosenRange) showStatus("選択した小節は曲構成の演奏順に含まれていません。");
-    else startPlayback(true);
+    else startPlayback(true, stopAtEnd);
 });
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
 const pianoRoll = new PianoRoll(editor, range => {
@@ -782,7 +790,73 @@ const pianoRoll = new PianoRoll(editor, range => {
     }
     startPlayback(true);
 });
-editor.onRender = () => pianoRoll.sync();
+const reader = document.querySelector("#easy-reader");
+const toggleReader = document.querySelector("#toggle-reader");
+const readerLocation = document.querySelector("#reader-location");
+const readerCurrent = document.querySelector("#reader-current");
+const readerNext = document.querySelector("#reader-next");
+const readerAnnotation = document.querySelector("#reader-annotation");
+let readerBars = [], readerChords = [];
+function buildReader() {
+    readerBars = [];
+    readerChords = [];
+    const project = editor.project;
+    if (!project) return;
+    const chordsByBar = Map.groupBy(project.chords, chord => chord.bar);
+    const counts = new Map();
+    for (const range of editor.partRanges()) {
+        const part = project.parts[range.index];
+        const occurrence = counts.get(part.section) ?? 0;
+        counts.set(part.section, occurrence + 1);
+        const beats = DesktopSongFiles.meters[project.sections[part.section].meter][1];
+        for (let i = range.sheetStart; i < range.sheetEnd; i++) {
+            const bar = range.from + i - range.sheetStart;
+            readerBars.push({ name: part.name, beats, occurrence, sheetBar: i });
+            for (const chord of (chordsByBar.get(i) ?? []).sort((a, b) => a.beat - b.beat)) {
+                const name = chord.name.replace(/([A-G])b/gu, "$1♭").replace(/([A-G])#/gu, "$1♯");
+                readerChords.push({ bar, beat: chord.beat, name });
+            }
+        }
+    }
+}
+function updateReader(bar, fraction) {
+    if (reader.hidden) return;
+    const info = readerBars[bar - 1];
+    if (!info) return;
+    const beat = info.beats * fraction;
+    const index = readerChords.findLastIndex(chord => chord.bar < bar || chord.bar === bar && chord.beat <= beat + 1e-6);
+    readerLocation.textContent = t(`${info.name} · ${bar}小節`, `${info.name} · Bar ${bar}`);
+    readerCurrent.textContent = readerChords[index]?.name ?? "—";
+    readerNext.textContent = readerChords[index + 1]?.name ?? "—";
+    const note = editor.project.annotations?.find(note => note.bar === info.sheetBar);
+    const lines = (note?.text ?? "").split("\n").map(line => line.trim()).filter(Boolean);
+    const namedLine = lines.find(line => /^#\w+\s/u.test(line) && line.slice(1).split(/\s/u, 1)[0] === info.name);
+    const numbered = lines.filter(line => /^#(?:\s|$)/u.test(line));
+    const chosen = namedLine ?? (numbered.length ? numbered[info.occurrence % numbered.length] : undefined);
+    readerAnnotation.textContent = lines.flatMap(line => {
+        if (!line.startsWith("#")) return [line];
+        if (line !== chosen) return [];
+        return [line.replace(/^#\w*\s*/u, "")];
+    }).join("\n");
+    readerAnnotation.hidden = !readerAnnotation.textContent;
+}
+function showReader(visible) {
+    reader.hidden = !visible;
+    toggleReader.setAttribute("aria-expanded", String(visible));
+    if (visible) {
+        buildReader();
+        updateReader(playbackBar, playbackFraction);
+    }
+}
+toggleReader.onclick = () => showReader(reader.hidden);
+document.querySelector("#close-reader").onclick = () => { showReader(false); toggleReader.focus(); };
+editor.onRender = () => {
+    pianoRoll.sync();
+    if (!reader.hidden) {
+        buildReader();
+        updateReader(playbackBar, playbackFraction);
+    }
+};
 document.querySelector("#open-piano-roll").onclick = () => pianoRoll.panel.hidden ? pianoRoll.open() : pianoRoll.close();
 document.querySelector("#add-user-track").onclick = () => pianoRoll.addTrack();
 quickMode.addEventListener("click", () => {
@@ -794,6 +868,7 @@ quickMode.addEventListener("click", () => {
     draft = { project: editor.project, mix: editor.unresolvedStyleMix ?? editor.mix, style: editor.style,
         useSavedStyles: rhythmEngine.value === "song" };
     pianoRoll.close();
+    showReader(false);
     editor.project = null;
     activeProject = undefined;
     chosenRange = null;
@@ -903,13 +978,39 @@ document.addEventListener("keydown", event => {
     if (event.key === "Escape") for (const menu of menus) menu.open = false;
     if (event.defaultPrevented || event.target.closest("input, select, textarea, [contenteditable], dialog")) return;
     const primary = event.ctrlKey || event.metaKey;
-    if (primary && event.key.toLowerCase() === "z") {
+    const key = event.key.toLowerCase();
+    if (primary && key === "z") {
         event.preventDefault(); (event.shiftKey ? editor.redoButton : editor.undoButton).click();
-    } else if (primary && event.key.toLowerCase() === "y") {
+    } else if (primary && key === "y") {
         event.preventDefault(); editor.redoButton.click();
+    } else if (event.code === "Space" && !primary && event.shiftKey) {
+        event.preventDefault(); stopButton.click();
     } else if (event.code === "Space" && !primary && !event.target.closest("button, summary, a")) {
         event.preventDefault();
         (playing ? pauseButton : playButton).click();
+    } else if (!primary && !event.altKey) {
+        if (key === "f1" || key === "f2") {
+            event.preventDefault();
+            (key === "f1" ? previousPart : nextPart).click();
+        } else if (key === "f3" && (playing || paused)) {
+            event.preventDefault();
+            if (editor.project) {
+                editor.selectPart(0);
+                editor.chooseBar(0, 0, undefined, true);
+            } else {
+                loopStart.value = 1;
+                loopEnd.value = song.barTimes.length - 1;
+            }
+            startPlayback(true);
+        } else if (key === "l") {
+            event.preventDefault(); toggleLoop.click();
+        } else if (["j", "k", "-", "+", "="].includes(key) && !tempoInput.disabled) {
+            event.preventDefault();
+            const increase = key === "k" || key === "+" || key === "=";
+            const tempo = tempoInput.valueAsNumber || 120;
+            tempoInput.value = Math.max(Number(tempoInput.min), Math.min(Number(tempoInput.max), tempo + (increase ? 1 : -1)));
+            tempoInput.dispatchEvent(new Event("input", { bubbles: true }));
+        }
     }
 });
 document.querySelector("#ui-language").onchange = event => {
