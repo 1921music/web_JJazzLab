@@ -18,6 +18,8 @@ MIDIを取り込む…|Import MIDI…
 コード進行|Chord progression
 イントロを挿入|Insert intro
 エンディングを挿入|Insert ending
+譜面を半長にする|Halve lead-sheet length
+譜面を倍長にする|Double lead-sheet length
 メモの行数|Annotation lines
 曲を閉じる|Close song
 開いている曲|Open songs

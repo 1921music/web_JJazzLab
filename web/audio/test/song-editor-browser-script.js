@@ -1533,6 +1533,31 @@
             check(score.bars === bars && score.sections.length === 1, "Undo did not restore both boundary inserts");
             report.chordProgressionsAndBoundaries = true;
         }
+        {
+            const fixture = DesktopSongFiles.readSong(desktopFixture.africa ?? desktopFixture.legacySongs[1]);
+            if (!desktopFixture.africa) {
+                fixture.sections.push({ name: "Waltz", bar: 4, meter: "THREE_FOUR" });
+                fixture.parts[1].section = 1;
+            }
+            fixture.annotations = [{ bar: 1, text: "First memo" }, { bar: 2, text: "Second memo" }];
+            fixture.loopRestartBar = 3;
+            editor.open(fixture, [], undefined, true);
+            const score = editor.project;
+            const before = structuredClone(score);
+            document.querySelector("#double-score").click();
+            check(score.bars === before.bars * 2 && score.sections.every((section, index) => section.bar === before.sections[index].bar * 2)
+                && score.loopRestartBar === 6 && score.annotations[0].bar === 2, "Doubling did not move sections, notes, and the loop marker");
+            document.querySelector("#halve-score").click();
+            check(score.bars === before.bars && JSON.stringify(score.sections) === JSON.stringify(before.sections)
+                && JSON.stringify(score.parts) === JSON.stringify(before.parts) && JSON.stringify(score.annotations) === JSON.stringify(before.annotations)
+                && score.chords.every((chord, index) => chord.bar === before.chords[index].bar && Math.abs(chord.beat - before.chords[index].beat) < .00001)
+                && score.loopRestartBar === before.loopRestartBar, "Halving a doubled mixed-meter score did not restore its original form");
+            editor.undoButton.click();
+            check(score.bars === before.bars * 2, "Undo did not restore the doubled score");
+            editor.undoButton.click();
+            check(score.bars === before.bars, "Undo did not return to the original score size");
+            report.halveAndDoubleScore = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

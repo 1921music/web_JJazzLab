@@ -119,6 +119,8 @@ class SongEditor {
         this.redoButton.onclick = () => this.restoreEdit(this.redoStack, this.undoStack);
         document.querySelector("#edit-bar").onclick = () => this.openBarEditor();
         document.querySelector("#edit-section").onclick = () => this.openBarEditor("section");
+        document.querySelector("#halve-score").onclick = () => this.resizeScoreTime(.5);
+        document.querySelector("#double-score").onclick = () => this.resizeScoreTime(2);
         document.querySelector("#cancel-bar-edit").onclick = () => this.barDialog.close();
         document.querySelector("#bar-editor-form").onsubmit = (event) => { event.preventDefault(); this.commitBarEdit(); };
         this.barDialog.addEventListener("close", () => this.grid.children[this.selectedBar]?.focus({ preventScroll: true }));
@@ -977,6 +979,52 @@ class SongEditor {
             chords: chord ? [{ ...chord, bar: 0, beat: 0 }] : [], parts: [{ ...part, section: 0, parameters }] })) {
             this.selectBar(bar, false, true);
         }
+    }
+
+    resizeScoreTime(factor) {
+        if (!this.project) return;
+        const project = this.project;
+        const bars = Math.ceil(project.bars * factor);
+        if (bars === project.bars) return;
+        this.editArrangement(() => {
+            if (bars > 1024) throw new Error(t("譜面の上限は1024小節です。", "The lead sheet is limited to 1024 bars."));
+            const barAt = bar => Math.floor(bar * factor);
+            const beatsAt = (sections, bar) => DesktopSongFiles.meters[sections.findLast(section => section.bar <= bar).meter][1];
+            const indexMap = new Map();
+            const sections = [];
+            for (const [index, section] of project.sections.entries()) {
+                const bar = barAt(section.bar);
+                if (sections.at(-1)?.bar === bar) continue;
+                indexMap.set(index, sections.length);
+                sections.push({ ...section, bar });
+            }
+            const parts = project.parts.filter(part => indexMap.has(part.section))
+                .map(part => ({ ...part, section: indexMap.get(part.section) }));
+            if (!parts.length) parts.push({ ...project.parts[0], section: 0, name: sections[0].name });
+            const occupied = new Set();
+            const chords = project.chords.map(chord => {
+                const beats = beatsAt(project.sections, chord.bar);
+                let bar = barAt(chord.bar);
+                let beat = factor === 2 ? chord.beat * 2 : ((chord.bar % 2 ? beats : 0) + chord.beat) / 2;
+                if (factor === 2 && beat >= beats) { bar++; beat -= beats; }
+                beat = Math.fround(beat);
+                const key = `${bar}:${beat}`;
+                if (beat >= beatsAt(sections, bar) || occupied.has(key)) {
+                    throw new Error(t("変換先の拍子でコードが小節からはみ出すか、同じ拍に重なります。",
+                        "The conversion would put chords outside the destination meter or on the same beat."));
+                }
+                occupied.add(key);
+                return { ...chord, bar, beat };
+            });
+            const annotations = new Map();
+            for (const note of project.annotations ?? []) {
+                const bar = barAt(note.bar);
+                const previous = annotations.get(bar);
+                annotations.set(bar, { ...note, bar, text: previous ? `${previous.text}\n${note.text}` : note.text });
+            }
+            Object.assign(project, { bars, sections, parts, chords, annotations: [...annotations.values()],
+                loopRestartBar: project.loopRestartBar === undefined ? undefined : barAt(project.loopRestartBar) });
+        });
     }
 
     chordsForTools() {

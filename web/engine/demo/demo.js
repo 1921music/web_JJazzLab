@@ -246,6 +246,7 @@ function updateButtons() {
 }
 
 function updateMenus() {
+    for (const button of document.querySelectorAll("[data-score-resize]")) button.disabled = !editor.project || generating || starting;
     for (const button of document.querySelectorAll("[data-audio-export]")) button.disabled = generating || starting || exportingAudio;
     for (const button of document.querySelectorAll("[data-command]")) {
         const action = document.getElementById(button.dataset.command);
