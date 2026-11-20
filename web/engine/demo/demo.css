@@ -389,6 +389,7 @@ dialog {
 }
 dialog::backdrop { background: #10131780; }
 dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display: grid; gap: .65rem; }
+#part-batch-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
 #track-overrides-status:empty, #track-override-list:empty { display: none; }
 #track-override-list { margin: 0; padding-inline-start: 1.4rem; }
 #drum-transform-chain > div { display: flex; align-items: center; gap: .3rem; }

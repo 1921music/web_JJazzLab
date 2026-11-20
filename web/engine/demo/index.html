@@ -138,6 +138,7 @@
                 <div class="pane-heading arrangement-heading">
                     <h3 id="structure-title">曲構成</h3>
                     <button id="add-song-part" type="button" class="secondary" aria-label="演奏区間を追加" title="演奏区間を追加">＋</button>
+                    <button id="edit-song-parts" type="button" class="secondary">選択区間を編集…</button>
                     <button id="structure-compact" type="button" class="secondary" aria-pressed="false">コンパクト</button>
                     <label class="zoom-control">横ズーム <input id="structure-zoom" type="range" min="55" max="145" value="100" aria-label="曲構成の横ズーム"></label>
                     <button id="structure-fit" type="button" class="secondary">全体表示</button>
@@ -390,6 +391,16 @@
             <h2 id="part-editor-title">演奏区間</h2>
             <label class="field">区間名 <input id="part-name" required></label>
             <label class="field">リズム <select id="part-rhythm"></select></label>
+            <fieldset id="part-batch-fields" hidden>
+                <legend>区間パラメーター</legend>
+                <label class="field">バリエーション <input data-parameter="rpVariationID"></label>
+                <label class="field">強弱 <input data-parameter="rpIntensityID" data-fallback="0" type="number" min="-10" max="10"></label>
+                <label class="field">テンポ比 <input data-parameter="rpTempoID" data-fallback="100" type="number" min="50" max="200"></label>
+                <label class="field">マーカー <select data-parameter="rpSysMarkerID" data-fallback="theme">
+                    <option value="">—</option><option>theme</option><option>solo</option><option>theme2</option><option>theme3</option>
+                    <option>theme4</option><option>solo2</option><option>solo3</option><option>solo4</option>
+                </select></label>
+            </fieldset>
             <div class="dialog-actions"><button id="cancel-part-edit" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
         </form>
     </dialog>
@@ -533,6 +544,7 @@
     </div>
     <div id="part-context" class="bar-context" role="group" aria-label="曲構成の操作" hidden>
         <button type="button" data-action="edit">演奏区間を編集</button>
+        <button type="button" data-action="remove-rhythm-change">リズム切り替えを解除</button>
         <button type="button" data-action="track-overrides">伴奏トラックの上書き…</button>
         <button type="button" data-action="custom-phrase">区間のカスタムフレーズ…</button>
         <button type="button" data-action="drum-transforms">区間のドラム変形…</button>

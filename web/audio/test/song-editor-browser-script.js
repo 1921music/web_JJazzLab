@@ -86,6 +86,51 @@
         const fourth = document.querySelector("#song-parts > li:nth-child(4) select");
         fourth.value = "0";
         fourth.dispatchEvent(new Event("change"));
+        const selectPartButton = (index, options = {}) => editor.parts.children[index].querySelector(".part-name-button")
+            .dispatchEvent(new MouseEvent("click", { bubbles: true, ...options }));
+        const openPartMenuAt = index => editor.parts.children[index].dispatchEvent(new MouseEvent("contextmenu", { cancelable: true }));
+        const originalParts = JSON.stringify(editor.project.parts);
+        const originalRhythmMode = rhythmEngine.value;
+        const originalPartRange = chosenRange;
+        selectPartButton(1);
+        selectPartButton(2, { shiftKey: true });
+        check(editor.parts.querySelectorAll(".selected-part").length === 2
+            && chosenRange.from === editor.partRanges()[1].from && chosenRange.to === editor.partRanges()[2].to,
+            "Shift did not select a continuous song-part range");
+        document.querySelector("#edit-song-parts").click();
+        document.querySelector("#part-name").value = "Practice";
+        document.querySelector("#part-rhythm").value = bundledStyle + "-ID";
+        document.querySelector('[data-parameter="rpTempoID"]').value = "90";
+        document.querySelector("#part-editor-form").requestSubmit();
+        check(editor.project.parts.slice(1, 3).every(part => part.name === "Practice" && part.styleId === bundledStyle + "-ID"
+            && part.parameters.rpTempoID === "90") && editor.project.parts[0].name !== "Practice",
+            "Batch edits did not reach exactly the selected song parts");
+        selectPartButton(1);
+        openPartMenuAt(1);
+        editor.partMenu.querySelector('[data-action="remove-rhythm-change"]').click();
+        check(editor.project.parts.slice(1, 3).every(part => part.styleId === editor.project.parts[0].styleId),
+            "Removing a rhythm change did not cover the consecutive parts");
+        editor.undoButton.click();
+        editor.undoButton.click();
+        check(JSON.stringify(editor.project.parts) === originalParts, "Undo did not restore the song parts after batch editing");
+        selectPartButton(0);
+        selectPartButton(2, { ctrlKey: true });
+        openPartMenuAt(2);
+        editor.partMenu.querySelector('[data-action="duplicate"]').click();
+        check(editor.project.parts.length === 6 && editor.project.parts[3].section === editor.project.parts[0].section
+            && editor.project.parts[4].section === editor.project.parts[2].section, "Duplicating the selection changed its order");
+        editor.undoButton.click();
+        selectPartButton(0);
+        selectPartButton(2, { ctrlKey: true });
+        openPartMenuAt(2);
+        editor.partMenu.querySelector('[data-action="remove"]').click();
+        check(editor.project.parts.length === 2, "Deleting a disjoint selection did not remove both parts");
+        editor.undoButton.click();
+        rhythmEngine.value = originalRhythmMode;
+        rhythmEngine.dispatchEvent(new Event("change"));
+        chosenRange = originalPartRange;
+        check(JSON.stringify(editor.project.parts) === originalParts, "Undo did not restore the original structure");
+        report.batchSongParts = true;
         check(!song && !playButton.disabled && document.querySelector("#generate").hidden, "Play requires a manual generation step");
         playButton.click();
         while (starting || generating) await new Promise(resolve => setTimeout(resolve, 20));

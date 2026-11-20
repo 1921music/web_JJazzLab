@@ -145,6 +145,9 @@ Solo解除|Clear solo
 コード表示の移調…|Transpose displayed chords…
 表示キー|Display key
 コンサートキー|Concert pitch
+選択区間を編集…|Edit selected song parts…
+区間パラメーター|Song-part parameters
+リズム切り替えを解除|Remove rhythm change
 全音符を表示|Fit all notes
 選択を反転|Invert selection
 音符を試聴|Audition notes

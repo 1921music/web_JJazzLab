@@ -76,6 +76,7 @@ class SongEditor {
         this.onChooseBar = onChooseBar;
         this.onPlay = onPlay;
         this.displayTranspose = 0;
+        this.partSelection = new Set();
         this.grid = document.querySelector("#lead-sheet");
         this.parts = document.querySelector("#song-parts");
         this.title = document.querySelector("#project-title");
@@ -121,8 +122,9 @@ class SongEditor {
             if (action === "track-overrides") void this.openTrackOverrides(index);
             if (action === "drum-transforms") void this.openDrumTransforms(index);
             if (action === "custom-phrase") void this.openCustomPhrases(index);
-            if (action === "duplicate") this.duplicatePart(index);
-            if (action === "remove") this.removePart(index);
+            if (action === "duplicate") this.duplicatePart(index, true);
+            if (action === "remove") this.removePart(index, true);
+            if (action === "remove-rhythm-change") this.removeRhythmChange(index);
             if (action === "play" || action === "play-selection") this.playPart(index, action === "play");
         };
         const popupMenus = [this.contextMenu, this.partMenu, this.parameterMenu];
@@ -158,6 +160,7 @@ class SongEditor {
             this.project.bars = bar;
         });
         document.querySelector("#add-song-part").onclick = () => this.duplicatePart(this.selectedPart ?? this.project.parts.length - 1);
+        document.querySelector("#edit-song-parts").onclick = () => this.openPartEditor(this.selectedPart);
         this.title.oninput = () => { this.project.title = this.title.value; this.changed(); };
         this.meter.onchange = () => {
             this.editArrangement(() => {
@@ -256,6 +259,7 @@ class SongEditor {
         }
         Object.assign(this.project, draft);
         this.selectedPart = null;
+        this.partSelection.clear();
         this.updateUndo();
         this.changed();
         this.render();
@@ -267,6 +271,7 @@ class SongEditor {
         this.unresolvedStyleMix = undefined;
         this.style = style;
         this.selectedPart = null;
+        this.partSelection.clear();
         this.selectedChord = null;
         this.undoStack = [];
         this.redoStack = [];
@@ -440,7 +445,12 @@ class SongEditor {
             const measure = this.grid.children[this.selectedChord.bar];
             [...measure.querySelectorAll(".chord-symbol")].find(symbol => Number(symbol.dataset.beat) === this.selectedChord.beat)?.classList.add("selected-chord");
         }
-        for (const [index, item] of [...this.parts.children].entries()) item.classList.toggle("selected-part", index === this.selectedPart);
+        const selectedParts = new Set(this.partIndices(this.selectedPart));
+        for (const [index, item] of [...this.parts.children].entries()) {
+            item.classList.toggle("selected-part", selectedParts.has(index));
+            item.querySelector(".part-name-button")?.setAttribute("aria-pressed", String(selectedParts.has(index)));
+        }
+        document.querySelector("#edit-song-parts").disabled = !selectedParts.size;
     }
 
     handleBarKey(event, bar) {
@@ -917,66 +927,164 @@ class SongEditor {
         }
     }
 
-    selectPart(index, focus = false) {
-        const range = this.partRanges()[index];
+    partIndices(index) {
+        const parts = this.project.parts;
+        if (!parts[index]) return [];
+        return this.partSelection.has(parts[index])
+            ? parts.flatMap((part, i) => this.partSelection.has(part) ? [i] : []) : [index];
+    }
+
+    selectPart(index, focus = false, { extend = false, toggle = false, keep = false } = {}) {
+        const ranges = this.partRanges();
+        const range = ranges[index];
         if (!range) return;
+        const parts = this.project.parts;
+        if (extend) {
+            const anchor = parts.indexOf(this.partAnchor);
+            const first = anchor < 0 ? this.selectedPart ?? index : anchor;
+            this.partSelection = new Set(parts.slice(Math.min(first, index), Math.max(first, index) + 1));
+        } else if (toggle) {
+            const current = parts[index];
+            if (this.partSelection.has(current) && this.partSelection.size > 1) {
+                this.partSelection.delete(current);
+                index = parts.findIndex(part => this.partSelection.has(part));
+            } else this.partSelection.add(current);
+            this.partAnchor = parts[index];
+        } else if (!keep) {
+            this.partSelection = new Set([parts[index]]);
+            this.partAnchor = parts[index];
+        }
+        const active = ranges[index];
         this.selectedPart = index;
-        this.selectedBar = this.selectionAnchor = range.sheetStart;
+        this.selectedBar = this.selectionAnchor = active.sheetStart;
         this.selectedChord = null;
         this.markSelection();
-        this.onChooseBar({ from: range.from, to: range.to });
+        const indices = this.partIndices(index);
+        const first = indices[0], last = indices.at(-1);
+        this.onChooseBar(last - first + 1 === indices.length ? { from: ranges[first].from, to: ranges[last].to }
+            : { from: active.from, to: active.to });
         if (focus) this.parts.children[index]?.querySelector(".part-name-button").focus();
     }
 
-    duplicatePart(index) {
+    openPartContext(index, x, y) {
+        if (!this.partSelection.has(this.project.parts[index])) this.selectPart(index);
+        this.selectedPart = index;
+        const multi = this.partIndices(index).length > 1;
+        for (const action of ["track-overrides", "drum-transforms", "custom-phrase"]) {
+            this.partMenu.querySelector(`[data-action="${action}"]`).hidden = multi;
+        }
+        this.partMenu.querySelector('[data-action="remove"]').disabled = this.partIndices(index).length === this.project.parts.length;
+        this.partMenu.querySelector('[data-action="remove-rhythm-change"]').disabled = multi || !this.canRemoveRhythmChange(index);
+        this.openContext(x, y, this.partMenu);
+    }
+
+    canRemoveRhythmChange(index) {
+        const { parts, sections } = this.project;
+        const part = parts[index], previous = parts[index - 1];
+        return Boolean(previous && part.styleId !== previous.styleId && sections[part.section].meter === sections[previous.section].meter);
+    }
+
+    removeRhythmChange(index) {
+        if (!this.canRemoveRhythmChange(index)) return;
+        const { parts, sections } = this.project;
+        const oldId = parts[index].styleId;
+        const { styleId, styleName } = parts[index - 1];
+        const meter = sections[parts[index].section].meter;
         this.editArrangement(() => {
-            this.project.parts.splice(index + 1, 0, structuredClone(this.project.parts[index]));
+            for (let i = index; parts[i]?.styleId === oldId && sections[parts[i].section].meter === meter; i++) {
+                Object.assign(parts[i], { styleId, styleName });
+            }
+            this.onUsePartStyles?.();
         });
     }
 
-    removePart(index) {
-        if (this.project.parts.length < 2) return;
+    duplicatePart(index, grouped = false) {
+        const indices = grouped ? this.partIndices(index) : [index];
+        const copies = indices.map(i => structuredClone(this.project.parts[i]));
         this.editArrangement(() => {
-            this.project.parts.splice(index, 1);
+            this.project.parts.splice(indices.at(-1) + 1, 0, ...copies);
+        });
+    }
+
+    removePart(index, grouped = false) {
+        const indices = grouped ? this.partIndices(index) : [index];
+        if (indices.length >= this.project.parts.length) return;
+        this.editArrangement(() => {
+            for (const i of indices.toReversed()) this.project.parts.splice(i, 1);
             this.selectedPart = null;
+            this.partSelection.clear();
         });
     }
 
-    movePart(from, to, copy = false) {
-        if (from === to && !copy) return;
-        this.editArrangement(() => {
-            const parts = this.project.parts;
-            const part = copy ? structuredClone(parts[from]) : parts.splice(from, 1)[0];
-            parts.splice(to, 0, part);
-            this.selectedPart = to;
-        });
-        this.selectPart(to, true);
+    movePart(from, to, copy = false, grouped = false) {
+        const positions = grouped ? this.partIndices(from) : [from];
+        if (positions.includes(to) && !copy) return;
+        const parts = this.project.parts;
+        const selection = positions.map(index => parts[index]);
+        const target = parts[to];
+        const inserted = copy ? structuredClone(selection) : selection;
+        if (this.editArrangement(() => {
+            if (!copy) for (const index of positions.toReversed()) parts.splice(index, 1);
+            const start = copy ? to : parts.indexOf(target) + Number(to > from);
+            parts.splice(start, 0, ...inserted);
+        })) {
+            this.partSelection = new Set(inserted);
+            this.partAnchor = inserted[0];
+            this.selectPart(parts.indexOf(inserted[0]), true, { keep: true });
+        }
     }
 
     openPartEditor(index) {
-        const part = this.project.parts[index];
+        const indices = this.partIndices(index);
+        if (!indices.length) return;
+        const parts = indices.map(index => this.project.parts[index]);
+        const multi = parts.length > 1;
+        const common = values => values.every(value => value === values[0]) ? values[0] : "";
         const name = document.querySelector("#part-name");
         const rhythm = document.querySelector("#part-rhythm");
-        const source = DesktopSongFiles.sourceStyleId(part.styleId);
         const choices = this.onStyleChoices?.() ?? new Map();
-        choices.set(source, part.styleName || source.replace(/-ID$/u, ""));
-        rhythm.replaceChildren(...Array.from(choices, ([id, label]) => new Option(label, id)));
-        name.value = part.name;
-        rhythm.value = source;
-        document.querySelector("#part-editor-title").textContent = t(`演奏区間 ${index + 1}`, `Song part ${index + 1}`);
+        for (const part of parts) {
+            const source = DesktopSongFiles.sourceStyleId(part.styleId);
+            choices.set(source, part.styleName || source.replace(/-ID$/u, ""));
+        }
+        const unchanged = t("各区間の現在の値を使用", "Keep each part’s current value");
+        rhythm.replaceChildren(...(multi ? [new Option(unchanged, "")] : []),
+            ...Array.from(choices, ([id, label]) => new Option(label, id)));
+        rhythm.value = common(parts.map(part => DesktopSongFiles.sourceStyleId(part.styleId)));
+        name.value = common(parts.map(part => part.name));
+        name.placeholder = multi ? unchanged : "";
+        name.required = !multi;
+        const extra = document.querySelector("#part-batch-fields");
+        extra.hidden = extra.disabled = !multi;
+        const fields = [...extra.querySelectorAll("[data-parameter]")];
+        for (const field of fields) {
+            const fallback = field.dataset.fallback ?? "";
+            field.value = common(parts.map(part => part.parameters[field.dataset.parameter] ?? fallback));
+            field.dataset.original = field.value;
+        }
+        document.querySelector("#part-editor-title").textContent = multi ? t(`${parts.length}区間を編集`, `Edit ${parts.length} song parts`)
+            : t(`演奏区間 ${index + 1}`, `Song part ${index + 1}`);
         document.querySelector("#part-editor-form").onsubmit = event => {
             event.preventDefault();
-            if (!name.value.trim()) return;
+            const label = name.value.trim();
+            if (!label && !multi) return;
+            let changedRhythm = false;
             this.editArrangement(() => {
-                part.name = name.value.trim();
-                if (rhythm.value !== source) {
-                    part.styleId = rhythm.value;
-                    part.styleName = choices.get(rhythm.value);
-                    this.onUsePartStyles?.();
+                for (const part of parts) {
+                    if (label) part.name = label;
+                    if (rhythm.value && rhythm.value !== DesktopSongFiles.sourceStyleId(part.styleId)) {
+                        part.styleId = rhythm.value;
+                        part.styleName = choices.get(rhythm.value);
+                        changedRhythm = true;
+                    }
+                    for (const field of fields) {
+                        if (multi && field.value && field.value !== field.dataset.original) part.parameters[field.dataset.parameter] = field.value;
+                    }
                 }
+                if (changedRhythm) this.onUsePartStyles?.();
             });
             this.partDialog.close();
-            this.selectPart(index, true);
+            this.selectPart(index, true, { keep: multi });
         };
         this.partDialog.showModal();
     }
@@ -1229,7 +1337,9 @@ class SongEditor {
         item.style.setProperty("--part-width", `${Math.min(177, 98 + (range.to - range.from) * 4)}px`);
         const header = document.createElement("div");
         header.className = "part-heading";
-        const name = this.button(part.name, () => this.selectPart(index));
+        const name = this.button(part.name, event => this.selectPart(index, false, {
+            extend: event.shiftKey, toggle: event.ctrlKey || event.metaKey
+        }));
         name.className = "part-name-button";
         name.title = part.name;
         name.ondblclick = () => this.openPartEditor(index);
@@ -1239,11 +1349,21 @@ class SongEditor {
                 this.playPart(index, !event.shiftKey);
             }
             if (event.key === "Enter" && !event.ctrlKey) { event.preventDefault(); this.openPartEditor(index); }
+            if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+                event.preventDefault();
+                const next = index + (event.key === "ArrowLeft" ? -1 : 1);
+                this.selectPart(next, true, { extend: event.shiftKey });
+            }
+            if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "a") {
+                event.preventDefault();
+                event.stopPropagation();
+                this.partSelection = new Set(this.project.parts);
+                this.selectPart(index, true, { keep: true });
+            }
             if (event.key === "ContextMenu" || (event.key === "F10" && event.shiftKey)) {
                 event.preventDefault();
-                this.selectPart(index);
                 const bounds = name.getBoundingClientRect();
-                this.openContext(bounds.left, bounds.bottom, this.partMenu);
+                this.openPartContext(index, bounds.left, bounds.bottom);
             }
         };
         header.draggable = true;
@@ -1268,12 +1388,11 @@ class SongEditor {
             if (!event.dataTransfer.types.includes("application/x-jjazz-part")) return;
             event.preventDefault();
             const from = Number(event.dataTransfer.getData("application/x-jjazz-part"));
-            if (Number.isInteger(from) && this.project.parts[from]) this.movePart(from, index, event.ctrlKey || event.metaKey);
+            if (Number.isInteger(from) && this.project.parts[from]) this.movePart(from, index, event.ctrlKey || event.metaKey, true);
         };
         item.oncontextmenu = event => {
             event.preventDefault();
-            this.selectPart(index);
-            this.openContext(event.clientX, event.clientY, this.partMenu);
+            this.openPartContext(index, event.clientX, event.clientY);
         };
         const select = document.createElement("select");
         select.className = "part-section";
@@ -1376,9 +1495,8 @@ class SongEditor {
         const down = this.button("→", () => this.movePart(index, index + 1)); down.disabled = index === this.project.parts.length - 1;
         const remove = this.button("×", () => this.removePart(index)); remove.disabled = this.project.parts.length < 2;
         const open = this.button("⋮", event => {
-            this.selectPart(index);
             const bounds = event.currentTarget.getBoundingClientRect();
-            this.openContext(bounds.left, bounds.bottom, this.partMenu);
+            this.openPartContext(index, bounds.left, bounds.bottom);
         });
         const focusPart = this.button("↗", () => this.selectPart(index, true));
         for (const [button, label] of [[up, t("左へ", "Move left")], [down, t("右へ", "Move right")],
