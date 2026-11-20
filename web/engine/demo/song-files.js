@@ -1,6 +1,6 @@
 "use strict";
 
-// The supported desktop formats are the XStream XML written by JJazzLab 5.2.1.
+// Read both the original qualified XStream XML and the current JJazzLab aliases.
 // Resolve references within the parsed document without instantiating Java objects.
 const DesktopSongFiles = (() => {
     // JJazzLab measures compound meters in natural beats (dotted quarters).
@@ -60,15 +60,18 @@ const DesktopSongFiles = (() => {
     const child = (node, name) => Array.from(node?.children ?? []).find(element => element.localName === name);
     const content = (node, name) => child(node, name)?.textContent ?? "";
     const attr = (node, name) => node?.getAttribute(name) ?? "";
+    const member = (node, name) => node?.getAttribute(name) ?? content(node, name);
+    const proxy = (node, alias, legacy) => attr(node, "resolves-to") === alias || attr(node, "resolves-to").endsWith(`.${legacy}$SerializationProxy`);
 
-    function parse(xml, rootName, version) {
+    function parse(xml, rootName, versions) {
         const doc = new DOMParser().parseFromString(xml, "application/xml");
         const root = doc.documentElement;
         if (doc.doctype || doc.querySelector("parsererror") || root.localName !== rootName) {
             throw new Error(`${rootName} ファイルのXMLを読み込めません。`);
         }
-        if (content(root, "spVERSION").trim() !== version) {
-            throw new Error(`${rootName} の保存形式 v${version} に対応しています。`);
+        if (!versions.includes(member(root, "spVERSION").trim())) {
+            throw new Error(t(`${rootName} の保存形式 v${versions.join("／")} に対応しています。`,
+                `Supported ${rootName} format versions are ${versions.join(", ")}.`));
         }
         return root;
     }
@@ -97,11 +100,20 @@ const DesktopSongFiles = (() => {
     }
 
     function readRendering(chord) {
-        const rendering = child(resolve(child(chord, "spRenderingInfo")), "ChordRenderingInfoSP");
-        const features = resolve(child(rendering, "enum-set"))?.textContent.trim() ?? "";
-        const scale = resolve(child(rendering, "StdScaleInstance"));
+        const wrapper = resolve(child(chord, "spRenderingInfo"));
+        const rendering = resolve(wrapper?.firstElementChild);
+        let features = resolve(child(rendering, "enum-set") ?? child(rendering, "spFeatures"))?.textContent.trim() ?? "";
+        const playStyle = [...(rendering?.children ?? [])].find(node => node.localName.endsWith("_-PlayStyle"))?.textContent.trim();
+        if (playStyle) {
+            const migrated = ["ACCENT", "HOLD", "SHOT"].includes(playStyle) ? ["ACCENT"] : [];
+            if (playStyle === "HOLD" || playStyle === "SHOT") migrated.push(playStyle);
+            if (content(rendering, "boolean").trim() === "false") migrated.push("NO_ANTICIPATION");
+            features = migrated.join(",");
+        }
+        const scale = resolve([...((rendering?.children) ?? [])].find(node => node.localName === "StdScaleInstance"
+            || node.localName === "spStdScale" || node.localName.endsWith(".StandardScaleInstance")));
         return { ...(features ? { features } : {}),
-            ...(scale ? { scale: { index: attr(scale, "spStdScaleIndex"), pitch: attr(scale, "spStartNotePitch") } } : {}) };
+            ...(scale ? { scale: { index: member(scale, "spStdScaleIndex"), pitch: member(scale, "spStartNotePitch") } } : {}) };
     }
 
     function readClientProperties(owner, name = "spClientProperties") {
@@ -111,49 +123,57 @@ const DesktopSongFiles = (() => {
     }
 
     function readSong(xml) {
-        const root = parse(xml, "Song", "4");
+        const root = parse(xml, "Song", ["1", "2", "3", "4"]);
         const leadSheet = resolve(child(root, "spChordLeadSheet"));
         const structure = resolve(child(root, "spSongStructure"));
         const bars = number(content(leadSheet, "spSize"), "譜面の小節数", 1, 1024);
         const items = Array.from(child(leadSheet, "spItems")?.children ?? []);
-        const annotations = items.filter(item => attr(item, "resolves-to") === "CLI_BarAnnotationImplSP").map(item => ({
-            bar: number(attr(item, "spBarIndex"), "小節メモの位置", 0, bars - 1),
+        const annotations = items.filter(item => proxy(item, "CLI_BarAnnotationImplSP", "CLI_BarAnnotationImpl")).map(item => ({
+            bar: number(member(item, "spBarIndex"), "小節メモの位置", 0, bars - 1),
             text: content(item, "spAnnotation"), ...readClientProperties(item)
         }));
         const restart = items.find(item => attr(item, "resolves-to") === "CLI_LoopRestartBarImplSP");
-        const sectionNodes = items.filter(item => attr(item, "resolves-to") === "CLI_SectionImplSP");
+        const sectionNodes = items.filter(item => proxy(item, "CLI_SectionImplSP", "CLI_SectionImpl"));
         const sections = sectionNodes.map(section => ({
-            name: attr(section, "spName"),
-            bar: number(attr(section, "spBarIndex"), "セクションの小節", 0, bars - 1),
-            meter: attr(section, "spTs"), ...readClientProperties(section)
+            name: member(section, "spName"),
+            bar: number(member(section, "spBarIndex"), "セクションの小節", 0, bars - 1),
+            meter: member(section, "spTs"), ...readClientProperties(section)
         }));
-        const chords = items.filter(item => attr(item, "resolves-to") === "CLI_ChordSymbolSP").map(item => {
+        const chords = items.filter(item => proxy(item, "CLI_ChordSymbolSP", "CLI_ChordSymbolImpl")).map(item => {
             const chord = resolve(child(item, "spChord"));
-            const position = attr(resolve(child(item, "spPos")), "spPos");
+            const position = member(resolve(child(item, "spPos")), "spPos");
             const match = /^\[(?:(\d+):)?(\d+(?:[.,]\d+)?)\]$/u.exec(position);
             if (!match) throw new Error("コードの拍位置を読み込めません。");
-            const originalName = attr(chord, "spOriginalName");
-            const name = attr(chord, "resolves-to") === "NCExtChordSymbolSP" ? "NC" : attr(chord, "spName") || originalName;
+            const originalName = member(chord, "spOriginalName");
+            const name = proxy(chord, "NCExtChordSymbolSP", "NCExtChordSymbol") ? "NC" : member(chord, "spName") || originalName;
             const alternateNode = resolve(child(chord, "spAltChordSymbol"));
             const filter = resolve(child(chord, "spAltFilter"));
-            const alternateName = attr(alternateNode, "resolves-to") === "VoidAltExtChordSymbolSP" ? "NC" : attr(alternateNode, "spName");
+            const alternateName = proxy(alternateNode, "VoidAltExtChordSymbolSP", "VoidAltExtChordSymbol") ? "NC" : member(alternateNode, "spName");
             const alternate = alternateName && filter ? {
                 name: alternateName, ...readRendering(alternateNode),
                 random: content(filter, "spRandom").trim(),
                 markers: [...(resolve(child(filter, "spValues"))?.children ?? [])].map(value => resolve(value).textContent)
             } : undefined;
             return { name, bar: Number(match[1] ?? 0), beat: Number(match[2].replace(",", ".")),
-                ...(originalName && originalName !== attr(chord, "spName") ? { originalName } : {}),
+                ...(originalName && originalName !== member(chord, "spName") ? { originalName } : {}),
                 ...readRendering(chord), ...(alternate ? { alternate } : {}), ...readClientProperties(item) };
         });
         const parts = Array.from(child(structure, "spSpts")?.children ?? []).map(part => {
             const section = sectionNodes.indexOf(resolve(child(part, "spParentSection")));
             if (section < 0) throw new Error("演奏区間の参照先セクションが見つかりません。");
-            const parameters = Object.fromEntries(Array.from(child(part, "spHashMapRpIdValue")?.children ?? [])
+            const map = resolve(child(part, "spHashMapRpIdValue"));
+            const pairs = Array.from(map?.children ?? [])
                 .map(entry => Array.from(entry.children, value => resolve(value).textContent))
-                .filter(pair => pair.length === 2));
-            return { name: attr(part, "spName"), section, styleId: attr(part, "spRhythmId"),
-                styleName: content(part, "spRhythmName"), parameters, ...readClientProperties(part) };
+                .filter(pair => pair.length === 2);
+            const oldMap = resolve(child(part, "spMapRpIdValue"));
+            if (!map && oldMap) {
+                const keys = Array.from(resolve(child(oldMap, "keys"))?.children ?? []);
+                const values = Array.from(resolve(child(oldMap, "values"))?.children ?? []);
+                if (keys.length !== values.length) throw new Error(t("区間パラメーターの旧形式が不正です。", "Invalid legacy song part parameters."));
+                keys.forEach((key, index) => pairs.push([resolve(key).textContent, resolve(values[index]).textContent]));
+            }
+            return { name: member(part, "spName"), section, styleId: member(part, "spRhythmId"),
+                styleName: member(part, "spRhythmName"), parameters: Object.fromEntries(pairs), ...readClientProperties(part) };
         });
         const userTracks = Array.from(child(root, "spMapUserPhrases")?.children ?? []).map(entry => ({
             name: resolve(entry.firstElementChild).textContent,
@@ -163,9 +183,24 @@ const DesktopSongFiles = (() => {
             throw new Error("曲に譜面セクションと演奏区間が必要です。");
         }
         const tags = [...(resolve(child(root, "spTags"))?.children ?? [])].map(tag => resolve(tag).textContent);
-        return validateSong({ title: attr(root, "spName"), comments: content(root, "spComments"), tags,
-            ...readClientProperties(root, "spClientPropertiesV3"),
-            tempo: number(attr(root, "spTempo"), "テンポ", 20, 400),
+        const properties = readClientProperties(root, "spClientPropertiesV3");
+        const legacy = resolve(child(root, "spClientProperties"));
+        if (legacy) {
+            const entries = [...legacy.children].filter(node => node.localName === "property")
+                .map(node => [attr(node, "name"), attr(node, "value")]);
+            properties.clientProperties = { ...Object.fromEntries(entries), ...properties.clientProperties };
+            for (const section of sections) {
+                const quantization = entries.find(([name]) => name.split("*", 1)[0] === `SectionDisplayQuantization-${section.name}`)?.[1];
+                const newLine = properties.clientProperties[`PropSectionStartOnNewLine-${section.name}`]
+                    ?? properties.clientProperties[`SectionStartOnNewLine-${section.name}`];
+                if (quantization || newLine) section.clientProperties = {
+                    ...(quantization ? { PropSectionQuantization: quantization } : {}),
+                    ...(newLine ? { PropSectionStartOnNewLine: newLine } : {}), ...section.clientProperties
+                };
+            }
+        }
+        return validateSong({ title: member(root, "spName"), comments: content(root, "spComments"), tags, ...properties,
+            tempo: number(member(root, "spTempo"), "テンポ", 20, 400),
             bars, sections, chords, parts, userTracks, annotations,
             ...(restart ? { loopRestartBar: number(attr(restart, "spBarIndex"), "ループの折り返し位置", 0, bars - 1) } : {}) });
     }
@@ -207,7 +242,7 @@ const DesktopSongFiles = (() => {
     }
 
     function readMix(xml) {
-        const root = parse(xml, "MidiMix", "5");
+        const root = parse(xml, "MidiMix", ["1", "2", "3", "4", "5"]);
         const settings = Array.from(child(root, "spInsMixes")?.children ?? []);
         const keys = Array.from(child(root, "spKeys")?.children ?? []);
         if (settings.length !== 16 || keys.length !== settings.length) throw new Error("ミックスのチャンネル数が不正です。");
@@ -220,12 +255,12 @@ const DesktopSongFiles = (() => {
             if (!instrument || !values || key.localName === "null") throw new Error("ミックスのパート設定が不正です。");
             return [{
                 channel, rhythmId: content(key, "rhythmId"), name: content(key, "rvName"),
-                instrument: attr(instrument, "spSaveString"), patch: attr(instrument, "spPatchname"),
-                mute: attr(mix, "spMute") === "true", instrumentEnabled: attr(mix, "spInsEnabled") !== "false",
-                volume: number(attr(values, "spVolume"), "音量", 0, 127),
+                instrument: member(instrument, "spSaveString"), patch: member(instrument, "spPatchname"),
+                mute: member(mix, "spMute") === "true", instrumentEnabled: member(mix, "spInsEnabled") !== "false",
+                volume: number(member(values, "spVolume"), "音量", 0, 127),
                 pan: number(content(values, "spPanoramic"), "パン", 0, 127),
-                transpose: number(attr(values, "spTransposition"), "移調", -36, 36),
-                velocityShift: number(attr(values, "spVelocityShift"), "ベロシティ補正", -64, 64),
+                transpose: number(member(values, "spTransposition") || "0", "移調", -36, 36),
+                velocityShift: number(member(values, "spVelocityShift") || "0", "ベロシティ補正", -64, 64),
                 reverb: number(content(values, "spReverb"), "リバーブ", 0, 127),
                 chorus: number(content(values, "spChorus"), "コーラス", 0, 127),
                 volumeEnabled: content(values, "spVolumeEnabled") !== "false",

@@ -1361,6 +1361,34 @@
         check(Boolean(batchSavedMix) && DesktopSongFiles.readMix(batchSavedMix).length === mixForBatch.length, "Save All lost the imported mix");
         check(editor.project === activeBeforeBatchSave && !songTabs.isDirty(songTabs.active), "Saving all songs changed tabs or kept a saved song marked as unsaved");
         report.allSongsArchive = true;
+        {
+            const [phaseDance, soul] = desktopFixture.legacySongs.map(DesktopSongFiles.readSong);
+            check(phaseDance.title === "PhaseDance" && phaseDance.tempo === 191 && phaseDance.sections.length > 10
+                && phaseDance.chords.some(chord => chord.features?.includes("HOLD"))
+                && phaseDance.parts[0].parameters.rpVariationID === "Intro A-1"
+                && phaseDance.sections.find(section => section.name === "INTRO1").clientProperties.PropSectionStartOnNewLine === "true",
+                "The 2020 song did not migrate its old rhythm parameters, articulation, and layout");
+            check(soul.bars === 8 && soul.tempo === 116 && soul.parts[0].styleId === "Soul.S584.prs-ID"
+                && soul.parts[0].parameters.RpFillID === "always"
+                && soul.sections[0].clientProperties.PropSectionQuantization === "ONE_QUARTER_BEAT", "The 2022 song did not migrate its parameters");
+            for (const track of [phaseDance, soul]) {
+                const latestXml = DesktopSongFiles.writeSong(track);
+                const reopened = DesktopSongFiles.readSong(latestXml);
+                check(latestXml.includes("<spVERSION>4</spVERSION>") && reopened.parts.map(part => part.styleId).join() === track.parts.map(part => part.styleId).join()
+                    && reopened.chords.map(chord => chord.features ?? "").join() === track.chords.map(chord => chord.features ?? "").join(),
+                    "A migrated song lost its rhythm IDs or chord features when saved in current form");
+            }
+            editor.open(soul, [], undefined, true);
+            await generate();
+            check(song.events.some(event => event.type === 0x90 && event.b > 0) && song.barTimes.length > soul.bars, "The older Soul arrangement could not play");
+            if (desktopFixture.legacyMix) {
+                const oldMix = DesktopSongFiles.readMix(desktopFixture.legacyMix);
+                const latestMixXml = DesktopSongFiles.writeMix(oldMix);
+                check(oldMix.length > 3 && latestMixXml.includes("<spVERSION>5</spVERSION>")
+                    && JSON.stringify(DesktopSongFiles.readMix(latestMixXml)) === JSON.stringify(oldMix), "The legacy mix lost its track assignments or sound settings");
+            }
+            report.legacyDesktopFiles = { songVersions: [1, 2], mixFixture: Boolean(desktopFixture.legacyMix) };
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
