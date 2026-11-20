@@ -14,6 +14,7 @@
                     <button data-command="new-project" type="button">新規作成</button>
                     <button data-command="open-project-button" type="button">曲を開く…</button>
                     <button id="open-song-folder" type="button" hidden>フォルダーから曲を開く…</button>
+                    <button id="open-recent-songs" type="button">最近の曲…</button>
                     <button data-command="save-project" type="button">Web用に保存</button>
                     <button id="overwrite-song-file" type="button" hidden>本家形式で上書き保存</button>
                     <button id="save-as-song-file" type="button" hidden>本家形式で名前を付けて保存…</button>
@@ -431,6 +432,13 @@
                 <button type="submit">適用</button>
             </div>
         </form>
+    </dialog>
+
+    <dialog id="recent-songs" aria-labelledby="recent-songs-title">
+        <h2 id="recent-songs-title">最近の曲</h2>
+        <p id="recent-song-status" role="status"></p>
+        <ul id="recent-song-list"></ul>
+        <div class="dialog-actions"><button id="close-recent-songs" type="button" class="secondary">閉じる</button></div>
     </dialog>
 
     <dialog id="song-folder-dialog" aria-labelledby="song-folder-title">

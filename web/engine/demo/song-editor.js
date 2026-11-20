@@ -276,6 +276,7 @@ class SongEditor {
     }
 
     open(project, mix, style = null, useSavedStyles = false) {
+        this.onBeforeOpen?.();
         this.fileRequest = null;
         this.project = project;
         this.mix = mix;

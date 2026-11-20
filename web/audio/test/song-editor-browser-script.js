@@ -1175,6 +1175,26 @@
             } finally { window.showDirectoryPicker = directoryPicker; }
             report.songFolderAccess = true;
         }
+        const recovering = "Recoverable working copy";
+        editor.title.value = recovering;
+        editor.title.dispatchEvent(new Event("input", { bubbles: true }));
+        const savedNotes = editor.project.userTracks.map(track => track.phrase);
+        const storedId = recentSongs.id;
+        await recentSongs.flush();
+        check((await recentSongs.records())[0]?.id === storedId, "The working copy did not reach browser storage");
+        document.querySelector("#new-project").click();
+        await recentSongs.restore();
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(editor.project.title === recovering && recentSongs.id === storedId
+            && editor.project.userTracks.map(track => track.phrase).join() === savedNotes.join(), "Startup restore did not recover the working copy");
+        document.querySelector("#new-project").click();
+        await document.querySelector("#open-recent-songs").onclick();
+        const recent = [...document.querySelectorAll("#recent-song-list button")].find(button => button.textContent === recovering);
+        check(Boolean(recent), "The recovered song was missing from Recent Songs");
+        recent.click();
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(editor.project.title === recovering && !document.querySelector("#recent-songs").open, "Recent Songs did not reopen the selected project");
+        report.recentSongsAndRecovery = true;
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

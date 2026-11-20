@@ -226,6 +226,7 @@ function updateButtons() {
     previousPart.disabled ||= quickMode.getAttribute("aria-pressed") === "true";
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
     document.querySelector("#open-song-print").disabled = !editor.project || generating || starting;
+    document.querySelector("#open-recent-songs").disabled = generating || starting;
     folderIO.update(generating || starting);
     for (const id of ["duplicate-song", "linearize-song", "save-song-template", "clear-song-template"]) {
         document.getElementById(id).disabled = !editor.project || starting || generating;
@@ -318,6 +319,7 @@ function applyMix() {
     }
     player.mix(mixerParts, Number(masterInput.value) / 100);
     updateRollSolo();
+    recentSongs.schedule();
 }
 
 function updateRollSolo() {
@@ -945,8 +947,10 @@ function clearPlayback() {
     updateButtons();
 }
 
+let bootingSong = true;
 const editor = new SongEditor((opened, useSavedStyles) => {
     pianoRoll.close();
+    recentSongs.opened(Boolean(useSavedStyles && !bootingSong));
     selectedMixerRhythm = "";
     chosenRange = null;
     activeProject = undefined;
@@ -987,6 +991,8 @@ const folderIO = new SongFolderIO(editor, async () => {
     return { song: DesktopSongFiles.writeSong(editor.project), mix: editor.desktopMixXml() };
 });
 folderIO.onOpen = () => { if (!mixer.hidden) prepareMixer.click(); };
+const recentSongs = new SongHistory(editor, () => { if (!mixer.hidden) prepareMixer.click(); });
+editor.onBeforeOpen = () => { void recentSongs.flush(); };
 document.querySelector("#duplicate-song").onclick = () => editor.save("duplicate");
 document.querySelector("#linearize-song").onclick = () => editor.save("linearize");
 document.querySelector("#save-song-template").onclick = () => editor.saveTemplate();
@@ -1164,6 +1170,7 @@ document.querySelector("#chord-display-form").onsubmit = event => {
 document.querySelector("#close-reader").onclick = () => { showReader(false); toggleReader.focus(); };
 editor.onRender = () => {
     pianoRoll.sync();
+    recentSongs.schedule();
     if (!reader.hidden) {
         buildReader();
         updateReader(playbackBar, playbackFraction);
@@ -1173,12 +1180,16 @@ document.querySelector("#open-piano-roll").onclick = () => pianoRoll.panel.hidde
 document.querySelector("#add-user-track").onclick = () => pianoRoll.addTrack();
 quickMode.addEventListener("click", () => {
     if (!editor.project) {
-        if (draft) editor.open(draft.project, draft.mix, draft.style, draft.useSavedStyles);
+        if (draft) {
+            recentSongs.reopeningId = draft.historyId;
+            editor.open(draft.project, draft.mix, draft.style, draft.useSavedStyles);
+        }
         else document.querySelector("#new-project").click();
         return;
     }
+    void recentSongs.flush();
     draft = { project: editor.project, mix: editor.unresolvedStyleMix ?? editor.mix, style: editor.style,
-        useSavedStyles: rhythmEngine.value === "song" };
+        useSavedStyles: rhythmEngine.value === "song", historyId: recentSongs.id };
     pianoRoll.close();
     showReader(false);
     editor.project = null;
@@ -1207,7 +1218,7 @@ editor.onMeterChange = meter => {
         rhythmEngine.dispatchEvent(new Event("change"));
     }
 };
-editor.onChanged = () => { accompanimentDirty = true; updateMixerButtons(); updateMenus(); };
+editor.onChanged = () => { accompanimentDirty = true; updateMixerButtons(); updateMenus(); recentSongs.schedule(); };
 editor.onStyleChoices = () => new Map([
     ["jjSwing-ID", "jjSwing"],
     ...[...bundledStyles.keys(), ...Object.keys(embeddedExtendedStyles)].map(name => [`${name}-ID`, name]),
@@ -1592,6 +1603,7 @@ tempoInput.addEventListener("input", () => {
     if (!tempoInput.validity.valid) return;
     const tempo = tempoInput.valueAsNumber;
     if (editor.project && Number.isFinite(tempo)) editor.project.tempo = tempo;
+    recentSongs.schedule();
     tempoDirty = Boolean(song && tempo !== renderedTempo);
     if (playing || paused) player.tempo(playbackTempoRate()).catch(error => showPlayStatus(error.message, true));
 });
@@ -1763,3 +1775,5 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
     }
 }
 document.querySelector("#new-project").click();
+bootingSong = false;
+void recentSongs.restore();

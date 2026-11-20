@@ -292,6 +292,11 @@ button:disabled { opacity: .5; cursor: default; }
 .print-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 #song-print-sheet-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; align-items: end; }
 #song-print-preview { background: #fff; color: #191919; padding: 1rem; }
+#recent-song-status:empty, #recent-song-list:empty { display: none; }
+#recent-song-list { display: grid; gap: .35rem; margin: .75rem 0; padding: 0; list-style: none; }
+#recent-song-list li { display: flex; align-items: center; justify-content: space-between; gap: .65rem; }
+#recent-song-list button { overflow-wrap: anywhere; text-align: start; }
+#recent-song-list time { color: var(--muted); font-size: .78rem; white-space: nowrap; }
 #song-print-preview h2 { margin: 0 0 .7em; }
 .print-score-row { display: grid; grid-template-columns: repeat(var(--print-columns), minmax(0, 1fr)); break-inside: avoid; }
 .print-measure { min-height: var(--print-bar-height); padding: .16em .3em; border: 1px solid #727272; }
