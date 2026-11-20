@@ -408,15 +408,9 @@
             <h2 id="part-editor-title">演奏区間</h2>
             <label class="field">区間名 <input id="part-name" required></label>
             <label class="field">リズム <select id="part-rhythm"></select></label>
-            <fieldset id="part-batch-fields" hidden>
+            <fieldset id="part-batch-fields">
                 <legend>区間パラメーター</legend>
-                <label class="field">バリエーション <input data-parameter="rpVariationID"></label>
-                <label class="field">強弱 <input data-parameter="rpIntensityID" data-fallback="0" type="number" min="-10" max="10"></label>
-                <label class="field">テンポ比 <input data-parameter="rpTempoID" data-fallback="100" type="number" min="50" max="200"></label>
-                <label class="field">マーカー <select data-parameter="rpSysMarkerID" data-fallback="theme">
-                    <option value="">—</option><option>theme</option><option>solo</option><option>theme2</option><option>theme3</option>
-                    <option>theme4</option><option>solo2</option><option>solo3</option><option>solo4</option>
-                </select></label>
+                <div id="part-parameter-fields"></div>
             </fieldset>
             <div class="dialog-actions"><button id="cancel-part-edit" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
         </form>

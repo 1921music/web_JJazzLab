@@ -101,9 +101,12 @@
         document.querySelector("#part-name").value = "Practice";
         document.querySelector("#part-rhythm").value = bundledStyle + "-ID";
         document.querySelector('[data-parameter="rpTempoID"]').value = "90";
+        const sharedFill = document.querySelector('#part-parameter-fields [data-parameter="RpFillID"]');
+        check(sharedFill instanceof HTMLSelectElement && sharedFill.querySelector('[value="always"]'), "The shared Fill editor did not use rhythm choices");
+        sharedFill.value = "always";
         document.querySelector("#part-editor-form").requestSubmit();
         check(editor.project.parts.slice(1, 3).every(part => part.name === "Practice" && part.styleId === bundledStyle + "-ID"
-            && part.parameters.rpTempoID === "90") && editor.project.parts[0].name !== "Practice",
+            && part.parameters.rpTempoID === "90" && part.parameters.RpFillID === "always") && editor.project.parts[0].name !== "Practice",
             "Batch edits did not reach exactly the selected song parts");
         selectPartButton(1);
         openPartMenuAt(1);
@@ -879,6 +882,13 @@
                     check(!row(index, "RP_SYS_OverrideTracksID").querySelector("button").disabled,
                         "The native custom parameter could not open its editor");
                 }
+                editor.selectPart(swing);
+                editor.selectPart(yamaha, false, { toggle: true });
+                editor.openPartEditor(swing);
+                const fields = document.querySelector("#part-parameter-fields");
+                check(fields.querySelector('[data-parameter="RpFillID"]') && !fields.querySelector('[data-parameter="BassStyleId"]'),
+                    "The batch editor did not restrict editing to shared rhythm parameters");
+                document.querySelector("#cancel-part-edit").click();
                 report.rhythmParameterDefinitions = true;
             }
             check(arrangement.title === editor.project.title && originalIds.join() === editor.project.parts.map(part => part.styleId).join(),

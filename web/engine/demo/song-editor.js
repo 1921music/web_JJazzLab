@@ -1153,14 +1153,8 @@ class SongEditor {
         name.value = common(parts.map(part => part.name));
         name.placeholder = multi ? unchanged : "";
         name.required = !multi;
-        const extra = document.querySelector("#part-batch-fields");
-        extra.hidden = extra.disabled = !multi;
-        const fields = [...extra.querySelectorAll("[data-parameter]")];
-        for (const field of fields) {
-            const fallback = field.dataset.fallback ?? "";
-            field.value = common(parts.map(part => part.parameters[field.dataset.parameter] ?? fallback));
-            field.dataset.original = field.value;
-        }
+        const fields = document.querySelector("#part-parameter-fields");
+        const edits = this.makePartEditorFields(parts, fields, unchanged);
         document.querySelector("#part-editor-title").textContent = multi ? t(`${parts.length}区間を編集`, `Edit ${parts.length} song parts`)
             : t(`演奏区間 ${index + 1}`, `Song part ${index + 1}`);
         document.querySelector("#part-editor-form").onsubmit = event => {
@@ -1176,8 +1170,9 @@ class SongEditor {
                         part.styleName = choices.get(rhythm.value);
                         changedRhythm = true;
                     }
-                    for (const field of fields) {
-                        if (multi && field.value && field.value !== field.dataset.original) part.parameters[field.dataset.parameter] = field.value;
+                    const parameters = this.parametersFor(part.styleId);
+                    for (const [id, apply] of edits) {
+                        if (parameters.has(id)) apply(part, parameters.get(id));
                     }
                 }
                 if (changedRhythm) this.onUsePartStyles?.();
@@ -1186,6 +1181,87 @@ class SongEditor {
             this.selectPart(index, true, { keep: multi });
         };
         this.partDialog.showModal();
+    }
+
+    makePartEditorFields(parts, container, unchanged) {
+        container.replaceChildren();
+        const available = parts.map(part => this.parametersFor(part.styleId));
+        const edits = new Map();
+        for (const [id, first] of available[0]) {
+            const parameters = available.map(row => row.get(id));
+            if (first.type === "custom" || !parameters.every(item => item?.type === first.type)) continue;
+            const values = parts.map((part, index) => part.parameters[id] ?? parameters[index].fallback);
+            const name = t(compactParameterLabels.get(id) ?? first.name ?? id);
+            const knownChoices = first.type === "number" ? [] : parameters.filter(parameter => parameter.values.length);
+            const choices = knownChoices[0]?.values.filter(value => knownChoices.every(parameter => parameter.values.includes(value))) ?? [];
+            if (first.type === "set") {
+                if (!choices.length) continue;
+                const group = document.createElement("fieldset");
+                const legend = document.createElement("legend");
+                legend.textContent = name;
+                group.append(legend);
+                const decode = value => new Set(value.slice(1, -1).split(",").map(item => item.trim()).filter(Boolean));
+                const selections = values.map(decode);
+                const changed = new Map();
+                for (const item of choices) {
+                    const label = document.createElement("label");
+                    const input = document.createElement("input");
+                    input.type = "checkbox";
+                    input.checked = selections.every(value => value.has(item));
+                    input.indeterminate = !input.checked && selections.some(value => value.has(item));
+                    input.onchange = () => changed.set(item, input.checked);
+                    label.append(input, " ", item);
+                    group.append(label);
+                }
+                edits.set(id, (part, descriptor) => {
+                    if (!changed.size) return;
+                    const selected = decode(part.parameters[id] ?? descriptor.fallback);
+                    for (const [item, checked] of changed) {
+                        if (checked && descriptor.values.includes(item)) selected.add(item);
+                        else selected.delete(item);
+                    }
+                    if (selected.size) part.parameters[id] = `[${[...selected].join(",")}]`;
+                    else delete part.parameters[id];
+                });
+                container.append(group);
+                continue;
+            }
+            const label = document.createElement("label");
+            label.className = "field";
+            const mixed = values.some(value => value !== values[0]);
+            const select = first.type === "state" && knownChoices.length > 0;
+            const field = document.createElement(select ? "select" : "input");
+            const sentinel = "__unchanged__";
+            if (select) {
+                if (mixed) field.append(new Option(unchanged, sentinel));
+                const options = !mixed && !choices.includes(values[0]) ? [values[0], ...choices] : choices;
+                field.append(...options.map(option => new Option(option || t("なし", "None"), option)));
+            } else if (first.type === "number") {
+                field.type = "number";
+                field.min = Math.max(...parameters.map(parameter => Number(parameter.values[0])));
+                field.max = Math.min(...parameters.map(parameter => Number(parameter.values[1])));
+                field.step = first.values[2];
+            }
+            if (!select) field.placeholder = mixed ? unchanged : "";
+            field.value = mixed ? select ? sentinel : "" : values[0];
+            field.dataset.parameter = id;
+            const initial = field.value;
+            edits.set(id, (part, descriptor) => {
+                const value = field.value;
+                if (value === initial || value === sentinel || (field.type === "number" && !value)) return;
+                if (descriptor.type === "state" && descriptor.values.length && !descriptor.values.includes(value)) return;
+                if (descriptor.type === "number") {
+                    const [minimum, maximum, step] = descriptor.values.map(Number);
+                    const number = Number(value);
+                    if (number < minimum || number > maximum || (number - minimum) % step !== 0) return;
+                }
+                if (!value || value === descriptor.fallback) delete part.parameters[id];
+                else part.parameters[id] = value;
+            });
+            label.append(name, field);
+            container.append(label);
+        }
+        return edits;
     }
 
     async openTrackOverrides(index) {
