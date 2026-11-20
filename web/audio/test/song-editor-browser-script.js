@@ -2412,6 +2412,35 @@ AbM7 | G7 Cm7 |
             }
             report.windowLayout = true;
         }
+        {
+            const originalClick = HTMLAnchorElement.prototype.click;
+            const { dialog } = appDiagnostics;
+            let downloaded;
+            HTMLAnchorElement.prototype.click = function () {
+                if (this.download === "jjazzlab-web-diagnostics.json") downloaded = fetch(this.href).then(response => response.json());
+                else originalClick.call(this);
+            };
+            try {
+                const privateText = "private chord title for diagnostics test";
+                showPlayStatus(privateText, true);
+                document.querySelector("#open-app-diagnostics").click();
+                const displayed = JSON.parse(dialog.querySelector("pre").textContent);
+                check(dialog.open && /^[0-9a-f]{12}$/u.test(displayed.build.buildId) && displayed.build.engineBytes > 0
+                    && displayed.events.at(-1).event === "playback-error" && !JSON.stringify(displayed).includes(privateText),
+                "The diagnostics dialog did not identify the build and omit document-specific error text");
+                dialog.querySelector("#save-diagnostics").click();
+                const exported = await downloaded;
+                check(exported.build.buildId === displayed.build.buildId && exported.capabilities.audioWorklet,
+                    "The diagnostic download did not include build and browser capabilities");
+                dialog.querySelector("#clear-diagnostics").click();
+                check(JSON.parse(dialog.querySelector("pre").textContent).events.length === 0, "The diagnostic log did not clear");
+            } finally {
+                if (dialog.open) dialog.close();
+                HTMLAnchorElement.prototype.click = originalClick;
+                showPlayStatus("");
+            }
+            report.appDiagnostics = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

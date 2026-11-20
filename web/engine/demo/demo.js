@@ -3,6 +3,12 @@
 const form = document.querySelector("#midi-form");
 const options = document.querySelector("#options");
 const chordInput = document.querySelector("#chords");
+const appDiagnostics = new AppDiagnostics(embeddedBuildInfo, () => ({
+    engineReady: mixerInstruments.length > 0,
+    playing, paused,
+    midiInputSelected: Boolean(midiRemote.input),
+    midiOutputSelected: Boolean(midiOutput.settings.device)
+}));
 const appPreferences = new AppPreferences(async name => {
     const wasm = await getEngine();
     try { return wasm.exports.transposeChordSymbols([name], 0)[0]; }
@@ -291,6 +297,7 @@ function updateMenus() {
 function showPlayStatus(message, error = false) {
     localizedText(playStatus, message);
     playStatus.toggleAttribute("data-error", error);
+    if (error) appDiagnostics.record("playback-error");
 }
 
 function updatePosition(position) {
@@ -989,6 +996,7 @@ function getEngine() {
         return engine;
     }).catch(error => {
         engineLoad = undefined;
+        appDiagnostics.record("engine-load-error");
         throw error;
     });
     return engineLoad;

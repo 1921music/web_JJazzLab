@@ -2,11 +2,13 @@
 
 import base64
 import gzip
+import hashlib
 import html as html_lib
 import json
 import re
 import sys
 from pathlib import Path
+from xml.etree import ElementTree
 from tempfile import NamedTemporaryFile
 from zipfile import ZipFile
 
@@ -119,9 +121,11 @@ def package(engine_dir, output):
     locale = (DEMO / "locale.js").read_text(encoding="utf-8")
     preferences = (DEMO / "app-preferences.js").read_text(encoding="utf-8")
     window_layout = (DEMO / "window-layout.js").read_text(encoding="utf-8")
+    diagnostics = (DEMO / "app-diagnostics.js").read_text(encoding="utf-8")
     runtime = (engine_dir / "engine.wasm-runtime.js").read_text(encoding="utf-8")
     demo = (DEMO / "demo.js").read_text(encoding="utf-8")
-    wasm = encode_gzip((engine_dir / "engine.wasm").read_bytes())
+    engine_wasm = (engine_dir / "engine.wasm").read_bytes()
+    wasm = encode_gzip(engine_wasm)
     synth = encode_gzip((DEMO.parents[1] / "audio/target/synth.wasm").read_bytes())
     worklet = (DEMO / "synth-worklet.js").read_text(encoding="utf-8")
     player = (DEMO / "player.js").read_text(encoding="utf-8")
@@ -161,6 +165,8 @@ def package(engine_dir, output):
             base = next(name[:-3] + ext for ext in ("sty", "prs", "bcs", "sst") if name[:-3] + ext in names)
             extended_styles[name] = {"baseName": base, "base": encode_gzip(source.read(base)), "extension": encode_gzip(source.read(name))}
     data = f'const embeddedWasm = "{wasm}";\nconst embeddedStyle = "{style}";'
+    build_marker = "/* JJAZZ_BUILD_INFO */ null"
+    data += f"\nconst embeddedBuildInfo = {build_marker};"
     data += f'\nconst embeddedJazzWaltz = "{jazz_waltz}";'
     data += f'\nconst embeddedDiscoHouse = "{disco_house}";'
     data += f'\nconst embeddedExtendedStyles = {json.dumps(extended_styles)};'
@@ -175,8 +181,12 @@ def package(engine_dir, output):
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
                             "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, preferences, window_layout, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_memo, improvisation_guide, song_tabs, piano_score, piano_roll, chord_inspector, arranger, yjz_wizard, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, preferences, window_layout, diagnostics, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_memo, improvisation_guide, song_tabs, piano_score, piano_roll, chord_inspector, arranger, yjz_wizard, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
+    root_pom = ElementTree.parse(DEMO.parents[2] / "pom.xml")
+    build_info = {"engineVersion": root_pom.findtext("{*}version"), "engineBytes": len(engine_wasm),
+                  "buildId": hashlib.sha256(html.encode("utf-8")).hexdigest()[:12]}
+    html = html.replace(build_marker, json.dumps(build_info), 1)
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:
         temporary = Path(staged.name)

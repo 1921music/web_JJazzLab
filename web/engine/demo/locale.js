@@ -315,6 +315,13 @@ SysExを許可して接続|Connect with SysEx permission
 音色・エフェクト・音量・パンを送信する|Send program, effects, volume and pan
 内蔵音源も鳴らす|Also play the built-in synthesizer
 環境設定…|Preferences…
+JJazzLab フォーラム|JJazzLab Forum
+JJazzLab に寄付|Donate to JJazzLab
+バージョンと診断…|Version and Diagnostics…
+バージョンと診断|Version and Diagnostics
+環境情報と診断ログ|System information and diagnostic log
+診断ログを消去|Clear Diagnostic Log
+診断情報を保存|Save Diagnostics
 パネル配置…|Panel Layout…
 パネル配置をリセット|Reset Panel Layout
 全画面表示|Full Screen

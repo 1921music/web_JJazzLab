@@ -72,6 +72,9 @@
                 </div></details>
                 <details><summary>ヘルプ</summary><div>
                     <a href="https://jjazzlab.gitbook.io/user-guide/" target="_blank" rel="noopener noreferrer">JJazzLab ユーザーガイド</a>
+                    <a href="https://jjazzlab.freeforums.net/" target="_blank" rel="noopener noreferrer">JJazzLab フォーラム</a>
+                    <a href="https://www.jjazzlab.org/en/donate/" target="_blank" rel="noopener noreferrer">JJazzLab に寄付</a>
+                    <button id="open-app-diagnostics" type="button">バージョンと診断…</button>
                 </div></details>
             </nav>
             <h1 class="brand">JJazzLab <small>Web</small></h1>
@@ -645,6 +648,16 @@
                 <button type="submit">適用</button>
             </div>
         </form>
+    </dialog>
+
+    <dialog id="app-diagnostics" aria-labelledby="app-diagnostics-title">
+        <h2 id="app-diagnostics-title">バージョンと診断</h2>
+        <pre aria-label="環境情報と診断ログ"></pre>
+        <div class="dialog-actions">
+            <button id="clear-diagnostics" type="button" class="secondary">診断ログを消去</button>
+            <button id="save-diagnostics" type="button" class="secondary">診断情報を保存</button>
+            <button id="close-diagnostics" type="button">閉じる</button>
+        </div>
     </dialog>
 
     <dialog id="window-layout" aria-labelledby="window-layout-title">
