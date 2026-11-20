@@ -98,6 +98,34 @@ test("solo isolates parts, pan reaches the desired side, and settings survive st
     assert.equal(p.parts[0].pan, -1); assert.equal(p.parts[0].volume, .5);
 });
 
+test("an instrument change applies immediately, survives looping, and can be restored", async () => {
+    const { processor: p, calls, render } = createProcessor();
+    await p.command({ type: "song", song: song([event(0, 0xc0, 33)]), loop: { enabled: true, start: .128, end: .256 } });
+    await p.command({ type: "play" });
+    render();
+    await p.command({ type: "mix", parts: [{ ...settings, instrumentChoice: { program: 41 } }], master: 1 });
+    render(2);
+    await p.command({ type: "mix", parts: [settings], master: 1 });
+    assert.deepEqual(calls.filter(call => call[2] === 0xc0).map(call => call[3]), [33, 41, 41, 41, 33]);
+});
+
+test("reverb and chorus independently contribute wet audio and honor disabled sends", async () => {
+    async function output(values) {
+        const { processor: p, render } = createProcessor(48000);
+        await p.command({ type: "song", song: song([]), loop: { enabled: false, start: 0, end: .512 } });
+        await p.command({ type: "mix", parts: [{ ...settings, ...values }], master: 1 });
+        await p.command({ type: "play" });
+        return render(40).map(channel => channel[30]);
+    }
+    const dry = await output({});
+    assert.deepEqual(await output({ reverb: 127, chorus: 127, reverbEnabled: false, chorusEnabled: false }), dry);
+    const room = await output({ reverb: 127, reverbEnabled: true });
+    const chorus = await output({ chorus: 127, chorusEnabled: true });
+    assert.ok(room.every((sample, index) => sample > dry[index]));
+    assert.ok(chorus.every((sample, index) => sample > dry[index]));
+    assert.notDeepEqual(room, chorus);
+});
+
 const wasmPath = path.resolve(__dirname, "../target/synth.wasm");
 const sfPath = process.env.SOUNDFONT_TEST_SF2 || path.resolve(__dirname, "../../../WSL_image/TimGM6mb.sf2");
 test("the real Worklet command path initializes Wasm and renders finite stereo samples", {

@@ -3,11 +3,13 @@ package org.jjazz.web.engine;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.stream.Stream;
 import org.jjazz.midi.api.DrumKit;
 import org.jjazz.midi.api.Instrument;
 import org.jjazz.midi.api.MidiAddress;
 import org.jjazz.midi.api.keymap.KeyMapGM;
 import org.jjazz.midi.api.synths.GMSynth;
+import org.jjazz.midi.api.synths.GM2Synth;
 import org.jjazz.midimix.api.MidiMix;
 import org.jjazz.midimix.api.UserRhythmVoice;
 
@@ -16,6 +18,19 @@ final class SongMix
 {
     private SongMix()
     {
+    }
+
+    static String[] instrumentChoices()
+    {
+        var gm = GMSynth.getInstance().getGM1Bank().getInstruments();
+        var drums = GM2Synth.getInstance().getGM2Bank().getInstruments().stream().filter(instrument ->
+        {
+            int program = instrument.getMidiAddress().getProgramChange();
+            return instrument.isDrumKit() && (program == 0 || program == 32 || program == 40);
+        });
+        return Stream.concat(gm.stream(), drums).map(instrument ->
+                instrument.getMidiAddress().getProgramChange() + "\t" + instrument.isDrumKit() + "\t"
+                        + instrument.getPatchName() + "\t" + instrument.saveAsString()).toArray(String[]::new);
     }
 
     static String key(MidiMix mix, int channel)

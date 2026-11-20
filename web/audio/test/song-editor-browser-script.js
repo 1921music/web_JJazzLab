@@ -86,6 +86,30 @@
         check(engine.exports.wasImportedMixApplied(), "The matching desktop mix was not applied");
         check(song.parts.some(part => part.id === "user:User1"), "User MIDI track was not generated");
         check(song.barTimes.length === 139, "Expected 138 bars in the imported arrangement");
+        const bass = mixerParts.findIndex(part => part.name === "Bass");
+        const bassChannel = mixerParts[bass].channel;
+        const originalBass = editor.renderedMix.find(track => track.channel === bassChannel);
+        const bassButton = document.querySelectorAll(".channel-edit")[bass];
+        bassButton.click();
+        check(channelEditor.open && document.querySelector("#channel-reverb").valueAsNumber === originalBass.reverb,
+            "Channel editor did not load the imported effect values");
+        const cello = mixerInstruments.find(instrument => instrument.program === 42 && !instrument.drum).desktop;
+        channelInstrument.value = cello.id;
+        document.querySelector("#channel-reverb").value = "96";
+        document.querySelector("#channel-chorus").value = "57";
+        document.querySelector("#channel-effects .effect-control:first-child input[type=checkbox]").checked = true;
+        document.querySelector("#channel-effects .effect-control:last-child input[type=checkbox]").checked = false;
+        document.querySelector("#channel-editor-form").requestSubmit();
+        const editedBass = DesktopSongFiles.readMix(editor.desktopMixXml()).find(track => track.channel === bassChannel);
+        check(editedBass.instrument === cello.id && editedBass.patch === cello.patch && editedBass.reverb === 96
+            && editedBass.chorus === 57 && editedBass.reverbEnabled && !editedBass.chorusEnabled,
+            "Desktop mix output lost the edited instrument, sends or enabled flags");
+        check(mixerParts[bass].instrumentChoice.program === 42 && mixerParts[bass].reverb === 96
+            && mixerParts[bass].chorus === 57, "Channel edits did not reach the Web playback settings");
+        const originalTracks = DesktopSongFiles.readMix(desktopFixture.mix);
+        check(editor.renderedMix.filter(track => track.channel !== bassChannel).every(track =>
+            originalTracks.some(source => source.name === track.name && source.patch === track.patch)),
+            "Editing Bass changed another instrument");
         const exportedSong = DesktopSongFiles.writeSong(editor.project);
         const exportedMix = DesktopSongFiles.writeMix(editor.renderedMix);
         const style = new Uint8Array(await decompress(embeddedStyle));
@@ -104,6 +128,9 @@
         await editor.openFiles(open);
         await generate();
         check(engine.exports.wasImportedMixApplied(), "The Web project lost its mix on reopening");
+        check(song.events.some(event => event.channel === bassChannel && event.type === 0xc0 && event.a === 42),
+            "Generating again lost the selected GM instrument");
+        report.editedMix = { instrument: editedBass.patch, reverb: editedBass.reverb, chorus: editedBass.chorus, chorusEnabled: editedBass.chorusEnabled };
         report.importedBars = song.barTimes.length - 1;
 
         const converted = DesktopSongFiles.readSong(desktopFixture.song);

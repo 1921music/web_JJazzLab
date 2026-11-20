@@ -166,6 +166,12 @@ public final class WasmMidiEngine
     }
 
     @JSExport
+    public static String[] getMixerInstruments()
+    {
+        return SongMix.instrumentChoices();
+    }
+
+    @JSExport
     public static boolean wasImportedMixApplied()
     {
         return importedMixApplied;

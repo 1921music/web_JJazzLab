@@ -16,6 +16,10 @@ STYLE_ARCHIVE = (
     DEMO.parents[2] / "plugins/YamJJazz/src/main/resources"
     / "org/jjazz/yamjjazz/rhythm/api/resources/YamahaDefaultFiles.zip"
 )
+DESKTOP_SOUNDFONT_INS = (
+    DEMO.parents[2] / "plugins/FluidSynthEmbeddedSynth/src/main/resources"
+    / "org/jjazz/fluidsynthembeddedsynth/api/resources/JJazzLabSoundFont_FluidSynth.ins"
+)
 
 
 def encode_gzip(data):
@@ -25,6 +29,23 @@ def encode_gzip(data):
 def inline_script(source):
     # Prevent raw-text closing tags in JavaScript from terminating the HTML element.
     return "<script>\n" + re.sub(r"</script", r"<\\/script", source, flags=re.IGNORECASE) + "\n</script>"
+
+
+def desktop_mixer_patches():
+    banks = {"GM Bank": {}, "Drums": {}}
+    bank = None
+    for line in DESKTOP_SOUNDFONT_INS.read_text(encoding="utf-8").splitlines():
+        section = re.fullmatch(r"\[(.+)\]", line.strip())
+        if section:
+            bank = section[1]
+            continue
+        patch = re.match(r"^(\d+)\s*=\s*(.+?)\s*\{\{", line)
+        if bank in banks and patch:
+            program, name = patch.groups()
+            banks[bank][int(program)] = {"patch": name, "id": f"FluidSynth#:#NOT_SET#_#{bank}#_#{name}"}
+    if set(banks["GM Bank"]) != set(range(128)) or not {0, 32, 40} <= banks["Drums"].keys():
+        raise ValueError("Incomplete desktop SoundFont patch list")
+    return banks
 
 
 def package(engine_dir, output):
@@ -56,6 +77,7 @@ def package(engine_dir, output):
     data += f'\nconst embeddedJazzWaltz = "{jazz_waltz}";'
     data += f'\nconst embeddedDiscoHouse = "{disco_house}";'
     data += f'\nconst embeddedExtendedStyles = {json.dumps(extended_styles)};'
+    data += f'\nconst embeddedDesktopMixerPatches = {json.dumps(desktop_mixer_patches())};'
     data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])

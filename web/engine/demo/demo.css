@@ -236,7 +236,7 @@ button:disabled { opacity: .5; cursor: default; }
 .strip {
     --track-color: #8fcbce;
     display: grid;
-    grid-template-rows: auto 2.6em auto auto 1fr auto;
+    grid-template-rows: auto 2.6em 2.8em auto auto 1fr auto;
     gap: .34rem;
     flex: 0 0 5.4rem;
     min-width: 0;
@@ -251,6 +251,14 @@ button:disabled { opacity: .5; cursor: default; }
 .strip[data-voice="user"] { --track-color: #c3afe8; }
 .strip small { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: .72rem; }
 .part-name { font-weight: 680; color: var(--track-color); line-height: 1.25; overflow-wrap: anywhere; overflow: hidden; }
+.strip .channel-edit {
+    min-width: 0;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    line-height: 1.35;
+}
+.channel-edit small { display: block; overflow: hidden; text-overflow: ellipsis; }
 .strip-buttons { display: flex; justify-content: center; gap: .25rem; }
 .strip button { padding: .12rem .4rem; }
 .strip button[data-mix="mute"][aria-pressed="true"] { color: #20180e; background: #eeb47b; border-color: #f6c596; }
@@ -291,7 +299,7 @@ summary { cursor: pointer; }
 footer { grid-area: footer; padding: .6rem .75rem; color: var(--muted); border-top: 1px solid var(--border); }
 footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; overflow: auto; font-size: .85rem; }
 
-#bar-editor {
+#bar-editor, #channel-editor {
     width: min(30rem, calc(100% - 2rem));
     padding: 1rem;
     border: 1px solid #747a81;
@@ -299,8 +307,12 @@ footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; 
     background: var(--chrome);
     color: inherit;
 }
-#bar-editor::backdrop { background: #10131780; }
-#bar-editor-form { display: grid; gap: .65rem; }
+#bar-editor::backdrop, #channel-editor::backdrop { background: #10131780; }
+#bar-editor-form, #channel-editor-form, #channel-effects { display: grid; gap: .65rem; }
+.effect-control { display: grid; grid-template-columns: 1fr 5ch auto; gap: .3rem .55rem; align-items: center; }
+.effect-control > span { grid-column: 1 / -1; }
+.effect-control input[type="range"] { width: 100%; }
+.effect-control output { text-align: right; font-variant-numeric: tabular-nums; }
 .dialog-actions { display: flex; justify-content: end; gap: .45rem; }
 .bar-context {
     position: fixed;

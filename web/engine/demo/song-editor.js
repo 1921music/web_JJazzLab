@@ -131,6 +131,7 @@ class SongEditor {
     changed() {
         this.renderedMix = null;
         this.exportButton.disabled = true;
+        this.onChanged?.();
     }
 
     get attachedStyles() {
@@ -514,8 +515,7 @@ class SongEditor {
         try {
             if (!this.renderedMix) throw new Error("伴奏を生成してから書き出してください。");
             const stem = this.fileStem();
-            const desktopMix = this.renderedMix.map(track => ({ ...track, channel: track.sourceChannel ?? track.channel }));
-            const files = new Map([[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)], [`${stem}.mix`, DesktopSongFiles.writeMix(desktopMix)]]);
+            const files = new Map([[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)], [`${stem}.mix`, this.desktopMixXml()]]);
             for (const style of this.attachedStyles) {
                 // JJazzLab looks for an exact basename and a lowercase base extension on case-sensitive filesystems.
                 const baseName = style.extensionData ? `${style.name.slice(0, -4)}.${style.baseName.split(".").at(-1).toLowerCase()}` : style.name;
@@ -524,5 +524,9 @@ class SongEditor {
             }
             downloadSongFile(`${stem}.zip`, packageSongFiles([...files]), "application/zip");
         } catch (error) { this.notify(error.message, true); }
+    }
+
+    desktopMixXml() {
+        return DesktopSongFiles.writeMix(this.renderedMix.map(track => ({ ...track, channel: track.sourceChannel ?? track.channel })));
     }
 }

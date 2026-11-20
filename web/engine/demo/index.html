@@ -78,6 +78,7 @@
                 <label class="master">マスター <input id="master" type="range" min="0" max="100" value="80"><output id="master-value">80%</output></label>
                 <button id="mute-all" class="secondary" type="button" aria-pressed="false">全Mute</button>
                 <button id="clear-solo" class="secondary" type="button">Solo解除</button>
+                <button id="save-mix" class="secondary" type="button">.mixを書き出す</button>
             </div>
             <div id="mixer-empty" class="mixer-empty">伴奏を生成すると、トラックを調整できます。</div>
             <div id="mixer-parts"></div>
@@ -179,6 +180,17 @@
             <label id="bar-section-field" class="field" hidden>セクション名 <input id="edit-section-name" type="text"></label>
             <p id="bar-editor-error" class="editor-error" role="alert"></p>
             <div class="dialog-actions"><button id="cancel-bar-edit" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
+        </form>
+    </dialog>
+    <dialog id="channel-editor" aria-labelledby="channel-editor-title">
+        <form id="channel-editor-form" method="dialog">
+            <h2 id="channel-editor-title"></h2>
+            <label class="field">音色 <select id="channel-instrument"></select></label>
+            <div id="channel-effects"></div>
+            <div class="dialog-actions">
+                <button id="cancel-channel-edit" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
         </form>
     </dialog>
     <div id="bar-context" class="bar-context" role="group" aria-label="小節の操作" hidden>
