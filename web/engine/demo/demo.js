@@ -262,6 +262,7 @@ function updateButtons() {
     document.querySelector("#open-chord-inspector").disabled = !editor.project || generating || starting;
     document.querySelector("#toggle-reader").disabled = !editor.project;
     document.querySelector("#create-practice-song").disabled = !editor.project || generating || starting;
+    document.querySelector("#open-improvisation-guide").disabled = !editor.project || generating || starting;
     editor.updateUndo();
     editor.undoButton.disabled ||= generating || starting;
     editor.redoButton.disabled ||= generating || starting;
@@ -300,6 +301,7 @@ function updatePosition(position) {
     playbackFraction = Math.max(0, Math.min(1, (position.seconds - from) / (to - from)));
     pianoRoll.position(bar, playbackFraction, playing || paused);
     updateReader(bar, playbackFraction);
+    improvisationGuide.position(playing || paused ? bar : 0, playbackFraction);
     updateButtons();
     showPlayStatus(paused ? "一時停止中" : position.counting ? "カウントイン" : playing ? "演奏中" : "停止中");
 }
@@ -1390,6 +1392,7 @@ document.querySelector("#chord-display-form").onsubmit = event => {
 document.querySelector("#close-reader").onclick = () => { showReader(false); toggleReader.focus(); };
 editor.onRender = () => {
     pianoRoll.sync();
+    improvisationGuide.paint();
     recentSongs.schedule();
     if (songTabs.active?.project === editor.project) songTabs.refresh();
     if (!reader.hidden) {
@@ -1620,6 +1623,7 @@ document.querySelector("#show-generation-controls").onclick = () => {
     generationControls.querySelector("summary").focus({ preventScroll: true });
 };
 const songMemo = new SongMemo(editor, folderIO);
+const improvisationGuide = new ImprovisationGuide(editor);
 structureToggle.onclick = () => {
     const panel = document.querySelector("#structure");
     panel.hidden = !panel.hidden;

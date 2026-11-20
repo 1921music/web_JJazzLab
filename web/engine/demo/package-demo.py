@@ -32,6 +32,7 @@ DESKTOP_MIXER = DEMO.parents[2] / "app/MixConsole/src/main/resources/org/jjazz/m
 DESKTOP_PIANO = DEMO.parents[2] / "app/PianoRoll/src/main/resources/org/jjazz/pianoroll"
 DESKTOP_KEYMAPS = DEMO.parents[2] / "model/Midi/src/main/java/org/jjazz/midi/api/keymap"
 DESKTOP_MUSICXML = (DEMO.parents[2] / "core/Importers/src/main/java/org/jjazz/importers/musicxml/MusicXmlParser.java")
+DESKTOP_IMPROVISATION = (DEMO.parents[2] / "app/ImprovisationSupport/src/main/java/org/jjazz/improvisionsupport/PlayRestScenario.java")
 DESKTOP_CHORD_PROGRESSIONS = (DEMO.parents[2] / "app/CL_EditorImpl/src/main/resources/org/jjazz/cl_editorimpl"
                               / "actions/resources/ChordProgressions.txt")
 
@@ -51,6 +52,16 @@ def desktop_drum_key_maps():
         source = (DESKTOP_KEYMAPS / f"KeyMap{mapping}.java").read_text(encoding="utf-8")
         result[mapping] = {int(pitch): name for name, pitch in re.findall(r'addNote\("([^"]+)",\s*(\d+)', source)}
     return result
+
+
+def desktop_improvisation_patterns():
+    source = DESKTOP_IMPROVISATION.read_text(encoding="utf-8")
+    easy = re.search(r"SEQ_LEVEL1\s*=.*?\{(.*?)\};", source, re.S).group(1)
+    medium = re.search(r"SEQ_LEVEL2\s*=.*?\{(.*?)\};", source, re.S).group(1)
+    starts = re.search(r"SEQ_LEVEL1_START_INDEXES\s*=.*?\{(.*?)\};", source, re.S).group(1)
+    return {"easy": re.findall(r"SeqPlayRestValue\.([A-Z\d]+)", easy),
+            "medium": re.findall(r"SeqPlayRestValue\.([A-Z\d]+)", medium),
+            "easyStarts": [int(index) for index in re.findall(r"\d+", starts)]}
 
 
 def desktop_mixer_patches():
@@ -120,6 +131,7 @@ def package(engine_dir, output):
     song_folder = (DEMO / "song-folder.js").read_text(encoding="utf-8")
     song_history = (DEMO / "song-history.js").read_text(encoding="utf-8")
     song_memo = (DEMO / "song-memo.js").read_text(encoding="utf-8")
+    improvisation_guide = (DEMO / "improvisation-guide.js").read_text(encoding="utf-8")
     song_tabs = (DEMO / "song-tabs.js").read_text(encoding="utf-8")
     piano_roll = (DEMO / "piano-roll.js").read_text(encoding="utf-8")
     piano_score = (DEMO / "piano-score.js").read_text(encoding="utf-8")
@@ -152,13 +164,14 @@ def package(engine_dir, output):
     data += f'\nconst embeddedDrumKeyMaps = {json.dumps(desktop_drum_key_maps())};'
     chord_kinds = re.findall(r'XMLtoJJazzChordMap\.put\("([^"]+)",\s*"([^"]*)"\)', DESKTOP_MUSICXML.read_text(encoding="utf-8"))
     data += f'\nconst musicXmlChordKinds = {json.dumps(dict(chord_kinds))};'
+    data += f'\nconst embeddedImprovisationPatterns = {json.dumps(desktop_improvisation_patterns())};'
     data += f'\nconst embeddedChordProgressions = {json.dumps(DESKTOP_CHORD_PROGRESSIONS.read_text(encoding="utf-8"))};'
     data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
                             "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_memo, song_tabs, piano_score, piano_roll, chord_inspector, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_memo, improvisation_guide, song_tabs, piano_score, piano_roll, chord_inspector, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:

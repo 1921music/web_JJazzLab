@@ -55,6 +55,7 @@
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
                     <button id="open-chord-display-key" type="button">コード表示の移調…</button>
                     <button id="create-practice-song" type="button">選択小節から練習曲を作成…</button>
+                    <button id="open-improvisation-guide" type="button">即興練習ガイド…</button>
                     <button data-command="quick-mode" type="button">簡易入力</button>
                     <label class="language-picker">言語 <select id="ui-language" aria-label="画面の言語"><option value="ja">日本語</option><option value="en">English</option></select></label>
                 </div></details>
@@ -121,6 +122,7 @@
             <div class="reader-heading">
                 <h2 id="easy-reader-title">練習ビュー</h2>
                 <span id="reader-location"></span>
+                <span id="improvisation-cue" hidden></span>
                 <button id="close-reader" class="secondary" type="button">閉じる</button>
             </div>
             <div class="reader-chords">
@@ -356,6 +358,22 @@
         <footer><small>音源: <a href="https://github.com/schellingb/TinySoundFont">TinySoundFont</a> (MIT) / TimGM6mb — Tim Brechbill (GPL-2.0)。初回の再生にはネット接続が必要です。</small><details><summary>音源ライセンス</summary><!-- AUDIO_LICENSES --></details></footer>
         <!-- SOURCE_REVISION -->
     </main>
+    <dialog id="improvisation-guide" aria-labelledby="improvisation-guide-title">
+        <form method="dialog">
+            <h2 id="improvisation-guide-title">即興練習ガイド</h2>
+            <label class="field">練習パターン <select name="mode">
+                <option value="easy">弾く／休む（基本）</option>
+                <option value="medium">弾く／休む（応用）</option>
+                <option value="density">音を多く／少なく</option>
+            </select></label>
+            <div class="dialog-actions">
+                <button name="clearGuide" type="button" class="secondary">ガイドを消す</button>
+                <button name="cancelGuide" type="button" class="secondary">キャンセル</button>
+                <button type="submit">ガイドを生成</button>
+            </div>
+        </form>
+    </dialog>
+
     <dialog id="song-memo" aria-labelledby="song-memo-title">
         <form id="song-memo-form" method="dialog">
             <h2 id="song-memo-title">曲のメモ</h2>

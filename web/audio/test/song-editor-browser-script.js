@@ -2197,6 +2197,34 @@ AbM7 | G7 Cm7 |
             check(!editor.project.comments, "Undo did not remove the inserted links");
             report.songMemoLinks = true;
         }
+        {
+            const baseline = improvisationHalfBars("easy", 4, 120, () => 0);
+            check(baseline.join() === "rest,rest,play,play,rest,rest,play,play"
+                && improvisationHalfBars("easy", 4, 210, () => 0).join() === "rest,rest,rest,rest,play,play,play,play",
+            "The practice phrases did not use the desktop sequence or high-tempo scaling");
+            editor.newSong();
+            const before = DesktopSongFiles.writeSong(editor.project);
+            document.querySelector("#open-improvisation-guide").click();
+            const form = improvisationGuide.dialog.querySelector("form");
+            form.elements.mode.value = "density";
+            const random = Math.random;
+            try {
+                Math.random = () => 0;
+                form.requestSubmit();
+            } finally { Math.random = random; }
+            check(editor.grid.querySelectorAll(".improvisation-guide-cells").length === 4
+                && editor.grid.querySelector('[data-guide="rest"]') && editor.grid.querySelector('[data-guide="sparse"]'),
+            "The density guide did not mark both rest and play on the score");
+            improvisationGuide.position(1, .3);
+            check(improvisationGuide.cue.dataset.guide === "rest", "The practice view did not cue rest on the first bar");
+            improvisationGuide.position(2, .3);
+            check(improvisationGuide.cue.dataset.guide === "sparse" && DesktopSongFiles.writeSong(editor.project) === before,
+                "The cue did not follow the playhead or changed the song data");
+            document.querySelector("#open-improvisation-guide").click();
+            form.elements.clearGuide.click();
+            check(improvisationGuide.cue.hidden && !editor.grid.querySelector(".improvisation-guide-cells"), "The guide could not be cleared");
+            report.improvisationGuide = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

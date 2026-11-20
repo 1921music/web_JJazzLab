@@ -317,6 +317,14 @@ Webリンク|Web link
 ローカルファイル|Local file
 URLまたはファイルのパス|URL or file path
 リンクを試す|Test Link
+即興練習ガイド…|Improvisation Guide…
+即興練習ガイド|Improvisation Guide
+練習パターン|Practice pattern
+弾く／休む（基本）|Play/rest (basic)
+弾く／休む（応用）|Play/rest (intermediate)
+音を多く／少なく|Dense/sparse phrases
+ガイドを消す|Clear the guide
+ガイドを生成|Generate the guide
 鍵盤|Keyboard
 ギター|Guitar
 表示方法|View
