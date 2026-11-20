@@ -13,6 +13,7 @@ const compactProperty = id => `PropCompactViewModeVisibleRps_${id}`;
 const flatChordNotes = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const sharpChordNotes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 const sectionColors = ["#e7ac83", "#9bb487", "#8bbab5", "#b1a7d0", "#d4c381", "#9cb5d6"];
+const chordDropQuantizations = new Set(["HALF_BAR", "BEAT", "HALF_BEAT", "ONE_THIRD_BEAT", "ONE_QUARTER_BEAT", "ONE_SIXTH_BEAT", "OFF"]);
 
 function transposeChordLabel(name, semitones) {
     if (!semitones || name === "NC") return name;
@@ -275,6 +276,11 @@ class SongEditor {
         sectionColor.disabled = defaultSectionColor.checked = !storedSectionColor;
         chordColor.disabled = defaultChordColor.checked = !storedChordColor;
         newLine.checked = section.clientProperties?.PropSectionStartOnNewLine === "true";
+        const quantization = form.elements.quantization;
+        const quantizationKey = "PropSectionQuantization";
+        quantization.value = section.clientProperties?.[quantizationKey] ?? "";
+        if (quantization.selectedIndex < 0) quantization.value = "";
+        form.elements.allSections.checked = false;
         defaultSectionColor.onchange = () => { sectionColor.disabled = defaultSectionColor.checked; };
         defaultChordColor.onchange = () => { chordColor.disabled = defaultChordColor.checked; };
         form.elements.cancel.onclick = () => dialog.close();
@@ -289,6 +295,9 @@ class SongEditor {
             };
             update(section, keyForSection, colorProperty(sectionColor, defaultSectionColor.checked));
             update(section, "PropSectionStartOnNewLine", newLine.checked ? "true" : undefined);
+            for (const item of form.elements.allSections.checked ? this.project.sections : [section]) {
+                update(item, quantizationKey, quantization.value || undefined);
+            }
             if (chord) update(chord, keyForChord, colorProperty(chordColor, defaultChordColor.checked));
             this.render();
             dialog.close();
@@ -1836,21 +1845,28 @@ class SongEditor {
                     event.dataTransfer.dropEffect = event.ctrlKey || event.metaKey ? "copy" : "move";
                 }
             };
-            cell.ondrop = event => {
+            cell.ondrop = async event => {
                 if (!event.dataTransfer.types.includes("application/x-jjazz-chord")) return;
                 event.preventDefault();
                 const [sourceBar, sourceBeat] = JSON.parse(event.dataTransfer.getData("application/x-jjazz-chord"));
                 const source = chords.find(chord => chord.bar === sourceBar && chord.beat === sourceBeat);
+                if (!source) return;
+                const copy = event.ctrlKey || event.metaKey;
+                const project = this.project;
                 const width = ruler.getBoundingClientRect();
-                const position = (event.clientX - width.left) / width.width;
-                const beat = Math.min(beats - .25, Math.max(0, Math.round(position * beats * 4) / 4));
-                if (!source || chords.some(chord => chord.bar === bar && chord.beat === beat)) return;
+                if (!width.width) return;
+                const position = (event.clientX - width.left) / width.width * beats;
+                let destination, beat;
+                try { [destination, beat] = await this.onQuantizeChordDrop(project, section, bar, position); }
+                catch (error) { this.notify(error.message, true); return; }
+                if (this.project !== project || !cell.isConnected || !chords.includes(source)
+                    || chords.some(chord => chord.bar === destination && Math.fround(chord.beat) === beat)) return;
                 this.editArrangement(() => {
-                    if (event.ctrlKey || event.metaKey) chords.push({ ...structuredClone(source), bar, beat });
-                    else Object.assign(source, { bar, beat });
+                    if (copy) chords.push({ ...structuredClone(source), bar: destination, beat });
+                    else Object.assign(source, { bar: destination, beat });
                     this.selectedChord = null;
                 });
-                this.selectBar(bar, false, true);
+                this.selectBar(destination, false, true);
             };
             this.grid.append(cell);
         }

@@ -1247,6 +1247,33 @@
         check(scoreWithAppearance.clientProperties.PropClEditorZoomFactorX === "67" && scoreWithAppearance.clientProperties.PropClEditorZoomFactorY === "85"
             && editor.grid.style.getPropertyValue("--sheet-columns") === "6" && editor.grid.style.getPropertyValue("--bar-height-zoom") === "1.7", "Native zoom factors did not display and round-trip");
         report.sheetAppearance = true;
+        editor.openScoreAppearance();
+        appearance.elements.quantization.value = "HALF_BEAT";
+        appearance.elements.allSections.checked = true;
+        appearance.requestSubmit();
+        const savedQuantization = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+        check(savedQuantization.sections.every(section => section.clientProperties.PropSectionQuantization === "HALF_BEAT"),
+            "Applying quantization to every section did not save the native setting");
+        const origin = editor.project.chords[0];
+        const target = Array.from({ length: editor.project.bars }, (_, bar) => bar)
+            .find(bar => !editor.project.chords.some(chord => chord.bar === bar && chord.beat === .5));
+        const meter = editor.project.sections.findLast(section => section.bar <= target).meter;
+        const beatCount = DesktopSongFiles.meters[meter][1];
+        const destinationCell = editor.grid.children[target];
+        const rulerBounds = destinationCell.querySelector(".beat-ruler").getBoundingClientRect();
+        const payload = new DataTransfer();
+        payload.setData("application/x-jjazz-chord", JSON.stringify([origin.bar, origin.beat]));
+        await destinationCell.ondrop(new DragEvent("drop", { dataTransfer: payload, ctrlKey: true, clientX: rulerBounds.left + rulerBounds.width * .62 / beatCount }));
+        check(editor.project.chords.some(chord => chord.bar === target && chord.beat === .5 && chord.name === origin.name),
+            "Dragging with half-beat quantization did not copy the chord to beat 1.5");
+        const swingGrid = structuredClone(editor.project);
+        swingGrid.sections[0].meter = "FOUR_FOUR";
+        delete swingGrid.sections[0].clientProperties.PropSectionQuantization;
+        swingGrid.parts[0].section = 0;
+        swingGrid.parts[0].styleId = "jjSwing-ID";
+        const [, beatOnSwingGrid] = await editor.onQuantizeChordDrop(swingGrid, swingGrid.sections[0], 0, .34);
+        check(Math.abs(beatOnSwingGrid - 1 / 3) < .0001, "Automatic chord quantization did not follow jjSwing's ternary division");
+        report.chordDropQuantization = true;
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

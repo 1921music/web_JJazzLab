@@ -16,6 +16,7 @@ import org.jjazz.chordleadsheet.api.item.CLI_Section;
 import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
 import org.jjazz.harmony.spi.ScaleManager;
 import org.jjazz.harmony.api.TimeSignature;
+import org.jjazz.harmony.api.Position;
 import org.jjazz.humanizer.api.Humanizer;
 import org.jjazz.importers.api.TextReader;
 import org.jjazz.phrase.api.NoteEvent;
@@ -25,6 +26,8 @@ import org.jjazz.phrasetransform.DrumsAccentsTransform;
 import org.jjazz.phrasetransform.api.PhraseTransform;
 import org.jjazz.phrasetransform.api.PhraseTransformCategory;
 import org.jjazz.phrasetransform.api.PhraseTransformManager;
+import org.jjazz.quantizer.api.Quantization;
+import org.jjazz.quantizer.api.Quantizer;
 import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.jjazz.utilities.api.FloatRange;
@@ -351,20 +354,40 @@ public final class WasmMidiEngine
     @JSExport
     public static String[] getRhythmVoices(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
     {
+        return voiceInfo(readRhythm(bytes, name, extensionBytes, extensionName));
+    }
+
+    @JSExport
+    public static boolean isTernaryRhythm(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        return readRhythm(bytes, name, extensionBytes, extensionName).getFeatures().division().isTernary();
+    }
+
+    @JSExport
+    public static float[] quantizeChordDrop(String quantization, String meter, int bar, float beat, int lastBar)
+    {
+        var timeSignature = TimeSignature.valueOf(meter);
+        var position = new Position(bar, Math.clamp(beat, 0, Math.nextDown(timeSignature.getNbNaturalBeats())));
+        var result = Quantizer.getQuantized(Quantization.valueOf(quantization), position, timeSignature, 1f, lastBar);
+        return new float[] { result.getBar(), result.getBeat() };
+    }
+
+    private static Rhythm readRhythm(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
         WebServices.install();
         if (name.isEmpty())
         {
-            return voiceInfo(WebJJSwing.rhythm());
+            return WebJJSwing.rhythm();
         }
         try (var style = new RawStyleFile(bytes, name))
         {
             if (extensionName.isEmpty())
             {
-                return voiceInfo(MidiGeneration.createYamahaRhythm(style.file(), null));
+                return MidiGeneration.createYamahaRhythm(style.file(), null);
             }
             try (var extension = RawStyleFile.extension(extensionBytes, extensionName))
             {
-                return voiceInfo(MidiGeneration.createYamahaRhythm(style.file(), extension.file()));
+                return MidiGeneration.createYamahaRhythm(style.file(), extension.file());
             }
         }
     }

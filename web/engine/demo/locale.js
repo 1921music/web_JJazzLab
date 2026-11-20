@@ -16,6 +16,16 @@ MIDIを取り込む…|Import MIDI…
 コードの色|Chord color
 既定の色|Default color
 セクションの前で改行|Start section on a new line
+コード移動のクオンタイズ|Quantize chord placement
+リズムに合わせる|Follow rhythm
+全セクションにクオンタイズを適用|Apply quantization to all sections
+半小節|Half bar
+1拍|One beat
+半拍|Half beat
+1/3拍|1/3 beat
+1/4拍|1/4 beat
+1/6拍|1/6 beat
+スナップなし|No snapping
 選択小節から練習曲を作成…|Create practice song from selected bars…
 練習曲を作成|Create practice song
 開始テンポ（BPM）|Starting tempo (BPM)

@@ -1022,6 +1022,19 @@ editor.onReadTextSong = async contents => {
     });
 };
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
+editor.onQuantizeChordDrop = async (project, section, bar, beat) => {
+    const wasm = (await getEngine()).exports;
+    let quantization = section.clientProperties?.PropSectionQuantization;
+    if (!chordDropQuantizations.has(quantization)) {
+        const part = project.parts.find(item => project.sections[item.section] === section) ?? project.parts[0];
+        const source = DesktopSongFiles.sourceStyleId(part.styleId);
+        const style = await readSavedStyle(source, project.sections[part.section].meter);
+        const name = style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name;
+        const ternary = wasm.isTernaryRhythm(style.bytes, name, style.extension ?? new Int8Array(), style.extension ? style.name : "");
+        quantization = ternary ? "ONE_THIRD_BEAT" : "ONE_QUARTER_BEAT";
+    }
+    return wasm.quantizeChordDrop(quantization, section.meter, bar, beat, project.bars - 1);
+};
 const pianoRoll = new PianoRoll(editor, (range, stopAtEnd) => {
     chosenRange = range;
     if (song && range.to < song.barTimes.length) {

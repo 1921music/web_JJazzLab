@@ -616,6 +616,19 @@
                 <label>セクションの色 <input name="sectionColor" type="color"></label>
                 <label><input name="defaultSectionColor" type="checkbox"> 既定の色</label>
                 <label><input name="newLine" type="checkbox"> セクションの前で改行</label>
+                <label class="field">コード移動のクオンタイズ
+                    <select name="quantization">
+                        <option value="">リズムに合わせる</option>
+                        <option value="HALF_BAR">半小節</option>
+                        <option value="BEAT">1拍</option>
+                        <option value="HALF_BEAT">半拍</option>
+                        <option value="ONE_THIRD_BEAT">1/3拍</option>
+                        <option value="ONE_QUARTER_BEAT">1/4拍</option>
+                        <option value="ONE_SIXTH_BEAT">1/6拍</option>
+                        <option value="OFF">スナップなし</option>
+                    </select>
+                </label>
+                <label><input name="allSections" type="checkbox"> 全セクションにクオンタイズを適用</label>
             </fieldset>
             <fieldset id="score-appearance-chord-fields">
                 <legend id="score-appearance-chord"></legend>
