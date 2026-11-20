@@ -7,9 +7,10 @@ https://github.com/schellingb/TinySoundFont (MIT).
 `synth.c` is our adapter. Emscripten builds a standalone Wasm module, with
 64 MiB of fixed memory and no filesystem, shared memory, pthreads or JS loader.
 The HTML embeds this module and the AudioWorklet source (registered with a data
-URL because Chrome rejects `blob:null` worklet modules from `file://`). Only the SF2 is fetched
-on the first play action, using a pinned pretty-midi revision. There is no
-persistent application cache; normal HTTP caching may avoid later transfers.
+URL because Chrome rejects `blob:null` worklet modules from `file://`). The default
+SF2 is fetched on the first play action from a pinned pretty-midi revision.
+The PWA stores the validated SF2 in browser Cache Storage for offline playback.
+The standalone HTML reuses the SF2 in memory for the lifetime of the page.
 SoundFont provenance and license are in `vendor/TimGM6mb-LICENSE.txt`.
 
 Each track/channel pair receives a separate synthesizer sharing the loaded
@@ -24,7 +25,8 @@ multiplies the rendered output and applies additional stereo pan; center pan
 preserves the original stereo image. Muting kills existing voices and skips
 new Note Ons while continuing to apply controllers and Note Offs. Unmuting
 waits for the next Note On. Controls are smoothed; a master compressor catches
-peaks. No per-part effects or SF2 modulators/reverb/chorus are implemented.
+peaks. The AudioWorklet applies its own reverb and chorus using per-part
+sends and global levels. The resulting effects differ from FluidSynth.
 
 The demo's MIDI download uses `exportGmMidi` to route percussion to GM channel
 10. Playback retains the original MIDI and independent drum parts. Downloaded

@@ -1,89 +1,60 @@
+# JJazzLab Web
 
-# JJazzLab
+**[Web版を開く（GitHub Pages）](https://1921music.github.io/web_JJazzLab/)**
 
-## Web MIDI engine
+コード譜から伴奏を作り、ブラウザで練習できるJJazzLabの派生版です。Webで曲を新しく作ることも、Java版JJazzLabで作った曲を取り込んで練習し、編集内容を持ち帰ることもできます。
 
-**[Open the browser demo](https://1921music.github.io/web_JJazzLab/)** — hosted on GitHub Pages.
+公開中のソースコミットは、ページ下部のソースリンクか[配信情報](https://1921music.github.io/web_JJazzLab/deployment.json)で確認できます。
 
-This fork adds an experimental browser engine for [JJazzLab](https://github.com/jjazzboss/JJazzLab). It uses TeaVM 0.16.0 to compile the accompaniment generator to WebAssembly GC. The port starts from JJazzLab [`cd1944afd`](https://github.com/jjazzboss/JJazzLab/commit/cd1944afdf8a18b659cdbf63538b6df625a515ec), a commit after the 5.2.1 release.
+## 使い方
 
-- Generate an accompaniment from a raw Yamaha style (`.sty`, `.sst`, or `.prs`) or the built-in jjSwing engine with its dedicated walking-bass and drums generators. The current API takes one chord per bar.
-- The Web module in [`web/engine`](web/engine) supplies browser-compatible services and TeaVM substitutions for desktop dependencies. jjSwing has a small dependency-injection factory for standalone initialization; its music-generation algorithms are preserved.
-- A standalone HTML demo lets you edit chords, play with TinySoundFont and TimGM6mb, loop bars, mix parts and download MIDI. It includes 8Beat and jjSwing; jjSwing exposes all 17 variations (Main A–E, fills, intro and ending), automatic or manual bass/drums playing styles and adapts XG drum articulations to available TimGM6mb sounds.
-- In Yamaha mode, load the public JJazzLab style collection on demand and choose by category or name. The ZIP is processed entirely in browser memory. The collection contains 189 files; 186 are usable in the current engine and three malformed source files are marked unavailable.
+1. PC版のChromeまたはEdgeで開きます。新規曲はコード譜の小節をダブルクリックして編集します。たとえば `Cmaj7 3:G7` と入力すると、1拍目にCmaj7、3拍目にG7が入ります。
+2. Java版の曲を使う場合は「ファイル → 曲を開く…」で `.sng` を選びます。ミックスも取り込む場合は、同名の `.mix` を一緒に選びます。
+3. 再生を押すと伴奏が準備されます。小節や演奏区間を選んでループしたり、ミキサーで各パートの音量を調整したりできます。ピアノロールではユーザートラックの音符を追加・編集できます。
+4. Web用の編集ファイルは「Web用に保存」で `.jjazzweb` に保存します。Java版に戻す場合は「JJazzLab形式で書き出す」のZIPを解凍し、`.sng` と同名の `.mix` を同じフォルダーに置いてから `.sng` を開きます。スタイルがZIPに含まれる場合は、必要に応じてJava版にも登録してください。MIDI（GM）、WAV、MP3にも書き出せます。
 
-From the repository root on Windows, run the following commands in PowerShell 7 with WSL 2 available.
+### PWAとしてインストール
+
+PWA対応版を配信したURLをChromeまたはEdgeで開き、アドレスバーのインストール操作か「ウィンドウ → アプリをインストール…」を選びます。インストール後は専用ウィンドウで起動します。PWAの配信にはHTTPSまたは開発用のlocalhostを使います。
+
+既定音源のTimGM6mb（約6 MB）は最初の再生時に取得します。PWA版では取得後の音源とアプリ本体がブラウザに保存され、オフラインで起動・再生できます。公開スタイル集の読み込みにはネット接続が必要です。
+
+### 単一HTMLをダウンロードして使う
+
+単一HTML版の配布先は [GitHub Releases](https://github.com/1921music/web_JJazzLab/releases) です。配布ファイルが掲載されたら、リリースの **Assets** から `midi-demo.html` をダウンロードし、ChromeまたはEdgeで直接開いてください。Webサーバーを立てずに `file://` から利用できます。
+
+このPWA対応版の単一HTMLは **2,070,673 B（約2.07 MB）** です。HTMLには伴奏エンジンと音源のプログラムが入っています。既定のSoundFont自体は再生時の取得なので、未取得の状態で既定音源を鳴らすにはネット接続が必要です。手持ちの対応する `.sf2` を選んで再生することもできます。
+
+## Java版JJazzLabとの違い
+
+| 項目 | Web版の動作と注意点 |
+| --- | --- |
+| 曲とスタイル | `.sng` の区間ごとの拍子・リズム・バリエーションに従います。標準Yamahaスタイル、YamJJazz、jjSwingを利用できます。手持ちの `.yjz` には同名のベーススタイルが必要です。リズムが見つからない場合は再生時に代替し、元の指定を本家形式の書き出しに残します。 |
+| 発音とミックス | ブラウザではTinySoundFontとTimGM6mbを使用します。Java版のFluidSynthとは音色、ブラシなどの打楽器、リバーブやコーラスの響きが異なります。Web版のミキサー設定を書き出すには `.mix` を使います。GMのMIDI書き出しでは打楽器をチャンネル10にまとめるため、パートごとの音量・パンはWAV／MP3や `.mix` で保持してください。 |
+| MIDI機器 | 対応ブラウザでWeb MIDIを許可すると、外部機器への出力、MIDI Learn、MIDI Thru、鍵盤コード追従を使えます。専用のJavaプラグイン、FluidSynth固有のプリセット、OSオーディオドライバーの選択はJava版の機能です。 |
+| 保存と復元 | 選んだ曲やスタイルはブラウザ内で処理します。設定や最近の曲はブラウザの保存領域にあり、端末・ブラウザプロファイル・配信元ごとに分かれます。サイトデータを消す前や端末を移すときは、必要な曲をファイルに書き出してください。フォルダーから開く機能はブラウザの対応とアクセス許可が必要です。 |
+
+各機能の対応範囲と検証結果は[本家との機能比較チェックリスト](docs/desktop-web-feature-checklist.md)を参照してください。動作を報告するときは「ヘルプ → バージョンと診断」でビルドIDを確認できます。
+
+## 上流と実装
+
+上流の [JJazzLab 5.2.1](https://github.com/jjazzboss/JJazzLab/releases/tag/5.2.1) をベースにしています。タグ `5.2.1` が指すフォークの基準コミットは [`cd1944afdf8a18b659cdbf63538b6df625a515ec`](https://github.com/jjazzboss/JJazzLab/commit/cd1944afdf8a18b659cdbf63538b6df625a515ec) です。
+
+- Javaの曲モデルと伴奏生成を再利用し、TeaVM 0.16.0でWebAssembly GCにコンパイルします。デスクトップに依存するサービスにはWeb向けの実装を用意し、コード譜やミキサーなどの画面はHTML・CSS・JavaScriptで実装しています。[エンジンの開発ガイド](web/engine/README.md)
+- 発音にはEmscriptenでWasm化したTinySoundFontとAudioWorkletを使います。TimGM6mbは固定リビジョンから取得します。対応するローカルのGM用SoundFont（`.sf2`、16 MB以下）も選べます。[音源の実装と検証](web/audio/README.md)
+
+## ビルドと公開
+
+WindowsのリポジトリルートでPowerShell 7を使います。初回はWSL 2の開発環境をセットアップします。
 
 ```powershell
 ./scripts/wsl-dev.ps1
 ./scripts/wsl-build.ps1 -Engine
+node scripts/publish-pages.mjs WSL_image/pwa
 ```
 
-The setup script provisions a dedicated Ubuntu 24.04 distribution with JDK 25, Maven, and Python 3. Edit and commit in the Windows checkout. The build script syncs the source to WSL and writes `engine.wasm` and `engine.wasm-runtime.js` to `web/engine/target/wasm-diagnostics/` inside the WSL checkout. Open the generated `WSL_image/midi-demo.html` in a browser with WasmGC support to use the standalone file. Serve `WSL_image/pwa/` over HTTPS or localhost to install JJazzLab Web as an app.
+生成物は `WSL_image/pwa/` と `WSL_image/midi-demo.html` です。上のNodeコマンドは配信ファイルの確認用です。公開は、確認済みのソースコミットを `origin` にプッシュした後、同じコマンドに `--publish` を付けて実行します。配信元は `gh-pages` ブランチのルートです。検証コマンドと公開後の確認方法は[開発ガイドの公開手順](web/engine/README.md#github-pagesへの公開)を参照してください。
 
-See the [build and API guide](web/engine/README.md) and the [design notes](docs/wasm-engine-design.md) for details in Japanese. See [LICENSE](LICENSE) for the upstream license text.
+## ライセンスと出典
 
-After rebuilding, testing, committing and pushing the source, publish the reviewed
-PWA with Node.js and the repository's existing GitHub credentials.
-
-```powershell
-node scripts/publish-pages.mjs --publish WSL_image/pwa
-```
-
-Omit `--publish` for a dry run. The script updates the `gh-pages` branch, enables
-GitHub Pages, and verifies the SHA-256 of each published PWA file.
-The page footer links to its source commit; the same full hash and link are
-recorded in the publishing branch’s README and deployment metadata.
-
-## JJazzLab desktop application
-
-JJazzLab is a complete and open application dedicated to backing tracks generation. You type in chord symbols, select a rhythm (music style), then the application generates a complete backing track with drums, bass, guitar, piano, strings, etc. 
-
-The objective is to generate **interesting backing tracks**, i.e tracks which are: 
-- realistic
-- non-boring (with variations and dynamics)
-- easily customizable, even for complex songs
-
-*The JJazzLab UI (available in several languages thanks to the JJazzLab community):* 
-![JJazzLab screenshot](https://github.com/jjazzboss/JJazzLab/blob/master/graphics/JJazzLabFullScreen.png)
-
-JJazzLab embeds its own customized software synth based on [FluidSynth](https://www.fluidsynth.org/). For even better sounds, just connect JJazzLab to VST plugins via a virtual Midi cable and a VST host.
-
-## Community
-
-JJazzLab has 35.000+ users from 90+ countries. It’s a jam buddy to have fun practicing at home or learn new stuff. It’s also a great tool for teaching or early-stage composing.
-
-## Videos
-
-Check out the demos of the [JJazzLab YouTube channel](https://www.youtube.com/channel/UC0L3SwjY6bhTj6jsbOYzzAw).
-
-## An open architecture
-
-JJazzLab is based on the [Apache Netbeans Platform](https://netbeans.apache.org/front/main/index.html) which provides a reliable and extensible application architecture via plugins.
-
-Developers can easily add music generation capabilities or try new ideas, without taking care of all the "plumbing".
-
-## JJazzLab Toolkit for developers
-
-The [JJazzLab Toolkit](https://github.com/jjazzboss/JJazzLabToolkit)  is a single standalone jar (all dependencies included) which contains the JJazzLab core (no GUI).
-
-It makes it easy to experiment with JJazzLab models and algorithms, or create your own plugins.
-
-## Download 
-
-Visit **[www.jjazzlab.org](https://www.jjazzlab.org)** for ready-to-use installers for Win, Linux and Mac.
-
-## License
-
-Lesser GPL v2 (LGPL v2.1)
-
-## Documentation
-
-[https://jjazzlab.gitbook.io/user-guide/](https://jjazzlab.gitbook.io/user-guide)
-
-[https://jjazzlab.gitbook.io/developer-guide/](https://jjazzlab.gitbook.io/developer-guide/)
-
-## Contact
-
-For more information use the Contact page at [www.jjazzlab.org](https://www.jjazzlab.org)
-
+JJazzLab本体と本リポジトリの上流由来部分は[LGPL 2.1](LICENSE)です。[TinySoundFontはMIT](web/audio/vendor/LICENSE)、[TimGM6mbはGPL-2.0-only](web/audio/vendor/TimGM6mb-LICENSE.txt)です。公開Yamahaスタイル集の配布元とハッシュは[スタイル集の出典](web/engine/demo/assets/README.md)に記録しています。デスクトップ版の操作については[上流のユーザーガイド](https://jjazzlab.gitbook.io/user-guide/)を参照してください。

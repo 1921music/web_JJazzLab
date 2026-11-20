@@ -497,13 +497,14 @@
 
 - **PWAインストール**
   HTTPSまたはlocalhostで配信したWeb版を、対応ブラウザから専用ウィンドウで起動するアプリとしてインストールできる。Chromiumでサブディレクトリ配信時のインストール条件、画面からのインストール操作、既定音源取得後のオフライン起動と再生を検証した。PWA版のHTMLは2,071,936 B、配信ファイル全5点の合計は2,099,633 B。
+  インストール方法と、Releasesで配布する単一HTMLの使い方は[Web版README](../README.md)を参照。
 
   - [x] 実装済み
   - [ ] 対応しない
 
 ## 確認資料
 
-- [本家5.2.1のリリース](https://github.com/jjazzboss/JJazzLab/releases)
+- [本家5.2.1のリリース](https://github.com/jjazzboss/JJazzLab/releases/tag/5.2.1)
 - [本家のユーザーガイド](https://jjazzlab.gitbook.io/user-guide)
 - [本家の画面モジュール](../app/)と[Webの画面実装](../web/engine/demo/)
 - [Web版のビルド・検証手順](../web/engine/README.md)
