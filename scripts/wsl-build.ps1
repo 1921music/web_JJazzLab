@@ -80,16 +80,14 @@ $sourceInfo = '-'
 if ($Engine -or $DemoOnly) {
     $head = git -C $repo rev-parse HEAD
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the source commit' }
-    $lines = @(git -C $repo -c i18n.logOutputEncoding=UTF-8 log $head --first-parent -20 --format='%H%x09%cs%x09%s')
-    if ($LASTEXITCODE -ne 0) { throw 'Could not read the commit history' }
     $dirty = @(git -C $repo status --porcelain).Count -ne 0
     if ($LASTEXITCODE -ne 0) { throw 'Could not read the source working tree status' }
-    $commits = @(foreach ($line in $lines) {
-        $hash, $date, $subject = $line -split "`t", 3
-        if ($subject.Length -gt 200) { $subject = $subject.Substring(0, 199) + [char]0x2026 }
-        @{ hash = $hash; date = $date; subject = $subject }
-    })
-    $json = @{ commit = $head; dirty = $dirty; commits = $commits } | ConvertTo-Json -Depth 4 -Compress
+    $source = @{ commit = $head; dirty = $dirty }
+    $origin = git -C $repo remote get-url origin 2>$null
+    if ($origin -cmatch '^(?:https://github\.com/|git@github\.com:|ssh://git@github\.com/)([A-Za-z0-9_.-]+)/([A-Za-z0-9_.-]+?)(?:\.git)?$') {
+        $source.url = "https://github.com/$($Matches[1])/$($Matches[2])/tree/$head"
+    }
+    $json = $source | ConvertTo-Json -Compress
     $sourceInfo = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($json))
 }
 $launcher = @'

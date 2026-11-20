@@ -14,10 +14,12 @@ class AppDiagnostics {
         } catch { /* Optional storage. */ }
         this.dialog = document.querySelector("#app-diagnostics");
         this.details = this.dialog.querySelector("#diagnostic-report");
-        const commits = source?.commits ?? [];
-        this.dialog.querySelector("#build-commits").textContent =
-            commits.map(({ hash, date, subject }) => `${hash.slice(0, 9)}  ${date}  ${subject}`).join("\n");
-        this.dialog.querySelector("#build-history-empty").hidden = commits.length > 0;
+        if (source?.commit) {
+            const revision = this.dialog.querySelector("#build-source-commit");
+            revision.querySelector("code").textContent = source.commit;
+            if (source.url) revision.href = source.url;
+            this.dialog.querySelector("#build-source").hidden = false;
+        }
         this.dialog.querySelector("#build-source-dirty").hidden = !source?.dirty;
         const level = this.dialog.querySelector("#diagnostics-level");
         level.value = this.level;

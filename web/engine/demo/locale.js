@@ -328,9 +328,8 @@ JJazzLab フォーラム|JJazzLab Forum
 JJazzLab に寄付|Donate to JJazzLab
 バージョンと診断…|Version and Diagnostics…
 バージョンと診断|Version and Diagnostics
-コミット履歴|Commit History
+ソースコミット|Source commit
 このビルドには未コミットの変更が含まれます。|This build includes uncommitted changes.
-このビルドにはコミット履歴がありません。|Commit history is unavailable for this build.
 環境情報と診断ログ|System information and diagnostic log
 診断ログを消去|Clear Diagnostic Log
 診断情報を保存|Save Diagnostics

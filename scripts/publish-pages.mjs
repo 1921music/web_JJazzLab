@@ -16,7 +16,7 @@ const input = process.argv.slice(2).find(value => value !== "--publish");
 if (!input) throw new Error("Usage: node scripts/publish-pages.mjs [--publish] <pwa-directory|built.html>");
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
 const remote = git("remote", "get-url", "origin");
-const match = remote.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?$/u);
+const match = remote.match(/^(?:https:\/\/github\.com\/|git@github\.com:|ssh:\/\/git@github\.com\/)([A-Za-z0-9_.-]+)\/([A-Za-z0-9_.-]+?)(?:\.git)?$/u);
 if (!match) throw new Error("origin must be a GitHub HTTPS or SSH repository");
 const [, owner, repository] = match;
 const sourceCommit = git("rev-parse", "HEAD");
@@ -31,9 +31,8 @@ for (const file of ["demo.js", "locale.js", "midi.js", "song-files.js", "song-ed
     if (!html.includes(expected)) throw new Error("Build is stale: " + file + ". Rebuild and test before publishing.");
 }
 const buildInfo = JSON.parse(html.match(/^const embeddedBuildInfo = (.*);$/mu)?.[1] ?? "null");
-if (buildInfo?.source?.commit !== sourceCommit || buildInfo.source.dirty !== false
-    || buildInfo.source.commits?.[0]?.hash !== sourceCommit) {
-    throw new Error("Build source does not match clean HEAD. Build again from the committed source.");
+if (buildInfo?.source?.commit !== sourceCommit || buildInfo.source.dirty !== false || buildInfo.source.url !== sourceUrl) {
+    throw new Error("Build source does not match clean HEAD and origin. Build again from the committed source.");
 }
 const worklet = JSON.parse(html.match(/const embeddedWorklet = (.*);/u)?.[1] || "null");
 if (worklet !== readSource("web/engine/demo/synth-worklet.js")) throw new Error("Build is stale: synth-worklet.js");

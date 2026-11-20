@@ -94,7 +94,7 @@ ChromiumでのPWA検証は `node web/audio/test/pwa-smoke.cjs WSL_image/pwa` で
 
 3. スクリプトが公開先からHTML、Web App Manifest、Service Worker、アイコン2枚を取得し、すべてのSHA-256が一致したことを確認します。公開ページのソースリンクと [deployment.json](https://1921music.github.io/web_JJazzLab/deployment.json) で公開中のソースコミットを確認できます。PWAのインストールを確認するときは、公開URLをChromeまたはEdgeで開きます。古いPWAが開いたままの場合は、同じサイトのウィンドウやタブを閉じて開き直すと新しいService Workerへ切り替わります。
 
-「ヘルプ → バージョンと診断」のコミット履歴は、ビルド時のソースチェックアウトから直近20件を取得し、PWAと単一HTMLに埋め込みます。公開スクリプトは、埋め込まれたソースコミットが現在の `HEAD` と一致し、ビルド時に作業ツリーがクリーンだったことを確認します。
+「ヘルプ → バージョンと診断」に、ビルド時のコミットハッシュを表示します。GitHubの `origin` が設定されていれば、そのコミットのソースツリーへのリンクになります。公開スクリプトは、埋め込まれたコミットとリンク先が現在の `HEAD` と `origin` に一致し、ビルド時に作業ツリーがクリーンだったことを確認します。
 
 ### 単一HTMLをGitHub Releasesで配布する
 

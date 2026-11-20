@@ -2456,17 +2456,18 @@ AbM7 | G7 Cm7 |
                     && displayed.events.at(-1).event === "playback-error" && !JSON.stringify(displayed).includes(privateText),
                 "The diagnostics dialog did not identify the build and omit document-specific error text");
                 const source = embeddedBuildInfo.source;
-                const history = dialog.querySelector("#build-commits").textContent;
+                const revision = dialog.querySelector("#build-source-commit");
                 if (source) {
                     check(displayed.build.sourceCommit === source.commit && displayed.build.sourceDirty === source.dirty
-                        && source.commits.length <= 20 && source.commits[0]?.hash === source.commit
-                        && history.startsWith(source.commit.slice(0, 9)) && history.includes(source.commits[0].subject)
+                        && !dialog.querySelector("#build-source").hidden && revision.textContent === source.commit
+                        && revision.getAttribute("href") === (source.url ?? null)
                         && dialog.querySelector("#build-source-dirty").hidden === !source.dirty,
-                    "The version dialog did not render the packaged source and commit history");
+                    "The version dialog did not link the packaged source commit");
                 } else {
-                    check(dialog.querySelector("#build-history-empty").hidden === false && !history,
-                        "The version dialog did not handle build metadata without Git history");
+                    check(dialog.querySelector("#build-source").hidden && !revision.hasAttribute("href"),
+                        "The version dialog did not handle missing Git metadata");
                 }
+                check(!source || !Object.hasOwn(source, "commits"), "The artifact still includes commit history");
                 dialog.querySelector("#save-diagnostics").click();
                 const exported = await downloaded;
                 check(exported.build.buildId === displayed.build.buildId && exported.capabilities.audioWorklet,
