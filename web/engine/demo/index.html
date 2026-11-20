@@ -705,6 +705,23 @@
             <label><input type="checkbox" name="wheelChanges"> ホイールでミキサーの値を変更する</label>
             <label><input type="checkbox" name="fixSectionChords"> 再生時にセクション先頭のコードを補完する</label>
             <label class="field">コードの別名 <textarea name="aliases" rows="5" placeholder="CaltMaj=CMaj7"></textarea></label>
+            <div class="rhythm-picker-fields">
+                <fieldset data-display-style="chord-symbol">
+                    <legend>コード記号</legend>
+                    <label class="field">フォント <select><option value="default">標準</option><option value="sans">サンセリフ</option><option value="serif">セリフ</option><option value="mono">等幅</option></select></label>
+                    <label class="field">文字色 <input type="color" value="#171715"></label>
+                </fieldset>
+                <fieldset data-display-style="annotation">
+                    <legend>小節メモ</legend>
+                    <label class="field">フォント <select><option value="default">標準</option><option value="sans">サンセリフ</option><option value="serif">セリフ</option><option value="mono">等幅</option></select></label>
+                    <label class="field">文字色 <input type="color" value="#754c33"></label>
+                </fieldset>
+                <fieldset data-display-style="part-name">
+                    <legend>区間名</legend>
+                    <label class="field">フォント <select><option value="default">標準</option><option value="sans">サンセリフ</option><option value="serif">セリフ</option><option value="mono">等幅</option></select></label>
+                    <label class="field">文字色 <input type="color" value="#282623"></label>
+                </fieldset>
+            </div>
             <p role="alert" data-error></p>
             <div class="dialog-actions">
                 <button name="resetPreferences" type="button" class="secondary">既定値に戻す</button>

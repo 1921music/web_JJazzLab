@@ -275,7 +275,8 @@ button:disabled { opacity: .5; cursor: default; }
 .chord-lane { top: .87rem; }
 .chord-symbol {
     position: absolute;
-    font: 700 clamp(.82rem, 1.55vw, 1.4rem)/1.1 "Bahnschrift", "Arial Narrow", sans-serif;
+    font: 700 clamp(.82rem, 1.55vw, 1.4rem)/1.1 var(--chord-symbol-font, "Bahnschrift", "Arial Narrow", sans-serif);
+    color: var(--chord-symbol-color, inherit);
     letter-spacing: -.03em;
     white-space: nowrap;
     overflow: hidden;
@@ -303,6 +304,7 @@ button:disabled { opacity: .5; cursor: default; }
     font-weight: 750;
 }
 .bar-annotation { position: absolute; left: .5rem; right: .65rem; bottom: 1.65rem; color: #754c33; font-size: .75rem; line-height: .9rem; max-height: calc(var(--annotation-lines, 1) * .9rem); white-space: pre-wrap; overflow: hidden; overflow-wrap: anywhere; }
+.bar-annotation { color: var(--annotation-color, #754c33); font-family: var(--annotation-font, inherit); }
 .bar-annotation-marker { position: absolute; right: .35rem; bottom: 1.7rem; width: .55rem; height: .63rem; border: 1px solid #70531d; border-radius: 1px; background: #fadc79; }
 #bar-annotation-lines { width: 3.5rem; }
 .restart-marker { position: absolute; color: #7a3726; font-weight: 750; bottom: .77rem; right: .3rem; font-size: .8rem; }
@@ -331,7 +333,7 @@ button:disabled { opacity: .5; cursor: default; }
 .song-parts.fit-view > li { flex: 1 1 5.8rem; min-width: 4rem; }
 .song-parts .selected-part { outline: 2px solid #66c9df; outline-offset: -2px; z-index: 1; }
 .song-parts .playing-bar { outline: 2px solid var(--playhead); outline-offset: -2px; }
-.part-heading { position: sticky; inset-block-start: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .04rem .2rem; padding: .2rem .28rem; color: #282623; background: var(--section-color); }
+.part-heading { position: sticky; inset-block-start: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .04rem .2rem; padding: .2rem .28rem; color: var(--part-name-color, #282623); font-family: var(--part-name-font, inherit); background: var(--section-color); }
 .part-heading button, .part-heading select { text-align: start; background: transparent; color: inherit; border: 1px solid transparent; border-radius: 1px; padding: .03rem .08rem; min-width: 0; }
 .part-heading button:hover, .part-heading select:hover { border-color: #615e5570; }
 .part-name-button, .part-style { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

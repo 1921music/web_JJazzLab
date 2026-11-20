@@ -2352,6 +2352,9 @@ AbM7 | G7 Cm7 |
                 fields.fontSize.value = "115";
                 fields.restoreSongs.checked = false;
                 fields.wheelChanges.checked = false;
+                const chordStyle = form.querySelector('[data-display-style="chord-symbol"]');
+                chordStyle.querySelector("select").value = "mono";
+                chordStyle.querySelector('input[type="color"]').value = "#123456";
                 fields.aliases.value = "Cm=C7";
                 await appPreferences.save();
                 check(dialog.open && dialog.querySelector("[role=alert]").textContent, "Reassigning a native chord alias was allowed");
@@ -2363,7 +2366,11 @@ AbM7 | G7 Cm7 |
                 check(document.documentElement.dataset.theme === "light" && document.documentElement.dataset.uiFont === "serif"
                     && getComputedStyle(document.documentElement).colorScheme === "light", "The light theme or serif font preference was not applied");
                 const prefs = JSON.parse(localStorage.getItem(appPreferences.key));
-                check(prefs.fontSize === 115 && !prefs.restoreSongs && !prefs.wheelChanges, "The preferences were not stored");
+                const displayedChord = document.querySelector(".chord-symbol");
+                check(getComputedStyle(displayedChord).fontFamily.includes("monospace")
+                    && getComputedStyle(displayedChord).color === "rgb(18, 52, 86)", "Chord symbol typography was not applied independently");
+                check(prefs.fontSize === 115 && !prefs.restoreSongs && !prefs.wheelChanges
+                    && prefs.elementStyles["chord-symbol"].color === "#123456", "The preferences were not stored");
             } finally {
                 if (dialog.open) dialog.close();
                 appPreferences.settings = original;

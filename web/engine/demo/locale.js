@@ -347,6 +347,10 @@ JJazzLab に寄付|Donate to JJazzLab
 ライト|Light
 システム設定に従う|Follow system
 画面フォント|Interface font
+フォント|Font
+コード記号|Chord symbol
+文字色|Text color
+等幅|Monospace
 サンセリフ|Sans serif
 セリフ|Serif
 画面の文字サイズ（%）|Interface text size (%)

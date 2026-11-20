@@ -11,6 +11,9 @@ class AppPreferences {
         this.dialog = document.querySelector("#app-preferences");
         this.form = this.dialog.querySelector("form");
         this.status = this.dialog.querySelector("[role=alert]");
+        this.styleFields = Array.from(this.form.querySelectorAll("[data-display-style]"), group => ({
+            name: group.dataset.displayStyle, font: group.querySelector("select"), color: group.querySelector('input[type="color"]')
+        }));
         this.systemTheme = matchMedia("(prefers-color-scheme: light)");
         this.systemTheme.addEventListener("change", () => this.apply());
         this.apply();
@@ -31,6 +34,13 @@ class AppPreferences {
         root.dataset.uiFont = font;
         root.style.setProperty("--ui-font-scale", String(fontSize / 100));
         this.aliases = new Map(this.settings.aliases);
+        const fonts = { sans: 'Arial, "Yu Gothic UI", sans-serif', serif: 'Georgia, "Yu Mincho", serif', mono: 'ui-monospace, monospace' };
+        for (const { name } of this.styleFields) {
+            const style = this.settings.elementStyles?.[name];
+            const family = style && Object.hasOwn(fonts, style.font) ? fonts[style.font] : "";
+            root.style.setProperty(`--${name}-font`, family);
+            root.style.setProperty(`--${name}-color`, /^#[0-9a-f]{6}$/iu.test(style?.color) ? style.color : "");
+        }
     }
 
     loadForm(settings) {
@@ -42,6 +52,10 @@ class AppPreferences {
         wheelChanges.checked = settings.wheelChanges;
         fixSectionChords.checked = settings.fixSectionChords;
         aliases.value = settings.aliases.map(([alias, type]) => `C${alias}=C${type}`).join("\n");
+        for (const { name, font, color } of this.styleFields) {
+            font.value = settings.elementStyles?.[name]?.font ?? "default";
+            color.value = settings.elementStyles?.[name]?.color ?? color.defaultValue;
+        }
     }
 
     async save() {
@@ -49,6 +63,7 @@ class AppPreferences {
         const rows = aliases.value.split(/\r?\n/u).map(row => row.trim()).filter(Boolean);
         const pending = { theme: theme.value, font: font.value, fontSize: fontSize.valueAsNumber, restoreSongs: restoreSongs.checked,
             wheelChanges: wheelChanges.checked, fixSectionChords: fixSectionChords.checked, aliases: [] };
+        pending.elementStyles = Object.fromEntries(this.styleFields.map(({ name, font, color }) => [name, { font: font.value, color: color.value }]));
         const submit = this.form.querySelector("[type=submit]");
         submit.disabled = true;
         this.status.textContent = "";
