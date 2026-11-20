@@ -54,6 +54,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         this.tempoRate = 1;
         this.report = 0;
         this.effects = new MixerEffects(sampleRate);
+        this.synthEffects = options?.processorOptions?.effects ?? { gain: 1, reverb: 1, chorus: 1 };
         this.port.onmessage = ({ data }) => this.command(data);
         this.port.onmessageerror = () => this.port.postMessage({ type: "error", error: "音源データを受け取れませんでした。再生を押して再試行してください。" });
         const offline = options?.processorOptions;
@@ -88,6 +89,9 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             this.midiOffset = 0;
             if (type === "init") {
                 this.loadSoundFont(await WebAssembly.compile(message.wasm), message.soundfont);
+                if (message.effects) this.synthEffects = message.effects;
+            } else if (type === "effects") {
+                this.synthEffects = message.effects;
             } else if (type === "song") {
                 this.playing = false;
                 this.paused = false;
@@ -143,6 +147,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.primaryMidiDrum = this.parts.findIndex(p => p.drum && (p.outputChannel ?? p.channel) === 9);
                 if (this.primaryMidiDrum < 0) this.primaryMidiDrum = this.parts.findIndex(p => p.drum);
                 this.midiDrumMap = this.midiOutput && new Map(this.midiOutput.drumMap);
+                this.midiPatchMap = this.midiOutput && new Map(this.midiOutput.patchMap?.map(([key, ...patch]) => [key, patch]));
                 if (message.rate !== undefined || !message.resume) this.setTempoRate(message.rate ?? 1);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.clickEnabled = message.click ?? this.clickEnabled;
@@ -255,15 +260,24 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         for (const control of [64, 120, 123]) this.queueMidi(channel, 0xb0, control, 0);
     }
 
+    midiProgram(part, program, bank) {
+        const channel = this.midiChannel(part);
+        const mapping = this.midiPatchMap?.get(program + (part.drum ? 128 : 0));
+        const selectedBank = mapping ?? bank;
+        if (selectedBank) {
+            this.queueMidi(channel, 0xb0, 0, selectedBank[0]);
+            this.queueMidi(channel, 0xb0, 32, selectedBank[1]);
+        }
+        this.queueMidi(channel, 0xc0, mapping?.[2] ?? program, 0);
+    }
+
     midiControllers(index, program = false) {
         const part = this.parts[index];
         if (!this.midiOutput.sendSetup || (part.drum && this.midiOutput.gmDrums && index !== this.primaryMidiDrum)) return;
         const channel = this.midiChannel(part);
         if (program && part.instrumentEnabled !== false) {
             const choice = part.instrumentChoice?.program;
-            this.queueMidi(channel, 0xb0, 0, choice === undefined ? part.bankMsb : 0);
-            this.queueMidi(channel, 0xb0, 32, choice === undefined ? part.bankLsb : 0);
-            this.queueMidi(channel, 0xc0, choice ?? part.midiProgram, 0);
+            this.midiProgram(part, choice ?? part.midiProgram, choice === undefined ? [part.bankMsb, part.bankLsb] : [0, 0]);
         }
         const byte = value => Math.min(127, Math.max(0, Math.round(value)));
         if (part.volumeEnabled !== false) this.queueMidi(channel, 0xb0, 7, byte((part.midiVolume ?? 127) * part.volume));
@@ -278,6 +292,10 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (part.drum && this.midiOutput.gmDrums && index !== this.primaryMidiDrum && !notes) return;
         const controller = type === 0xb0 && [0, 7, 10, 32, 39, 42, 91, 93].includes(a);
         if ((type === 0xc0 || controller) && !this.midiOutput.sendSetup) return;
+        if (type === 0xc0) {
+            this.midiProgram(part, a);
+            return;
+        }
         if (type === 0xb0 && (a === 7 || a === 10 || a === 91 || a === 93)) {
             this.midiControllers(index);
             return;
@@ -409,7 +427,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 if (this.clickPart >= 0 && this.midiOutput?.monitor !== false) {
                     const pointer = this.api.synth_render(n) / 4 + this.clickPart * 256;
                     for (let f = 0; f < n; f++) {
-                        this.master += (this.masterTarget - this.master) * 0.01;
+                        this.master += (this.masterTarget * this.synthEffects.gain - this.master) * 0.01;
                         left[offset + f] = this.pcm[pointer + f * 2] * this.master;
                         right[offset + f] = this.pcm[pointer + f * 2 + 1] * this.master;
                     }
@@ -453,7 +471,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     Math.max(1, Math.ceil((Math.min(boundary, next) - this.frame) / rate)));
                 const pointer = this.api.synth_render(n) / 4;
                 for (let f = 0; f < n; f++) {
-                    this.master += (this.masterTarget - this.master) * 0.01;
+                    this.master += (this.masterTarget * this.synthEffects.gain - this.master) * 0.01;
                     let l = 0, r = 0, chorus = 0, room = 0;
                     for (let i = 0; i < this.parts.length; i++) {
                         const p = this.parts[i];
@@ -475,7 +493,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                         chorus += mono * p.chorusSend;
                         room += mono * p.reverbSend;
                     }
-                    this.effects.process(chorus, room);
+                    this.effects.process(chorus * this.synthEffects.chorus, room * this.synthEffects.reverb);
                     const playFrame = this.frame + f * rate;
                     const clickOffset = pointer + this.clickPart * 256 + f * 2;
                     const clickLeft = this.clickPart >= 0 ? this.pcm[clickOffset] : 0;

@@ -11,10 +11,11 @@ class MidiOutput {
     constructor(onDisconnect) {
         this.onDisconnect = onDisconnect;
         this.key = "jjazzlab.midiOutput";
-        this.defaults = { gmDrums: true, sendSetup: true, monitor: true, thru: false, mode: "", delay: 0, drumMap: [] };
+        this.defaults = { gmDrums: true, sendSetup: true, monitor: true, thru: false, mode: "", delay: 0, drumMap: [], patchMap: [] };
         this.settings = { device: "", ...this.defaults, profiles: {} };
         try { Object.assign(this.settings, JSON.parse(localStorage.getItem(this.key) ?? "{}")); } catch { /* Optional storage. */ }
         if (!Array.isArray(this.settings.drumMap)) this.settings.drumMap = [];
+        if (!Array.isArray(this.settings.patchMap)) this.settings.patchMap = [];
         if (this.settings.device && !this.settings.profiles?.[this.settings.device]) {
             const { device, profiles, ...profile } = this.settings;
             this.settings.profiles = { ...profiles, [device]: profile };
@@ -25,12 +26,14 @@ class MidiOutput {
         this.dialog = document.querySelector("#midi-output");
         this.form = this.dialog.querySelector("form");
         this.status = this.dialog.querySelector("[role=status]");
-        const { device, gmDrums, sendSetup, monitor, thru, mode, delay, drumMap, connect, connectSysex, testOutput, closeDialog } = this.form.elements;
+        const { device, gmDrums, sendSetup, monitor, thru, mode, delay, drumMap, patchMap, connect, connectSysex, testOutput, closeDialog } = this.form.elements;
         const range = { minimum: 0, maximum: 127 };
         const showProfile = profile => {
             for (const field of [gmDrums, sendSetup, monitor, thru]) field.checked = Boolean(profile[field.name]);
             for (const field of [mode, delay]) field.value = profile[field.name];
             drumMap.value = profile.drumMap.map(([source, target]) => `${source}=${target}`).join("\n");
+            patchMap.value = profile.patchMap.map(([key, msb, lsb, target]) =>
+                `${key >= 128 ? "D" : ""}${key % 128}=${msb},${lsb},${target}`).join("\n");
         };
         document.querySelector("#open-midi-output").onclick = () => {
             showProfile(this.settings);
@@ -56,6 +59,18 @@ class MidiOutput {
                 }
                 map.push(pair);
             }
+            const patches = new Map();
+            for (const row of patchMap.value.split(/\r?\n/u).filter(line => line.trim())) {
+                const match = /^(D?)(\d{1,3})\s*=\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/iu.exec(row.trim());
+                const values = match?.slice(2).map(Number);
+                const key = values?.[0] + (match?.[1] ? 128 : 0);
+                if (!values?.every(value => value <= 127) || patches.has(key)) {
+                    this.show(t("音色は「33=0,1,35」またはドラムの「D0=0,0,8」の形式で、番号0～127を使い重複なく指定してください。",
+                        "Use unique patch mappings like 33=0,1,35 or D0=0,0,8 for drums. Each number is 0–127."), true);
+                    return;
+                }
+                patches.set(key, values.slice(1));
+            }
             if (mode.value && device.value && !this.access?.sysexEnabled) {
                 this.show(t("選んだ初期化方式を使うには、SysExを許可して接続してください。",
                     "Connect with SysEx permission to use the selected initialization mode."), true);
@@ -64,7 +79,8 @@ class MidiOutput {
             this.silence(true);
             this.releaseThru();
             const profile = { gmDrums: gmDrums.checked, sendSetup: sendSetup.checked,
-                monitor: monitor.checked, thru: thru.checked, mode: mode.value, delay: delay.valueAsNumber, drumMap: map };
+                monitor: monitor.checked, thru: thru.checked, mode: mode.value, delay: delay.valueAsNumber, drumMap: map,
+                patchMap: Array.from(patches, ([key, patch]) => [key, ...patch]) };
             this.settings = { device: device.value, ...profile, profiles: { ...this.settings.profiles, [device.value]: profile } };
             try { localStorage.setItem(this.key, JSON.stringify(this.settings)); } catch { /* Optional storage. */ }
             this.dialog.close();

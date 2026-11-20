@@ -8,7 +8,7 @@ async function renderSongAudio(song, parts, master, onStatus) {
     const module = await WebAssembly.compile(assets.wasm);
     const node = new AudioWorkletNode(context, "soundfont-synth", {
         numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2],
-        processorOptions: { module, soundfont: assets.soundfont, song, parts, master }
+        processorOptions: { module, soundfont: assets.soundfont, song, parts, master, effects: synthEffects }
     });
     connectSynthOutput(context, node);
     const failed = new Promise((resolve, reject) => {

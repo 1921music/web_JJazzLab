@@ -1941,6 +1941,7 @@
                 fields.device.value = output.id;
                 fields.mode.value = "xg";
                 fields.drumMap.value = `${drum.a}=${drumTarget}`;
+                fields.patchMap.value = "33=0,1,35\nD0=0,0,8";
                 fields.delay.value = "5";
                 fields.sendSetup.checked = false;
                 fields.thru.checked = true;
@@ -1970,13 +1971,14 @@
                 document.querySelector("#open-midi-output").click();
                 fields.device.value = other.id;
                 fields.device.dispatchEvent(new Event("change"));
-                check(!fields.drumMap.value && !fields.thru.checked, "A different device inherited the first device's setup");
+                check(!fields.drumMap.value && !fields.patchMap.value && !fields.thru.checked, "A different device inherited the first device's setup");
                 fields.delay.value = "20";
                 midiOutput.form.requestSubmit();
                 document.querySelector("#open-midi-output").click();
                 fields.device.value = output.id;
                 fields.device.dispatchEvent(new Event("change"));
-                check(fields.drumMap.value === `${drum.a}=${drumTarget}` && fields.thru.checked && fields.delay.value === "5",
+                check(fields.drumMap.value === `${drum.a}=${drumTarget}` && fields.patchMap.value === "33=0,1,35\nD0=0,0,8"
+                    && fields.thru.checked && fields.delay.value === "5",
                     "Returning to the first device did not restore its profile");
             } finally {
                 await player.stop();
@@ -2506,6 +2508,30 @@ AbM7 | G7 Cm7 |
                 "Starting playback did not repair the early chord and copy the nearest chord");
             } finally { await player.stop(); }
             report.missingSectionChords = true;
+        }
+        {
+            const { form, dialog, effectKey } = synthSettings;
+            const original = synthEffects;
+            const saved = localStorage.getItem(effectKey);
+            try {
+                document.querySelector("#open-synth-settings").click();
+                form.elements.gain.value = "75";
+                form.elements.reverb.value = "0";
+                form.elements.chorus.value = "125";
+                await synthSettings.save();
+                check(!dialog.open && synthEffects.gain === .75 && synthEffects.reverb === 0 && synthEffects.chorus === 1.25
+                    && JSON.parse(localStorage.getItem(effectKey)).gain === .75, "Global effect settings did not apply and save");
+                document.querySelector("#open-synth-settings").click();
+                form.elements.resetSynthEffects.click();
+                await synthSettings.save();
+                check(synthEffects.gain === 1 && synthEffects.reverb === 1 && synthEffects.chorus === 1, "Global effect reset failed");
+            } finally {
+                if (dialog.open) dialog.close();
+                await player.setSynthEffects(original);
+                if (saved === null) localStorage.removeItem(effectKey);
+                else localStorage.setItem(effectKey, saved);
+            }
+            report.synthEffects = true;
         }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }

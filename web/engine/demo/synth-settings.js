@@ -10,17 +10,27 @@ class SynthSettings {
         this.form = this.dialog.querySelector("form");
         this.current = this.dialog.querySelector("output");
         this.error = this.dialog.querySelector("[role=alert]");
-        const { soundfont, useDefault, cancelSynth } = this.form.elements;
+        this.effectKey = "jjazzlab.synthEffects";
+        this.effectNames = Object.keys(defaultSynthEffects);
+        try {
+            const saved = JSON.parse(localStorage.getItem(this.effectKey) ?? "{}");
+            for (const name of this.effectNames) {
+                if (Number.isFinite(saved[name]) && saved[name] >= 0 && saved[name] <= 1.5) synthEffects[name] = saved[name];
+            }
+        } catch { /* Optional storage. */ }
+        const { soundfont, useDefault, cancelSynth, resetSynthEffects } = this.form.elements;
         document.querySelector("#open-synth-settings").onclick = () => {
             soundfont.value = "";
             this.error.textContent = "";
             this.render();
+            this.loadEffects(synthEffects);
             this.dialog.showModal();
         };
+        resetSynthEffects.onclick = () => this.loadEffects(defaultSynthEffects);
         cancelSynth.onclick = () => this.dialog.close();
         this.dialog.addEventListener("cancel", event => { if (this.switching) event.preventDefault(); });
         useDefault.onclick = () => this.select(null);
-        this.form.onsubmit = event => { event.preventDefault(); void this.select(soundfont.files[0]); };
+        this.form.onsubmit = event => { event.preventDefault(); void this.save(soundfont.files[0]); };
         void this.restore();
     }
 
@@ -64,7 +74,22 @@ class SynthSettings {
         this.current.textContent = selectedSoundFont?.name ?? "TimGM6mb";
     }
 
-    async select(file) {
+    loadEffects(effects) {
+        for (const name of this.effectNames) this.form.elements[name].value = Math.round(effects[name] * 100);
+    }
+
+    async save(file) {
+        if (this.switching || !this.form.reportValidity()) return;
+        if (file && !await this.select(file, false)) return;
+        try {
+            const effects = Object.fromEntries(this.effectNames.map(name => [name, this.form.elements[name].valueAsNumber / 100]));
+            await this.player.setSynthEffects(effects);
+            try { localStorage.setItem(this.effectKey, JSON.stringify(effects)); } catch { /* Optional storage. */ }
+            this.dialog.close();
+        } catch (error) { this.error.textContent = error.message; }
+    }
+
+    async select(file, close = true) {
         if (file === undefined || this.switching) return;
         const submit = this.form.querySelector("[type=submit]");
         const controls = [submit, this.form.elements.useDefault, this.form.elements.cancelSynth];
@@ -89,7 +114,8 @@ class SynthSettings {
                     "The SoundFont applies to this page. Browser storage could not save the selection.");
                 return;
             }
-            this.dialog.close();
+            if (close) this.dialog.close();
+            return true;
         } catch (error) {
             if (applied) this.player.setSoundFont(previous);
             this.error.textContent = error.message;

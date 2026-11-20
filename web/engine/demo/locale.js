@@ -320,6 +320,10 @@ SysExを許可して接続|Connect with SysEx permission
 使用中のSoundFont|Current SoundFont
 GM用のSoundFont（.sf2、16MB以下）|GM SoundFont (.sf2, up to 16 MB)
 TimGM6mbに戻す|Restore TimGM6mb
+音源ゲイン（%）|Synthesizer gain (%)
+全体のリバーブ（%）|Global reverb (%)
+全体のコーラス（%）|Global chorus (%)
+音源エフェクトをリセット|Reset Synthesizer Effects
 JJazzLab フォーラム|JJazzLab Forum
 JJazzLab に寄付|Donate to JJazzLab
 バージョンと診断…|Version and Diagnostics…
@@ -353,6 +357,7 @@ JJazzLab に寄付|Donate to JJazzLab
 既定値に戻す|Reset to Defaults
 出力を試聴|Test Output
 MIDI入力をこの出力に送る（MIDI Thru）|Send MIDI input to this output (MIDI Thru)
+音色の割り当て（元のPG=MSB,LSB,先のPG）|Patch mappings (source PC=MSB,LSB,target PC)
 MIDI出力遅延（ms）|MIDI output delay (ms)
 打楽器のキーマップ|Drum key mapping
 五線譜|Staff notation

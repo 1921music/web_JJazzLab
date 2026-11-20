@@ -202,10 +202,11 @@ test("an instrument change applies immediately, survives looping, and can be res
 });
 
 test("reverb and chorus independently contribute wet audio and honor disabled sends", async () => {
-    async function output(values) {
+    async function output(values, effects) {
         const { processor: p, render } = createProcessor(48000);
         await p.command({ type: "song", song: song([]), loop: { enabled: false, start: 0, end: .512 } });
         await p.command({ type: "mix", parts: [{ ...settings, ...values }], master: 1 });
+        if (effects) await p.command({ type: "effects", effects });
         await p.command({ type: "play" });
         return render(40).map(channel => channel[30]);
     }
@@ -216,6 +217,24 @@ test("reverb and chorus independently contribute wet audio and honor disabled se
     assert.ok(room.every((sample, index) => sample > dry[index]));
     assert.ok(chorus.every((sample, index) => sample > dry[index]));
     assert.notDeepEqual(room, chorus);
+    const all = { reverb: 127, chorus: 127, reverbEnabled: true, chorusEnabled: true };
+    assert.deepEqual(await output(all, { gain: 1, reverb: 0, chorus: 0 }), dry);
+    assert.deepEqual(await output(all, { gain: 1, reverb: 0, chorus: 1 }), chorus);
+    const softer = await output({}, { gain: .5, reverb: 1, chorus: 1 });
+    assert.ok(softer.every((sample, index) => Math.abs(sample - dry[index] / 2) < .000001));
+});
+
+test("external patch mappings send bank and program changes without changing the internal synth", async () => {
+    const { processor: p, sent, calls, render } = createProcessor();
+    await p.command({ type: "song",
+        song: song([event(.05, 0xc0, 33), event(.06, 0x90, 60, 90)]),
+        loop: { enabled: false, start: 0, end: .512 } });
+    await p.command({ type: "play", midiOutput: { sendSetup: true, patchMap: [[33, 8, 7, 42]] } });
+    render();
+    const messages = sent.filter(message => message.type === "midi").flatMap(message => Array.from(message.messages, item => Array.from(item.bytes)));
+    const preset = messages.findIndex(bytes => bytes.join() === "192,42");
+    assert.deepEqual(messages.slice(preset - 2, preset + 1), [[176, 0, 8], [176, 32, 7], [192, 42]]);
+    assert.ok(calls.some(call => call[2] === 0xc0 && call[3] === 33));
 });
 
 const wasmPath = path.resolve(__dirname, "../target/synth.wasm");

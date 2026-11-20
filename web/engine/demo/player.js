@@ -3,6 +3,8 @@
 const soundFontUrl = "https://raw.githubusercontent.com/craffel/pretty-midi/0df351ff2949ef80e788343e952fe15e473f0cde/pretty_midi/TimGM6mb.sf2";
 let synthAssets;
 let selectedSoundFont;
+const defaultSynthEffects = { gain: 1, reverb: 1, chorus: 1 };
+let synthEffects = { ...defaultSynthEffects };
 
 function validateSoundFont(soundfont) {
     if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000) {
@@ -112,7 +114,7 @@ class AccompanimentPlayer {
             if (this.compressor) this.node.connect(this.compressor);
             else this.compressor = connectSynthOutput(this.context, this.node);
             const wasm = assets.wasm.slice(0), soundfont = assets.soundfont.slice(0);
-            await this.send("init", { wasm, soundfont }, [wasm, soundfont]);
+            await this.send("init", { wasm, soundfont, effects: synthEffects }, [wasm, soundfont]);
             this.loadedSong = null;
         } catch (error) {
             this.node?.disconnect();
@@ -128,6 +130,12 @@ class AccompanimentPlayer {
         this.loadedSong = null;
         selectedSoundFont = selection;
         synthAssets = undefined;
+    }
+
+    async setSynthEffects(effects) {
+        if (this.loading) await this.loading;
+        if (this.ready) await this.send("effects", { effects });
+        synthEffects = effects;
     }
 
     send(type, data = {}, transfer = []) {

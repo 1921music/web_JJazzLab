@@ -643,6 +643,7 @@
             <label><input name="thru" type="checkbox"> MIDI入力をこの出力に送る（MIDI Thru）</label>
             <label class="field">MIDI出力遅延（ms） <input name="delay" type="number" min="0" max="250" step="1" required></label>
             <label class="field">打楽器のキーマップ <textarea name="drumMap" rows="4" placeholder="36=35"></textarea></label>
+            <label class="field">音色の割り当て（元のPG=MSB,LSB,先のPG） <textarea name="patchMap" rows="3" placeholder="33=0,1,35"></textarea></label>
             <p role="status"></p>
             <div class="dialog-actions">
                 <button name="closeDialog" type="button" class="secondary">キャンセル</button>
@@ -655,10 +656,16 @@
         <form method="dialog">
             <h2 id="synth-settings-title">内蔵音源</h2>
             <label class="field">使用中のSoundFont <output></output></label>
-            <label class="field">GM用のSoundFont（.sf2、16MB以下） <input name="soundfont" type="file" accept=".sf2" required></label>
+            <label class="field">GM用のSoundFont（.sf2、16MB以下） <input name="soundfont" type="file" accept=".sf2"></label>
+            <div class="rhythm-picker-fields">
+                <label class="field">音源ゲイン（%） <input name="gain" type="number" min="0" max="150" required></label>
+                <label class="field">全体のリバーブ（%） <input name="reverb" type="number" min="0" max="150" required></label>
+                <label class="field">全体のコーラス（%） <input name="chorus" type="number" min="0" max="150" required></label>
+            </div>
             <p role="alert" data-error></p>
             <div class="dialog-actions">
                 <button name="useDefault" type="button" class="secondary">TimGM6mbに戻す</button>
+                <button name="resetSynthEffects" type="button" class="secondary">音源エフェクトをリセット</button>
                 <button name="cancelSynth" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
