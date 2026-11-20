@@ -2052,6 +2052,39 @@ AbM7 | G7 Cm7 |
                 "The imported 3/4 song did not generate playable accompaniment");
             report.improvisorAndBatchImport = true;
         }
+        {
+            const chord = (root, kind, bass = "") => `<harmony><root><root-step>${root}</root-step></root><kind>${kind}</kind>${bass}</harmony>`;
+            const score = `<?xml version="1.0" encoding="UTF-8"?>
+                <score-partwise version="4.0"><work><work-title>Repeating practice</work-title></work>
+                <part id="NoChords"><measure number="1"><note><rest/><duration>8</duration></note></measure></part>
+                <part id="Harmony"><measure number="1"><attributes><divisions>2</divisions><time><beats>4</beats><beat-type>4</beat-type></time></attributes>
+                <barline location="left"><repeat direction="forward"/></barline><direction><sound tempo="138"/></direction>
+                ${chord("C", "major-seventh")}<note><rest/><duration>2</duration></note>
+                ${chord("D", "minor-seventh", "<bass><bass-step>F</bass-step></bass>")}</measure>
+                <measure number="2"><barline location="left"><ending number="1" type="start"/></barline>${chord("G", "dominant")}
+                <barline location="right"><ending number="1" type="stop"/><repeat direction="backward"/></barline></measure>
+                <measure number="3"><attributes><time><beats>3</beats><beat-type>4</beat-type></time></attributes>
+                <barline location="left"><ending number="2" type="start"/></barline>${chord("D", "minor")}
+                <barline location="right"><ending number="2" type="stop"/></barline></measure>
+                <measure number="4">${chord("C", "major")}</measure></part></score-partwise>`;
+            const file = new File([score], "practice.musicxml");
+            const mxl = new File([packageSongFiles([
+                ["META-INF/container.xml", '<container><rootfiles><rootfile full-path="notation/practice.musicxml"/></rootfiles></container>'],
+                ["notation/practice.musicxml", score]
+            ])], "practice.mxl");
+            const plain = (await editor.readSongFiles([file])).song;
+            const zipped = (await editor.readSongFiles([mxl])).song;
+            check(JSON.stringify(plain) === JSON.stringify(zipped) && plain.title === "Repeating practice" && plain.tempo === 138
+                && plain.parts.map(part => part.section).join() === "0,1,0,2,3"
+                && plain.sections[2].meter === "THREE_FOUR" && plain.chords.some(chord => chord.beat === 1 && chord.name === "Dm7/F")
+                && plain.chords.some(chord => chord.bar === 1 && chord.name === "G7"),
+            "MusicXML/MXL lost the title, tempo, meter, harmony, bass note or numbered endings");
+            check(await editor.loadFiles([mxl]), "The compressed score did not open");
+            await generate();
+            check(song.barTimes.length === 6 && Math.abs(song.barTimes[4] - song.barTimes[3] - 3 * 60 / 138) < .002,
+                "The imported arrangement did not repeat the marked measures or switch to 3/4");
+            report.musicXmlAndMxl = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

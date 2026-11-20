@@ -1151,15 +1151,27 @@ workspace.addEventListener("drop", event => {
     event.preventDefault();
     if (!generating && !starting) void openSongFromFiles(editor.loadFiles(Array.from(event.dataTransfer.files)));
 });
+function importedRhythm(meter) {
+    const styleName = meter === "FOUR_FOUR" ? "jjSwing" : meter === "THREE_FOUR" ? bundledJazzWaltz : bundledStyle;
+    return editor.onDefaultRhythm(meter) ?? { styleId: styleName + "-ID", styleName };
+}
 async function readLeadSheet(rows) {
     await rhythmLibrary.ready;
-    return DesktopSongFiles.readTextSong(rows, meter => {
-        const styleName = meter === "FOUR_FOUR" ? "jjSwing" : meter === "THREE_FOUR" ? bundledJazzWaltz : bundledStyle;
-        return editor.onDefaultRhythm(meter) ?? { styleId: styleName + "-ID", styleName };
-    });
+    return DesktopSongFiles.readTextSong(rows, importedRhythm);
 }
 editor.onReadTextSong = async contents => readLeadSheet((await getEngine()).exports.readTextLeadSheet(contents));
 editor.onReadImprovisor = async (contents, filename) => readLeadSheet((await getEngine()).exports.readImprovisorLeadSheet(contents, filename));
+editor.onReadMusicXml = async file => {
+    const [wasm, text] = await Promise.all([getEngine(), musicXmlFileText(file), rhythmLibrary.ready]);
+    const canonical = new Map();
+    return readMusicXml(text, file.name, importedRhythm, name => {
+        if (!canonical.has(name)) {
+            try { canonical.set(name, wasm.exports.transposeChordSymbols([name], 0)[0]); }
+            catch { canonical.set(name, undefined); }
+        }
+        return canonical.get(name);
+    });
+};
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
 editor.onTransposeChords = async (names, delta) => (await getEngine()).exports.transposeChordSymbols(names, delta);
 editor.onReadChordTools = async names => {

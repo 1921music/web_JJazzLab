@@ -405,12 +405,15 @@ class SongEditor {
             const song = /\.ls$/iu.test(file.name) ? await this.onReadImprovisor(contents, file.name) : await this.onReadTextSong(contents);
             return { filename: file.name, song, mix: [] };
         }
+        if (files.length === 1 && /\.(musicxml|mxl|xml)$/iu.test(file.name)) {
+            return { filename: file.name, song: await this.onReadMusicXml(file), mix: [] };
+        }
         const songFile = files.find(file => /\.sng$/iu.test(file.name));
         const mixFile = files.find(file => /\.mix$/iu.test(file.name));
         if (!songFile || files.length > 2 || (files.length === 2 && !mixFile)
             || (mixFile && songFile.name.slice(0, -4).toLowerCase() !== mixFile.name.slice(0, -4).toLowerCase())) {
-            throw new Error(t(".sng と同名の .mix、または .jjazzweb / .txt / .ls を1つ選択してください。",
-                "Choose a .sng with an optional same-name .mix, or one .jjazzweb, .txt or .ls file."));
+            throw new Error(t(".sng と同名の .mix、または .jjazzweb / .txt / .ls / MusicXML を1つ選択してください。",
+                "Choose a .sng with an optional same-name .mix, or one .jjazzweb, .txt, .ls or MusicXML file."));
         }
         return { filename: songFile.name, song: DesktopSongFiles.readSong(await songFile.text()),
             mix: mixFile ? DesktopSongFiles.readMix(await mixFile.text()) : [] };
