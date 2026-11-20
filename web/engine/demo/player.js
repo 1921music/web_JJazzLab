@@ -18,6 +18,27 @@ function validateSoundFont(soundfont) {
     return soundfont;
 }
 
+async function loadDefaultSoundFont(onStatus) {
+    const manifest = document.querySelector('link[rel="manifest"]');
+    let cache;
+    if (manifest && globalThis.caches) {
+        try {
+            cache = await caches.open(`jjazzlab-soundfont:${manifest.href}`);
+            const stored = await cache.match(soundFontUrl);
+            if (stored) return validateSoundFont(await stored.arrayBuffer());
+        } catch { /* Private browsing, storage limits or an unusable cached font. */ }
+    }
+    onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
+    const response = await fetch(soundFontUrl, { credentials: "omit", signal: AbortSignal.timeout(60000) }).catch(() => {
+        throw new Error("SoundFontを取得できませんでした。ネット接続を確認して再生を押してください。");
+    });
+    if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
+    const soundfont = validateSoundFont(await response.arrayBuffer());
+    try { await cache?.put(soundFontUrl, new Response(soundfont)); }
+    catch { /* Playback is also available when storage is full. */ }
+    return soundfont;
+}
+
 function loadSynthAssets(onStatus) {
     if (selectedSoundFont) {
         const soundfont = selectedSoundFont.soundfont;
@@ -27,22 +48,9 @@ function loadSynthAssets(onStatus) {
         });
         return synthAssets;
     }
-    synthAssets ??= (async () => {
-        onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
-        const abort = new AbortController();
-        const timeout = setTimeout(() => abort.abort(), 60000);
-        try {
-            const [wasm, response] = await Promise.all([
-                decompress(embeddedSynth),
-                fetch(soundFontUrl, { credentials: "omit", signal: abort.signal }).catch(() => {
-                    throw new Error("SoundFontを取得できませんでした。ネット接続を確認して再生を押してください。");
-                })
-            ]);
-            if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
-            const soundfont = validateSoundFont(await response.arrayBuffer());
-            return { wasm, soundfont };
-        } finally { clearTimeout(timeout); }
-    })().catch(error => { synthAssets = undefined; throw error; });
+    synthAssets ??= Promise.all([decompress(embeddedSynth), loadDefaultSoundFont(onStatus)])
+        .then(([wasm, soundfont]) => ({ wasm, soundfont }))
+        .catch(error => { synthAssets = undefined; throw error; });
     return synthAssets;
 }
 

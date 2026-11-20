@@ -35,7 +35,7 @@ cd -- "$workspace"
 if [ "$build_mode" = demo ]; then
     bash web/audio/build.sh
     python3 web/engine/demo/package-demo.py web/engine/target/wasm-diagnostics \
-        "$windows_checkout/WSL_image/midi-demo.html"
+        "$windows_checkout/WSL_image/midi-demo.html" --pwa-dir "$windows_checkout/WSL_image/pwa"
     exit 0
 fi
 if [ "$1" = broad ]; then
@@ -70,7 +70,7 @@ fi
 bash web/audio/build.sh
 mvn -B -ntp -Pwasm-diagnostics -pl web/engine -am package "$@"
 python3 web/engine/demo/package-demo.py web/engine/target/wasm-diagnostics \
-    "$windows_checkout/WSL_image/midi-demo.html"
+    "$windows_checkout/WSL_image/midi-demo.html" --pwa-dir "$windows_checkout/WSL_image/pwa"
 '@
 $command = $command -replace "`r`n", "`n"
 $action = if ($SyncOnly) { 'sync' } elseif ($Broad) { 'broad' } elseif ($StyleIO) { 'style' } elseif ($Engine) { 'engine' } elseif ($DemoOnly) { 'demo' } else { 'build' }

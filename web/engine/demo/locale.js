@@ -337,6 +337,7 @@ JJazzLab に寄付|Donate to JJazzLab
 パネル配置…|Panel Layout…
 パネル配置をリセット|Reset Panel Layout
 全画面表示|Full Screen
+アプリをインストール…|Install App…
 パネル配置|Panel Layout
 ミキサーの位置|Mixer position
 左|Left

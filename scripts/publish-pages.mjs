@@ -1,6 +1,6 @@
 /**
- * Publish a reviewed single-file build to GitHub Pages without switching the
- * development checkout. Dry run: node scripts/publish-pages.mjs <built.html>
+ * Publish a reviewed PWA directory or standalone HTML to GitHub Pages without
+ * switching the development checkout. Dry run: node scripts/publish-pages.mjs WSL_image/pwa
  * Publish: build/test/commit/push, then add --publish to the same command.
  * Git's existing credential helper is used in memory; no token is persisted.
  */
@@ -13,7 +13,7 @@ import { execFileSync } from "node:child_process";
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const publish = process.argv.includes("--publish");
 const input = process.argv.slice(2).find(value => value !== "--publish");
-if (!input) throw new Error("Usage: node scripts/publish-pages.mjs [--publish] <built.html>");
+if (!input) throw new Error("Usage: node scripts/publish-pages.mjs [--publish] <pwa-directory|built.html>");
 const git = (...args) => execFileSync("git", args, { cwd: root, encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
 const remote = git("remote", "get-url", "origin");
 const match = remote.match(/^(?:https:\/\/github\.com\/|git@github\.com:)([^/]+)\/([^/]+?)(?:\.git)?$/u);
@@ -22,7 +22,9 @@ const [, owner, repository] = match;
 const sourceCommit = git("rev-parse", "HEAD");
 const sourceUrl = "https://github.com/" + owner + "/" + repository + "/tree/" + sourceCommit;
 const readSource = file => fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n/gu, "\n");
-let html = fs.readFileSync(path.resolve(input), "utf8").replace(/\r\n/gu, "\n");
+const inputPath = path.resolve(input);
+const isPwa = fs.statSync(inputPath).isDirectory();
+let html = fs.readFileSync(isPwa ? path.join(inputPath, "index.html") : inputPath, "utf8").replace(/\r\n/gu, "\n");
 if (!/^<!doctype html>/iu.test(html) || html.includes("JJAZZ_SMOKE_RESULT")) throw new Error("Expected a production demo HTML, without test instrumentation");
 for (const file of ["demo.js", "locale.js", "midi.js", "song-files.js", "song-editor.js", "piano-roll.js", "style-archive.js", "player.js"]) {
     const expected = readSource("web/engine/demo/" + file).trim().replace(/<\/script/giu, "<\\/script");
@@ -30,12 +32,43 @@ for (const file of ["demo.js", "locale.js", "midi.js", "song-files.js", "song-ed
 }
 const worklet = JSON.parse(html.match(/const embeddedWorklet = (.*);/u)?.[1] || "null");
 if (worklet !== readSource("web/engine/demo/synth-worklet.js")) throw new Error("Build is stale: synth-worklet.js");
+const pwaFiles = [];
+let workerSource;
+if (isPwa) {
+    if (!html.includes('rel="manifest" href="./manifest.webmanifest"')) throw new Error("Expected a packaged PWA directory");
+    const installScript = readSource("web/engine/demo/pwa.js").trim();
+    if (!html.includes(installScript)) throw new Error("Build is stale: pwa.js");
+    workerSource = readSource("web/engine/demo/sw.js");
+    const worker = fs.readFileSync(path.join(inputPath, "sw.js"), "utf8");
+    const buildId = worker.match(/cachePrefix \+ "([\da-f]{16})"/u)?.[1];
+    if (!buildId || worker !== workerSource.replace("PWA_BUILD_ID", buildId)) throw new Error("Build is stale: sw.js");
+    for (const [name, source] of [
+        ["manifest.webmanifest", "web/engine/demo/manifest.webmanifest"],
+        ["icon-192.png", "web/engine/demo/assets/icon-192.png"],
+        ["icon-512.png", "graphics/icon_512x512.png"]
+    ]) {
+        const data = fs.readFileSync(path.join(inputPath, name));
+        const current = fs.readFileSync(path.join(root, source));
+        const matches = name.endsWith(".png") ? current.equals(data) : readSource(source) === data.toString("utf8").replace(/\r\n/gu, "\n");
+        if (!matches) throw new Error("Build is stale: " + name);
+        pwaFiles.push([name, data]);
+    }
+} else if (html.includes('rel="manifest" href="./manifest.webmanifest"')) {
+    throw new Error("Pass the complete PWA directory to publish its manifest, icons and service worker");
+}
 const marker = '<meta name="jjazzlab-source-commit" content="' + sourceCommit + '">';
 html = html.replace(/<meta name="jjazzlab-source-commit"[^>]*>\s*/gu, "").replace(/<\/head>/iu, marker + "\n</head>");
 if (!html.includes("<!-- SOURCE_REVISION -->")) throw new Error("Build is stale: source revision placeholder is missing");
 html = html.replace("<!-- SOURCE_REVISION -->", '<p id="source-revision" class="hint">ソース: <a href="' + sourceUrl + '" target="_blank" rel="noopener noreferrer" title="' + sourceCommit + '"><code>' + sourceCommit.slice(0, 9) + '</code></a></p>');
-const checksum = createHash("sha256").update(html).digest("hex");
-console.log(JSON.stringify({ repository: owner + "/" + repository, sourceCommit, bytes: Buffer.byteLength(html), sha256: checksum, branch: "gh-pages", publish }));
+if (isPwa) {
+    const hash = createHash("sha256").update(workerSource).update(html);
+    for (const [, data] of pwaFiles) hash.update(data);
+    pwaFiles.push(["sw.js", workerSource.replace("PWA_BUILD_ID", hash.digest("hex").slice(0, 16))]);
+}
+const deployed = [["index.html", html], ...pwaFiles];
+const checksums = Object.fromEntries(deployed.map(([name, data]) => [name, createHash("sha256").update(data).digest("hex")]));
+const checksum = checksums["index.html"];
+console.log(JSON.stringify({ repository: owner + "/" + repository, sourceCommit, bytes: Buffer.byteLength(html), sha256: checksum, pwa: isPwa, files: Object.keys(checksums), branch: "gh-pages", publish }));
 if (!publish) process.exit(0);
 if (git("status", "--porcelain")) throw new Error("Commit all source changes before publishing");
 
@@ -70,8 +103,8 @@ await api("/commits/" + sourceCommit); // Source must already be pushed.
 const current = await api("/git/ref/heads/gh-pages", "GET", undefined, true);
 const parent = current ? await api("/git/commits/" + current.object.sha) : null;
 const files = [
-    ["index.html", html], [".nojekyll", ""],
-    ["deployment.json", JSON.stringify({ sourceCommit, sourceUrl, htmlSha256: checksum }, null, 2) + "\n"],
+    ...deployed, [".nojekyll", ""],
+    ["deployment.json", JSON.stringify({ sourceCommit, sourceUrl, htmlSha256: checksum, files: checksums }, null, 2) + "\n"],
     ["README.md", "# Published browser demo\n\nSource commit: [" + sourceCommit + "](" + sourceUrl + ")\n"]
 ];
 const tree = [];
@@ -116,13 +149,17 @@ for (let attempt = 0; attempt < 40; attempt++) {
     if (build?.commit === commit.sha && build.status === "errored") throw new Error(build.error?.message || "Pages build failed");
     if (build?.commit === commit.sha && build.status === "built") {
         try {
-            const response = await fetch(url + (url.includes("?") ? "&" : "?") + "v=" + sourceCommit, { cache: "no-store", signal: AbortSignal.timeout(15000) });
-            const published = await response.text();
-            if (response.ok && published.includes(marker) && createHash("sha256").update(published).digest("hex") === checksum) {
+            const verified = await Promise.all(Object.entries(checksums).map(async ([name, expected]) => {
+                const address = new URL(name === "index.html" ? "./" : name, url);
+                address.searchParams.set("v", sourceCommit);
+                const response = await fetch(address, { cache: "no-store", signal: AbortSignal.timeout(15000) });
+                return response.ok && createHash("sha256").update(Buffer.from(await response.arrayBuffer())).digest("hex") === expected;
+            }));
+            if (verified.every(Boolean)) {
                 console.log(JSON.stringify({ published: true, url, sourceCommit, pagesCommit: commit.sha, verifiedHtmlSha256: checksum }));
                 process.exit(0);
             }
-            lastError = "HTTP " + response.status + ": waiting for the deployed HTML";
+            lastError = "Waiting for the deployed files";
         } catch (error) { lastError = error.message; }
     }
     await new Promise(resolve => setTimeout(resolve, 15000));

@@ -19,19 +19,19 @@ From the repository root on Windows, run the following commands in PowerShell 7 
 ./scripts/wsl-build.ps1 -Engine
 ```
 
-The setup script provisions a dedicated Ubuntu 24.04 distribution with JDK 25, Maven, and Python 3. Edit and commit in the Windows checkout. The build script syncs the source to WSL and writes `engine.wasm` and `engine.wasm-runtime.js` to `web/engine/target/wasm-diagnostics/` inside the WSL checkout. Open the generated `WSL_image/midi-demo.html` in a browser with WasmGC support. The demo embeds the compressed engine and works from `file://`.
+The setup script provisions a dedicated Ubuntu 24.04 distribution with JDK 25, Maven, and Python 3. Edit and commit in the Windows checkout. The build script syncs the source to WSL and writes `engine.wasm` and `engine.wasm-runtime.js` to `web/engine/target/wasm-diagnostics/` inside the WSL checkout. Open the generated `WSL_image/midi-demo.html` in a browser with WasmGC support to use the standalone file. Serve `WSL_image/pwa/` over HTTPS or localhost to install JJazzLab Web as an app.
 
 See the [build and API guide](web/engine/README.md) and the [design notes](docs/wasm-engine-design.md) for details in Japanese. See [LICENSE](LICENSE) for the upstream license text.
 
 After rebuilding, testing, committing and pushing the source, publish the reviewed
-HTML with Node.js and the repository's existing GitHub credentials:
+PWA with Node.js and the repository's existing GitHub credentials.
 
 ```powershell
-node scripts/publish-pages.mjs --publish WSL_image/midi-demo.html
+node scripts/publish-pages.mjs --publish WSL_image/pwa
 ```
 
 Omit `--publish` for a dry run. The script updates the `gh-pages` branch, enables
-GitHub Pages, and waits until the public HTML matches the deployed SHA-256.
+GitHub Pages, and verifies the SHA-256 of each published PWA file.
 The page footer links to its source commit; the same full hash and link are
 recorded in the publishing branch’s README and deployment metadata.
 

@@ -1,12 +1,12 @@
 """Package the built engine and a bundled style into an offline HTML demo."""
 
+import argparse
 import base64
 import gzip
 import hashlib
 import html as html_lib
 import json
 import re
-import sys
 from pathlib import Path
 from xml.etree import ElementTree
 from tempfile import NamedTemporaryFile
@@ -115,7 +115,39 @@ def desktop_icon_styles():
     return "\n".join(rules)
 
 
-def package(engine_dir, output):
+def write_output(output, data):
+    output.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(dir=output.parent, delete=False) as staged:
+        temporary = Path(staged.name)
+        try:
+            staged.write(data)
+            staged.close()
+            temporary.replace(output)
+        finally:
+            temporary.unlink(missing_ok=True)
+
+
+def package_pwa(html, output):
+    manifest = (DEMO / "manifest.webmanifest").read_bytes()
+    icon_192 = (DEMO / "assets/icon-192.png").read_bytes()
+    icon_512 = (DEMO.parents[2] / "graphics/icon_512x512.png").read_bytes()
+    worker = (DEMO / "sw.js").read_text(encoding="utf-8")
+    pwa = html.replace("<!-- PWA_HEAD -->", '\n    '.join([
+        '<link rel="manifest" href="./manifest.webmanifest">',
+        '<link rel="apple-touch-icon" href="./icon-192.png">',
+        '<meta name="theme-color" content="#34373b">'
+    ])).replace("<!-- PWA_INSTALL -->", '<button id="install-app" type="button" hidden>アプリをインストール…</button>')
+    pwa = pwa.replace("</body>", inline_script((DEMO / "pwa.js").read_text(encoding="utf-8")) + "\n</body>").encode("utf-8")
+    files = {"index.html": pwa, "manifest.webmanifest": manifest, "icon-192.png": icon_192, "icon-512.png": icon_512}
+    build = hashlib.sha256(worker.encode("utf-8"))
+    for filename, data in files.items():
+        build.update(data)
+        write_output(output / filename, data)
+    write_output(output / "sw.js", worker.replace("PWA_BUILD_ID", build.hexdigest()[:16]).encode("utf-8"))
+    print(f"Packaged PWA {output}")
+
+
+def package(engine_dir, output, pwa_dir=None):
     template = (DEMO / "index.html").read_text(encoding="utf-8")
     stylesheet = (DEMO / "demo.css").read_text(encoding="utf-8") + "\n" + desktop_icon_styles()
     locale = (DEMO / "locale.js").read_text(encoding="utf-8")
@@ -189,17 +221,17 @@ def package(engine_dir, output):
     build_info = {"engineVersion": root_pom.findtext("{*}version"), "engineBytes": len(engine_wasm),
                   "buildId": hashlib.sha256(html.encode("utf-8")).hexdigest()[:12]}
     html = html.replace(build_marker, json.dumps(build_info), 1)
-    output.parent.mkdir(parents=True, exist_ok=True)
-    with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:
-        temporary = Path(staged.name)
-        try:
-            staged.write(html)
-            staged.close()
-            temporary.replace(output)
-        finally:
-            temporary.unlink(missing_ok=True)
+    standalone = html.replace("<!-- PWA_HEAD -->", "").replace("<!-- PWA_INSTALL -->", "")
+    write_output(output, standalone.encode("utf-8"))
     print(f"Packaged {output}")
+    if pwa_dir is not None:
+        package_pwa(html, pwa_dir)
 
 
 if __name__ == "__main__":
-    package(Path(sys.argv[1]), Path(sys.argv[2]))
+    parser = argparse.ArgumentParser()
+    parser.add_argument("engine_dir", type=Path)
+    parser.add_argument("output", type=Path)
+    parser.add_argument("--pwa-dir", type=Path)
+    args = parser.parse_args()
+    package(args.engine_dir, args.output, args.pwa_dir)

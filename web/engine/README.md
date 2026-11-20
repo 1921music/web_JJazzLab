@@ -59,9 +59,21 @@ Yamahaモードの「公開スタイル集を読み込む」で、[公式のス�
 
 収録189件中、186件のMIDI生成を確認しています。元のMIDIデータが不正な2件と、空のCASM区間を含む1件は理由付きで選択不可にします。ファイル名とCRCの両方で判別するため、元データが修正されれば自動的に対象外になります。出典とハッシュは [`demo/assets/README.md`](demo/assets/README.md) を参照してください。
 
-公開版は [GitHub Pages](https://1921music.github.io/web_JJazzLab/) です。`gh-pages` ブランチにビルド済みの単一HTMLを配置します。更新手順はリポジトリルートの [`scripts/publish-pages.mjs`](../../scripts/publish-pages.mjs) を参照してください。
+公開版は [GitHub Pages](https://1921music.github.io/web_JJazzLab/) です。PWA版を更新するには、ビルド済みの `WSL_image/pwa/` を [`scripts/publish-pages.mjs`](../../scripts/publish-pages.mjs) に渡します。
 
-音源のTinySoundFont WasmとAudioWorkletのコードもHTMLへ埋め込みます。初回の再生操作でのみ、固定リビジョンのTimGM6mb.sf2（約6MB）をHTTPSで取得します。初回はネット接続が必要です。取得失敗後は再生ボタンで再試行できます。SF2はページ内で再利用し、ページを閉じた後の永続キャッシュは実装していません。配信元のCORS許可が必要です。ビルド環境にEmscriptenがない場合は `scripts/wsl-dev.ps1` を再実行してください。
+音源のTinySoundFont WasmとAudioWorkletのコードもHTMLへ埋め込みます。既定の音源は、最初の再生時に固定リビジョンのTimGM6mb.sf2（約6MB）をHTTPSで取得します。取得失敗後は再生ボタンで再試行できます。PWA版は取得できた音源をブラウザに保存します。単一HTML版は読み込んだ音源を開いているページ内で再利用します。配信元のCORS許可が必要です。ビルド環境にEmscriptenがない場合は `scripts/wsl-dev.ps1` を再実行してください。
+
+### PWA版をインストールする
+
+`-Engine` または、エンジンをビルド済みの場合は `-DemoOnly` で、`WSL_image/pwa/` にPWA版を生成します。HTTPSで配信するか、ローカルでは次のコマンドで配信します。
+
+```powershell
+wsl.exe -d wasm_jjazzlab_dev -u jjazzdev --exec python3 -m http.server 8040 --bind 127.0.0.1 --directory WSL_image/pwa
+```
+
+[localhost:8040](http://localhost:8040/) をChromeまたはEdgeで開き、ブラウザのインストール操作か「ウィンドウ → アプリをインストール…」を選びます。インストール後は専用ウィンドウで起動します。既定音源でオフライン再生するには、オンラインで一度再生して音源を取得してください。公開スタイル集の読み込みにはネット接続が必要です。
+
+ChromiumでのPWA検証は `node web/audio/test/pwa-smoke.cjs WSL_image/pwa` で実行できます。音源フィクスチャの既定パスは `WSL_image/TimGM6mb.sf2` です。
 
 再生画面では曲全体のループを既定とし、開始・終了小節（終了を含む）を変更できます。演奏中の変更は現在のループ終了位置で適用し、ループを解除した場合はその先を曲末まで演奏します。ループを無効にしている間の範囲変更は曲末で適用します。折り返しでは音源状態を復元し、境界をまたぐノートは切ります。短いフェードでクリック音を抑えます。
 
