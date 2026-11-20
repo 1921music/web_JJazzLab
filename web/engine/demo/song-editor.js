@@ -340,22 +340,22 @@ class SongEditor {
         this.render();
     }
 
-    open(project, mix, style = null, useSavedStyles = false) {
+    open(project, mix, style = null, useSavedStyles = false, view) {
         this.onBeforeOpen?.();
         this.fileRequest = null;
         this.project = project;
         this.mix = mix;
-        this.openedMix = structuredClone(mix);
+        this.openedMix = view?.openedMix ?? structuredClone(mix);
         this.unresolvedStyleMix = undefined;
         this.style = style;
         this.selectedPart = null;
         this.partSelection.clear();
         this.selectedChord = null;
-        this.undoStack = [];
-        this.redoStack = [];
-        this.styleParameters.clear();
+        this.undoStack = view?.undoStack ?? [];
+        this.redoStack = view?.redoStack ?? [];
+        this.styleParameters = view?.styleParameters ?? new Map();
         this.updateUndo();
-        this.selectedBar = this.selectionAnchor = 0;
+        this.selectedBar = this.selectionAnchor = view?.selectedBar ?? 0;
         this.changed();
         this.notify();
         document.querySelector("#project-editor").hidden = false;
@@ -2017,6 +2017,7 @@ class SongEditor {
             const song = mode === "linearize" ? this.linearizedSong() : mode === "duplicate"
                 ? { ...this.project, title: `${this.project.title} - ${t("コピー", "copy")}` } : this.project;
             downloadSongFile(`${this.fileStem(song.title)}.jjazzweb`, JSON.stringify(this.webData(song)), "application/json");
+            if (!mode) this.onSave?.();
         } catch (error) { this.notify(error.message, true); }
     }
 
@@ -2033,6 +2034,7 @@ class SongEditor {
                 if (style.extensionData) files.set(`styles/${style.name}`, Uint8Array.from(style.extensionData));
             }
             downloadSongFile(`${stem}.zip`, packageSongFiles([...files]), "application/zip");
+            this.onSave?.();
         } catch (error) { this.notify(error.message, true); }
     }
 

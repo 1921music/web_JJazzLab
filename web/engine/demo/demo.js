@@ -227,6 +227,7 @@ function updateButtons() {
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
     document.querySelector("#open-song-print").disabled = !editor.project || generating || starting;
     document.querySelector("#open-recent-songs").disabled = generating || starting;
+    songTabs.updateBusy();
     folderIO.update(generating || starting);
     for (const id of ["duplicate-song", "linearize-song", "save-song-template", "clear-song-template"]) {
         document.getElementById(id).disabled = !editor.project || starting || generating;
@@ -294,6 +295,7 @@ function readLoop() {
 
 function applyMix() {
     if (activeProject === editor.project && editor.baseMix) {
+        const before = JSON.stringify(editor.unresolvedStyleMix ?? editor.mix);
         const limit = value => Math.max(0, Math.min(127, Math.round(value)));
         editor.mix = editor.mix.map(track => {
             const base = editor.baseMix.find(item => item.rhythmId === track.rhythmId && item.name === track.name);
@@ -313,6 +315,7 @@ function applyMix() {
                 reverb: part.reverb, chorus: part.chorus, reverbEnabled: part.reverbEnabled, chorusEnabled: part.chorusEnabled };
         });
         if (editor.renderedMix) editor.renderedMix = editor.mix;
+        if (JSON.stringify(editor.unresolvedStyleMix ?? editor.mix) !== before) songTabs.mixEdited();
     } else {
         mixerParts.forEach(({ id, volume, pan, mute, solo, instrumentChoice, reverb, chorus, reverbEnabled, chorusEnabled }) => {
             savedMix.set(id, { volume, pan, mute, solo, instrumentChoice, reverb, chorus, reverbEnabled, chorusEnabled });
@@ -997,6 +1000,7 @@ let bootingSong = true;
 const editor = new SongEditor((opened, useSavedStyles) => {
     pianoRoll.close();
     recentSongs.opened(Boolean(useSavedStyles && !bootingSong));
+    songTabs.opened(useSavedStyles, bootingSong);
     selectedMixerRhythm = "";
     chosenRange = null;
     activeProject = undefined;
@@ -1038,7 +1042,20 @@ const folderIO = new SongFolderIO(editor, async () => {
 });
 folderIO.onOpen = () => { if (!mixer.hidden) prepareMixer.click(); };
 const recentSongs = new SongHistory(editor, () => { if (!mixer.hidden) prepareMixer.click(); });
-editor.onBeforeOpen = () => { void recentSongs.flush(); };
+const songTabs = new SongTabs(editor, recentSongs, () => generating || starting || folderIO.saving, () => editor.newSong());
+songTabs.afterActivate = () => { if (!mixer.hidden) prepareMixer.click(); };
+recentSongs.isUnsaved = () => songTabs.isDirty(songTabs.active);
+recentSongs.onReopenExisting = id => {
+    const entry = songTabs.entries.find(item => item.id === id);
+    if (!entry) return false;
+    songTabs.activate(entry);
+    return true;
+};
+editor.onBeforeOpen = () => {
+    void recentSongs.flush();
+    songTabs.suspend(rhythmEngine.value === "song");
+};
+editor.onSave = () => { songTabs.saved(); recentSongs.schedule(); };
 document.querySelector("#duplicate-song").onclick = () => editor.save("duplicate");
 for (const button of document.querySelectorAll("[data-audio-export]")) {
     button.onclick = () => exportAudio(button.dataset.audioExport, undefined, button.hasAttribute("data-all-tracks"));
@@ -1234,6 +1251,7 @@ document.querySelector("#close-reader").onclick = () => { showReader(false); tog
 editor.onRender = () => {
     pianoRoll.sync();
     recentSongs.schedule();
+    if (songTabs.active?.project === editor.project) songTabs.refresh();
     if (!reader.hidden) {
         buildReader();
         updateReader(playbackBar, playbackFraction);
@@ -1244,13 +1262,18 @@ document.querySelector("#add-user-track").onclick = () => pianoRoll.addTrack();
 quickMode.addEventListener("click", () => {
     if (!editor.project) {
         if (draft) {
-            recentSongs.reopeningId = draft.historyId;
-            editor.open(draft.project, draft.mix, draft.style, draft.useSavedStyles);
+            const entry = songTabs.entries.find(item => item.project === draft.project);
+            if (entry) songTabs.activate(entry);
+            else {
+                recentSongs.reopeningId = draft.historyId;
+                editor.open(draft.project, draft.mix, draft.style, draft.useSavedStyles);
+            }
         }
         else document.querySelector("#new-project").click();
         return;
     }
     void recentSongs.flush();
+    songTabs.suspend(rhythmEngine.value === "song");
     draft = { project: editor.project, mix: editor.unresolvedStyleMix ?? editor.mix, style: editor.style,
         useSavedStyles: rhythmEngine.value === "song", historyId: recentSongs.id };
     pianoRoll.close();
@@ -1281,7 +1304,11 @@ editor.onMeterChange = meter => {
         rhythmEngine.dispatchEvent(new Event("change"));
     }
 };
-editor.onChanged = () => { accompanimentDirty = true; updateMixerButtons(); updateMenus(); recentSongs.schedule(); };
+editor.onChanged = () => {
+    accompanimentDirty = true;
+    updateMixerButtons(); updateMenus(); recentSongs.schedule();
+    if (songTabs.active?.project === editor.project) songTabs.refresh();
+};
 editor.onStyleChoices = () => new Map([
     ["jjSwing-ID", "jjSwing"],
     ...[...bundledStyles.keys(), ...Object.keys(embeddedExtendedStyles)].map(name => [`${name}-ID`, name]),
@@ -1503,6 +1530,7 @@ async function restoreInstrumentMixes(incoming, exactOnly) {
         editor.mix = previous;
         return false;
     }
+    if (JSON.stringify(editor.mix) !== JSON.stringify(previous)) songTabs.mixEdited();
     return true;
 }
 
@@ -1702,6 +1730,7 @@ tempoInput.addEventListener("input", () => {
     const tempo = tempoInput.valueAsNumber;
     if (editor.project && Number.isFinite(tempo)) editor.project.tempo = tempo;
     recentSongs.schedule();
+    if (editor.project) songTabs.refresh();
     tempoDirty = Boolean(song && tempo !== renderedTempo);
     if (playing || paused) player.tempo(playbackTempoRate()).catch(error => showPlayStatus(error.message, true));
 });
@@ -1874,4 +1903,4 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
 }
 document.querySelector("#new-project").click();
 bootingSong = false;
-void recentSongs.restore();
+void recentSongs.restore(songTabs.startup).then(() => songTabs.restore());

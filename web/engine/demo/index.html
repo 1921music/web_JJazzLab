@@ -15,6 +15,7 @@
                     <button data-command="open-project-button" type="button">曲を開く…</button>
                     <button id="open-song-folder" type="button" hidden>フォルダーから曲を開く…</button>
                     <button id="open-recent-songs" type="button">最近の曲…</button>
+                    <button id="close-current-song" type="button">曲を閉じる</button>
                     <button data-command="save-project" type="button">Web用に保存</button>
                     <button id="overwrite-song-file" type="button" hidden>本家形式で上書き保存</button>
                     <button id="save-as-song-file" type="button" hidden>本家形式で名前を付けて保存…</button>
@@ -120,6 +121,7 @@
         <section id="song-editor" class="panel" aria-labelledby="song-editor-title">
             <p id="project-status" role="status"></p>
             <div id="project-editor" hidden>
+                <div id="song-tabs" role="tablist" aria-label="開いている曲"></div>
                 <div class="pane-heading">
                     <h2 id="song-editor-title">コード譜</h2>
                     <label class="project-name">曲名 <input id="project-title" type="text"></label>

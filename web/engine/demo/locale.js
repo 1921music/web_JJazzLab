@@ -10,6 +10,8 @@ MIDIを取り込む…|Import MIDI…
 選択区間のみ再生|Play selected song part
 小節メモを表示|Show bar annotations
 メモの行数|Annotation lines
+曲を閉じる|Close song
+開いている曲|Open songs
 WAVを書き出す|Export WAV
 トラックをWAVとして保存|Save track as WAV
 MP3を書き出す|Export MP3

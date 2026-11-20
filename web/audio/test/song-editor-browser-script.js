@@ -1299,6 +1299,31 @@
         const [, beatOnSwingGrid] = await editor.onQuantizeChordDrop(swingGrid, swingGrid.sections[0], 0, .34);
         check(Math.abs(beatOnSwingGrid - 1 / 3) < .0001, "Automatic chord quantization did not follow jjSwing's ternary division");
         report.chordDropQuantization = true;
+        const firstTab = songTabs.active;
+        const firstProject = editor.project;
+        const priorUndoCount = editor.undoStack.length;
+        const scoreBeforeTabSwitch = DesktopSongFiles.writeSong(firstProject);
+        document.querySelector("#new-project").click();
+        const secondTab = songTabs.active;
+        editor.title.value = "Second open song";
+        editor.title.dispatchEvent(new Event("input", { bubbles: true }));
+        const tabButton = entry => document.querySelectorAll('#song-tabs [role="tab"]')[songTabs.entries.indexOf(entry)];
+        check(firstTab !== secondTab && tabButton(firstTab) && tabButton(secondTab).hasAttribute("data-modified"), "A new song did not keep the first tab and flag the edited second tab");
+        tabButton(firstTab).click();
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(editor.project === firstProject && DesktopSongFiles.writeSong(editor.project) === scoreBeforeTabSwitch
+            && editor.undoStack.length === priorUndoCount && tabButton(firstTab).getAttribute("aria-selected") === "true", "Tab switching lost score changes or its undo history");
+        const confirmClose = window.confirm;
+        let prompts = 0;
+        try {
+            window.confirm = () => { prompts++; return false; };
+            tabButton(secondTab).parentElement.querySelector("button:last-child").click();
+            check(songTabs.entries.includes(secondTab) && prompts === 1, "Canceling the unsaved confirmation closed the second song");
+            window.confirm = () => { prompts++; return true; };
+            tabButton(secondTab).parentElement.querySelector("button:last-child").click();
+            check(!songTabs.entries.includes(secondTab) && editor.project === firstProject && prompts === 2, "Confirming close changed the active song or kept the closed tab");
+        } finally { window.confirm = confirmClose; }
+        report.songTabs = true;
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

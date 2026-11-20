@@ -78,7 +78,7 @@ class SongHistory {
         if (this.editor.project !== this.current) return this.writes;
         const data = structuredClone(this.editor.webData());
         const updated = this.lastUpdated = Math.max(Date.now(), this.lastUpdated + 1);
-        const record = { id: this.id, updated, data };
+        const record = { id: this.id, updated, data, dirty: Boolean(this.isUnsaved?.()) };
         this.writes = this.writes.then(() => this.store(record)).catch(error => { this.writeError = error; });
         return this.writes;
     }
@@ -87,14 +87,17 @@ class SongHistory {
         const { song, mix, style } = structuredClone(record.data);
         const project = DesktopSongFiles.validateSong(song);
         this.reopeningId = record.id;
-        this.editor.open(project, mix ?? [], style, true);
+        this.reopeningRecord = record;
+        try { this.editor.open(project, mix ?? [], style, true); }
+        finally { this.reopeningRecord = undefined; }
         this.afterOpen();
     }
 
-    async restore() {
+    async restore(session) {
         const initial = this.editor.project;
         try {
-            const [latest] = await this.records();
+            const records = await this.records();
+            const latest = session ? records.find(item => item.id === session.current) ?? records.find(item => session.ids.includes(item.id)) : records[0];
             if (latest && this.editor.project === initial && !this.editor.fileRequest && !this.timer && !this.editor.undoStack.length) {
                 this.reopen(latest);
             }
@@ -114,7 +117,7 @@ class SongHistory {
                 const item = document.createElement("li");
                 const button = this.editor.button(record.data.song.title, () => {
                     try {
-                        this.reopen(record);
+                        if (!this.onReopenExisting?.(record.id)) this.reopen(record);
                         this.dialog.close();
                     } catch (error) { this.status.textContent = error.message; }
                 });

@@ -9,11 +9,14 @@ class SongFolderIO {
         this.openButton = document.querySelector("#open-song-folder");
         this.saveButton = document.querySelector("#overwrite-song-file");
         this.copyButton = document.querySelector("#save-as-song-file");
+        this.openFiles = new WeakMap();
         this.openButton.onclick = () => this.openFolder();
         this.saveButton.onclick = () => this.save(true);
         this.copyButton.onclick = () => this.save(false);
         document.querySelector("#cancel-song-folder").onclick = () => this.dialog.close();
     }
+
+    get active() { return this.openFiles.get(this.editor.project); }
 
     update(busy) {
         const available = typeof window.showDirectoryPicker === "function";
@@ -48,7 +51,8 @@ class SongFolderIO {
                 try {
                     const sources = await Promise.all([song, ...(mix ? [mix] : [])].map(handle => handle.getFile()));
                     if (!await this.editor.loadFiles(sources)) return;
-                    this.active = { project: this.editor.project, directory, song, mix, sources };
+                    const project = this.editor.project;
+                    this.openFiles.set(project, { project, directory, song, mix, sources });
                     this.update(false);
                     this.onOpen?.();
                 } catch (error) { this.editor.notify(error.message, true); }
@@ -107,8 +111,9 @@ class SongFolderIO {
             if (failed !== -1) throw new Error(t("曲とミックスの両方を書き込めませんでした。", "The song and mix could not both be saved."));
             const sources = await Promise.all([song.getFile(), mix.getFile()]);
             if (this.editor.project !== project) return;
-            this.active = { project, directory, song, mix, sources };
+            this.openFiles.set(project, { project, directory, song, mix, sources });
             this.editor.openedMix = DesktopSongFiles.readMix(snapshot.mix);
+            this.editor.onSave?.();
             this.editor.notify(t(`${name} と ${mixName} を保存しました。`, `Saved ${name} and ${mixName}.`));
         } catch (error) {
             if (error.name !== "AbortError") this.editor.notify(error.message, true);
