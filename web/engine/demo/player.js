@@ -75,6 +75,7 @@ class AccompanimentPlayer {
                 if (data.type === "position") {
                     if (!data.preview) this.onPosition(data);
                 }
+                else if (data.type === "refresh-applied") this.onRefreshApplied?.(data.version);
                 else if (data.type === "error") { this.ready = false; this.onError(data.error); }
                 else if (this.waiting.has(data.id)) {
                     const request = this.waiting.get(data.id); this.waiting.delete(data.id);
@@ -125,6 +126,9 @@ class AccompanimentPlayer {
     async panic() { if (this.ready) await this.send("panic"); }
     async click(enabled) { if (this.ready) await this.send("click", { enabled }); }
     async tempo(rate) { if (this.ready && this.loadedSong && !this.previewing) await this.send("tempo", { rate }); }
+    async refresh(song, version) {
+        if (this.ready && this.loadedSong && !this.previewing) await this.send("refresh", { song, version });
+    }
     mix(parts, master) {
         if (this.ready && this.loadedSong && !this.previewing) this.send("mix", { parts, master }).catch(error => this.onError(error.message));
     }

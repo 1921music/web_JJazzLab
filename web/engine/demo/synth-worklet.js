@@ -103,7 +103,14 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.frame = this.index = 0;
                 this.loop = this.prepareLoop(message.loop);
                 this.pendingLoop = null;
+                this.pendingRefresh = null;
                 this.effects.clear();
+            } else if (type === "refresh") {
+                this.pendingRefresh = message.song && (this.playing || this.paused) && !this.preview
+                    ? { version: message.version,
+                        events: message.song.events.map(event => ({ ...event, frame: Math.round(event.seconds * sampleRate) })),
+                        frame: this.beats.find(beat => beat.beat === 1 && beat.frame > this.frame)?.frame ?? this.duration }
+                    : null;
             } else if (type === "mix") {
                 const solo = message.parts.some(p => p.solo);
                 for (let i = 0; i < this.parts.length; i++) {
@@ -165,6 +172,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.playing = false;
                 this.paused = false;
                 this.countFrames = 0;
+                this.pendingRefresh = null;
                 for (let i = 0; i < this.parts.length; i++) this.api.synth_reset(i);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.frame = 0;
@@ -218,7 +226,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (type !== 0x90 || !b || part.enabled) this.api.synth_event(index, type, a, b);
     }
 
-    seek(frame) {
+    seek(frame, chase = this.loop.chase) {
         for (const [index, part] of this.parts.entries()) {
             this.api.synth_reset(index);
             part.midiProgram = part.bankMsb = part.bankLsb = 0;
@@ -226,7 +234,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             part.midiPan = 64;
             if (part.instrumentChoice) this.applyProgram(index);
         }
-        if (frame) for (const event of this.loop.chase) {
+        if (frame) for (const event of chase) {
             if (event.frame >= frame) break;
             this.event(event);
         }
@@ -237,6 +245,27 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (this.beatIndex < 0) this.beatIndex = this.beats.length;
         this.clickRemaining = 0;
         this.fadeStart = frame;
+    }
+
+    applyRefresh(frame, restarting = false) {
+        const { version, events } = this.pendingRefresh;
+        this.pendingRefresh = null;
+        this.events = events;
+        const controls = events.filter(event => [0xb0, 0xc0, 0xe0].includes(event.type));
+        this.loop.chase = controls.filter(event => event.frame < this.loop.restart);
+        if (this.pendingLoop) this.pendingLoop.chase = controls.filter(event => event.frame < this.pendingLoop.restart);
+        this.seek(frame, controls);
+        if (!restarting) {
+            const sustained = new Map();
+            for (const event of events) {
+                if (event.frame >= frame) break;
+                const key = event.part * 128 + event.a;
+                if (event.type === 0x90 && event.b) sustained.set(key, event);
+                else if (event.type === 0x80 || event.type === 0x90) sustained.delete(key);
+            }
+            for (const event of sustained.values()) this.event(event);
+        }
+        this.port.postMessage({ type: "refresh-applied", version });
     }
 
     reportPosition() {
@@ -273,7 +302,10 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 let boundary = this.loop.enabled ? this.loop.end : this.playbackEnd;
                 if (this.frame >= boundary) {
                     if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
-                    if (this.loop.enabled) this.seek(this.loop.restart);
+                    if (this.loop.enabled) {
+                        if (this.pendingRefresh) this.applyRefresh(this.loop.restart, true);
+                        else this.seek(this.loop.restart);
+                    }
                     else if (this.frame >= this.playbackEnd) {
                         this.frame = this.playbackEnd;
                         this.playing = false;
@@ -283,10 +315,11 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     }
                     boundary = this.loop.enabled ? this.loop.end : this.playbackEnd;
                 }
+                if (this.pendingRefresh && this.frame >= this.pendingRefresh.frame) this.applyRefresh(this.frame);
                 while (this.index < this.events.length && this.events[this.index].frame <= this.frame) {
                     this.event(this.events[this.index++]);
                 }
-                const next = this.events[this.index]?.frame ?? boundary;
+                const next = Math.min(this.events[this.index]?.frame ?? boundary, this.pendingRefresh?.frame ?? boundary);
                 const n = Math.min(128, left.length - offset, Math.max(1, Math.ceil((Math.min(boundary, next) - this.frame) / rate)));
                 const pointer = this.api.synth_render(n) / 4;
                 for (let f = 0; f < n; f++) {

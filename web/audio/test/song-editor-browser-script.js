@@ -1734,6 +1734,49 @@
             }
             report.rhythmLibrary = true;
         }
+        {
+            const fixture = DesktopSongFiles.readSong(desktopFixture.legacySongs[1]);
+            fixture.tempo = 220;
+            for (const part of fixture.parts) Object.assign(part, { styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} });
+            editor.open(fixture, [], undefined, true);
+            await generate();
+            loopEnabled.checked = true;
+            loopStart.value = "1";
+            loopEnd.value = "2";
+            precount.setAttribute("aria-pressed", "false");
+            const range = readLoop();
+            const previous = song;
+            const changes = [];
+            const send = player.send;
+            player.send = function (type, message, transfer) {
+                if (type === "play" || type === "stop" || type === "refresh") changes.push([type, message]);
+                return send.call(this, type, message, transfer);
+            };
+            try {
+                await startPlayback();
+                check(playing, "The practice loop did not start");
+                editor.editArrangement(() => {
+                    fixture.chords[0].name = "F#m7";
+                    fixture.parts[0].parameters.rpVariationID = "Main B-1";
+                });
+                for (let attempt = 0; song === previous && attempt < 280; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+                check(song !== previous && playing && !accompanimentDirty && song.events.length > 0
+                    && JSON.stringify(song.events) !== JSON.stringify(previous.events)
+                    && JSON.stringify(readLoop()) === JSON.stringify(range)
+                    && changes.filter(([type]) => type === "play").length === 1 && !changes.some(([type]) => type === "stop"),
+                `Editing the chord/rhythm interrupted the loop or never changed it: ${status.textContent} ${playStatus.textContent}`);
+                const applied = song;
+                editor.editArrangement(() => fixture.parts.push(structuredClone(fixture.parts.at(-1))));
+                await new Promise(resolve => setTimeout(resolve, 800));
+                check(song === applied && playing && accompanimentDirty && changes.filter(([type, message]) => type === "refresh" && message.song).length === 1,
+                    "A structural edit replaced the playing arrangement");
+            } finally {
+                player.send = send;
+                loopEnabled.checked = false;
+                await player.stop();
+            }
+            report.liveAccompanimentRefresh = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

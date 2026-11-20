@@ -138,6 +138,8 @@ let starting = false;
 let playing = false;
 let paused = false;
 let accompanimentDirty = true;
+let liveArrangement, liveTimer, liveVersion = 0, liveEngine;
+const liveCandidates = new Map();
 let playbackBar = 1;
 let playbackFraction = 0;
 let mixerParts = [];
@@ -980,6 +982,10 @@ let activeProject;
 let chosenRange;
 let draft;
 function clearPlayback() {
+    clearTimeout(liveTimer);
+    liveArrangement = undefined;
+    liveCandidates.clear();
+    liveVersion++;
     paused = playing = false;
     accompanimentDirty = true;
     song = null;
@@ -1352,6 +1358,7 @@ editor.onMeterChange = meter => {
 };
 editor.onChanged = () => {
     accompanimentDirty = true;
+    scheduleAccompanimentRefresh();
     updateMixerButtons(); updateMenus(); recentSongs.schedule();
     if (songTabs.active?.project === editor.project) songTabs.refresh();
 };
@@ -1770,6 +1777,94 @@ function selectVariation(saved, available) {
     return available[0];
 }
 
+function liveSongKeys(project) {
+    const structure = JSON.stringify([project.bars, project.loopRestartBar, rhythmEngine.value,
+        project.sections.map(section => [section.bar, section.meter]),
+        project.parts.map(part => [part.section, part.styleId, part.parameters.rpTempoID ?? "100"]),
+        project.userTracks.map(track => track.name)]);
+    const music = JSON.stringify([
+        project.chords.map(chord => [chord.bar, chord.beat, chord.name, chord.features, chord.scale, chord.alternate]),
+        project.parts.map(part => Object.entries(part.parameters).sort()),
+        project.userTracks.map(track => track.phrase)
+    ]);
+    return { structure, music };
+}
+
+function withBrowserPatches(track) {
+    const equivalent = mixerInstruments.find(instrument => instrument.desktop.id === track.instrument);
+    return equivalent ? { ...track, patch: equivalent.patch } : track;
+}
+
+function scheduleAccompanimentRefresh() {
+    if ((!playing && !paused) || generating || starting || !liveArrangement || editor.project !== activeProject
+        || player.previewing || player.loadedSong !== song) return;
+    const version = ++liveVersion;
+    clearTimeout(liveTimer);
+    const cancel = player.refresh(null, version).then(() => {
+        for (const pending of liveCandidates.keys()) if (pending < version) liveCandidates.delete(pending);
+    });
+    cancel.catch(error => showPlayStatus(error.message, true));
+    const project = editor.project;
+    if (liveArrangement.structure !== liveSongKeys(project).structure) {
+        showStatus("次回の再生から変更を反映します。");
+        return;
+    }
+    liveTimer = setTimeout(async () => {
+        const active = () => version === liveVersion && editor.project === project && (playing || paused) && !generating && !starting;
+        try {
+            await cancel;
+            if (!active()) return;
+            const { music, structure } = liveSongKeys(project);
+            if (music === liveArrangement.music) {
+                accompanimentDirty = false;
+                return;
+            }
+            const snapshot = structuredClone(project);
+            const ready = liveEngine ??= instantiateEngine().catch(error => { liveEngine = undefined; throw error; });
+            const [wasm, resolution] = await Promise.all([ready, resolveArrangement(snapshot, rhythmEngine.value === "jjswing")]);
+            if (!active()) return;
+            const { parts, styles, overrideStyles, sources } = resolution;
+            const arrangement = { ...snapshot, parts, tempo: renderedTempo };
+            const mix = (editor.unresolvedStyleMix ?? editor.mix).map(withBrowserPatches);
+            const midi = wasm.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(
+                arrangement, [...styles, ...overrideStyles], sources, mix));
+            const metadata = wasm.exports.getPartMetadata();
+            const barBeats = DesktopSongFiles.barBeats(arrangement);
+            const replacement = parseMidi(midi, barBeats.length, metadata, barBeats);
+            const trackIndices = new Map(song.parts.map((part, index) => [part.id, index]));
+            const indices = replacement.parts.map(part => trackIndices.get(part.id));
+            if (indices.includes(undefined) || replacement.barTimes.length !== song.barTimes.length
+                || replacement.barTimes.some((time, index) => Math.abs(time - song.barTimes[index]) > .002)) {
+                showStatus("次回の再生から変更を反映します。");
+                return;
+            }
+            const events = replacement.events.map(event => ({ ...event, part: indices[event.part] }));
+            const refreshed = { ...song, events };
+            liveCandidates.set(version, { project, music, structure, song: refreshed, midi, metadata });
+            await player.refresh(refreshed, version);
+        } catch {
+            if (active()) showStatus("次回の再生から変更を反映します。");
+        }
+    }, 350);
+}
+
+player.onRefreshApplied = version => {
+    const candidate = liveCandidates.get(version);
+    liveCandidates.delete(version);
+    if (!candidate || candidate.project !== editor.project || player.previewing) return;
+    song = player.loadedSong = candidate.song;
+    generatedMidi = candidate.midi;
+    liveArrangement = { music: candidate.music, structure: candidate.structure };
+    const exportedMidi = exportGmMidi(candidate.midi, candidate.metadata);
+    if (downloadUrl) URL.revokeObjectURL(downloadUrl);
+    downloadUrl = URL.createObjectURL(new Blob([exportedMidi], { type: "audio/midi" }));
+    download.href = downloadUrl;
+    if (version === liveVersion) {
+        accompanimentDirty = false;
+        showStatus(t("演奏中の伴奏を更新しました。", "Updated the accompaniment during playback."));
+    }
+};
+
 async function resolveArrangement(project, requestedSwing) {
     const styles = [], sources = [], replacedStyles = new Map();
     const byId = new Map();
@@ -1888,10 +1983,6 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
             let inputMix = followSong && !unresolved ? savedStyleMix : editor.mix;
             style = styles.length === 1 ? styles[0] : { name: project.title };
             const arrangement = { ...project, tempo: tempo || project.tempo, parts };
-            const withBrowserPatches = track => {
-                const equivalent = mixerInstruments.find(instrument => instrument.desktop.id === track.instrument);
-                return equivalent ? { ...track, patch: equivalent.patch } : track;
-            };
             const renderMidi = mix => engine.exports.generateSongMidiWithChordRendering(
                 ...DesktopSongFiles.multiStyleEngineArgs(arrangement, allStyles, sources, mix.map(withBrowserPatches)));
             if (factoryRhythm !== undefined && inputMix.length) {
@@ -1996,6 +2087,7 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
         player.loadedSong = null;
         updatePosition({ seconds: 0, playing: false });
         accompanimentDirty = false;
+        liveArrangement = project ? liveSongKeys(project) : undefined;
         showStatus(`${bars}小節・${song.parts.length}パートの伴奏を生成しました。`, false,
             `Accompaniment ready · ${bars} bars · ${song.parts.length} tracks.`);
         return true;
