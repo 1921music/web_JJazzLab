@@ -83,6 +83,25 @@ class SongHistory {
         return this.writes;
     }
 
+    clearUnsaved(ids) {
+        this.writes = this.writes.then(async () => {
+            const database = await this.database();
+            await new Promise((resolve, reject) => {
+                const transaction = database.transaction("songs", "readwrite");
+                const store = transaction.objectStore("songs");
+                for (const id of ids) {
+                    const request = store.get(id);
+                    request.onsuccess = () => {
+                        if (request.result?.dirty) store.put({ ...request.result, dirty: false });
+                    };
+                }
+                transaction.oncomplete = () => resolve();
+                transaction.onabort = () => reject(transaction.error);
+            });
+        }).catch(error => { this.writeError = error; });
+        return this.writes;
+    }
+
     reopen(record) {
         const { song, mix, style } = structuredClone(record.data);
         const project = DesktopSongFiles.validateSong(song);

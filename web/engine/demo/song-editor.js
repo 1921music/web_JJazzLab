@@ -45,6 +45,7 @@ function openEditorPopup(menu, x, y) {
 
 // The song package uses uncompressed ZIP entries so no library is needed.
 function packageSongFiles(files) {
+    if (files.length > 0xffff) throw new Error(t("ZIPに含められるファイル数を超えています。", "The ZIP has too many files."));
     const encoder = new TextEncoder();
     const local = [], directory = [];
     let offset = 0;
@@ -2025,17 +2026,24 @@ class SongEditor {
         try {
             if (!this.renderedMix) throw new Error("伴奏を生成してから書き出してください。");
             const stem = this.fileStem();
-            const files = new Map([[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)]]);
-            if (this.nativeMix.length) files.set(`${stem}.mix`, this.desktopMixXml());
-            for (const style of this.attachedStyles) {
-                // JJazzLab looks for an exact basename and a lowercase base extension on case-sensitive filesystems.
-                const baseName = style.extensionData ? `${style.name.slice(0, -4)}.${style.baseName.split(".").at(-1).toLowerCase()}` : style.name;
-                if (style.data) files.set(`styles/${baseName}`, Uint8Array.from(style.data));
-                if (style.extensionData) files.set(`styles/${style.name}`, Uint8Array.from(style.extensionData));
-            }
-            downloadSongFile(`${stem}.zip`, packageSongFiles([...files]), "application/zip");
+            downloadSongFile(`${stem}.zip`, packageSongFiles(this.desktopFiles(this.webData(), stem)), "application/zip");
             this.onSave?.();
         } catch (error) { this.notify(error.message, true); }
+    }
+
+    desktopFiles(data, stem) {
+        const files = new Map([[`${stem}.sng`, DesktopSongFiles.writeSong(data.song)]]);
+        if (data.mix?.length) files.set(`${stem}.mix`, DesktopSongFiles.writeMix(data.mix.map(track =>
+            ({ ...track, channel: track.sourceChannel ?? track.channel }))));
+        const styles = Array.isArray(data.style) ? data.style : data.style ? [data.style] : [];
+        for (const style of styles) {
+            if (!style.name || /[\\/\u0000]/u.test(style.name) || [".", ".."].includes(style.name)) continue;
+            // On case-sensitive systems, JJazzLab expects the same basename and a lowercase base extension for .yjz.
+            const baseName = style.extensionData ? `${style.name.slice(0, -4)}.${style.baseName.split(".").at(-1).toLowerCase()}` : style.name;
+            if (style.data) files.set(`styles/${baseName}`, Uint8Array.from(style.data));
+            if (style.extensionData) files.set(`styles/${style.name}`, Uint8Array.from(style.extensionData));
+        }
+        return Array.from(files);
     }
 
     desktopMixXml() {

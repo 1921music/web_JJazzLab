@@ -12,6 +12,7 @@ class SongTabs {
         try { this.startup = JSON.parse(localStorage.getItem("jjazzlab.openSongs") ?? "null"); }
         catch { this.startup = null; }
         document.querySelector("#close-current-song").onclick = () => this.close(this.active);
+        document.querySelector("#save-all-songs").onclick = () => this.saveAll();
     }
 
     suspend(useSavedStyles) {
@@ -103,6 +104,29 @@ class SongTabs {
         this.refresh();
     }
 
+    saveAll() {
+        if (!this.entries.length || this.isBusy()) return;
+        try {
+            const files = this.entries.flatMap((entry, index) => {
+                const data = entry.project === this.editor.project ? this.editor.webData()
+                    : { song: entry.project, mix: entry.mix, style: entry.style };
+                const stem = this.editor.fileStem(data.song.title);
+                const directory = `${String(index + 1).padStart(2, "0")}-${stem}`;
+                return this.editor.desktopFiles(data, stem).map(([name, contents]) => [`${directory}/${name}`, contents]);
+            });
+            downloadSongFile("JJazzLab-songs.zip", packageSongFiles(files), "application/zip");
+            for (const entry of this.entries) {
+                entry.saved = JSON.stringify(entry.project);
+                entry.dirty = entry.mixChanged = false;
+                entry.placeholder = false;
+            }
+            void this.history.clearUnsaved(this.entries.map(entry => entry.id));
+            this.history.schedule();
+            this.refresh();
+            this.editor.notify(t(`${this.entries.length}曲をZIPに保存しました。`, `Saved ${this.entries.length} songs to a ZIP file.`));
+        } catch (error) { this.editor.notify(error.message, true); }
+    }
+
     refresh() {
         this.rememberSession();
         const busy = this.isBusy();
@@ -144,6 +168,7 @@ class SongTabs {
     updateBusy() {
         const busy = this.isBusy();
         document.querySelector("#close-current-song").disabled = !this.editor.project || !this.active || busy;
+        document.querySelector("#save-all-songs").disabled = !this.entries.length || busy;
         for (const button of this.list.querySelectorAll("button")) button.disabled = busy;
     }
 }

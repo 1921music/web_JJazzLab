@@ -1324,6 +1324,43 @@
             check(!songTabs.entries.includes(secondTab) && editor.project === firstProject && prompts === 2, "Confirming close changed the active song or kept the closed tab");
         } finally { window.confirm = confirmClose; }
         report.songTabs = true;
+        const importedForBatch = DesktopSongFiles.readSong(desktopFixture.song);
+        const mixForBatch = DesktopSongFiles.readMix(desktopFixture.mix);
+        importedForBatch.title = "Duplicate ZIP title";
+        editor.open(importedForBatch, mixForBatch, undefined, true);
+        document.querySelector("#new-project").click();
+        editor.title.value = importedForBatch.title;
+        editor.title.dispatchEvent(new Event("input", { bubbles: true }));
+        const activeBeforeBatchSave = editor.project;
+        const clickAnchor = HTMLAnchorElement.prototype.click;
+        let archiveDownload;
+        HTMLAnchorElement.prototype.click = function () {
+            if (this.download === "JJazzLab-songs.zip") archiveDownload = fetch(this.href).then(reply => reply.arrayBuffer());
+            else clickAnchor.call(this);
+        };
+        try { document.querySelector("#save-all-songs").click(); }
+        finally { HTMLAnchorElement.prototype.click = clickAnchor; }
+        check(Boolean(archiveDownload), `The open-song ZIP was not saved: ${editor.status.textContent}`);
+        const batchZip = new DataView(await archiveDownload);
+        const batchFiles = new Map();
+        for (let offset = 0; batchZip.getUint32(offset, true) === 0x04034b50;) {
+            const length = batchZip.getUint32(offset + 18, true), nameLength = batchZip.getUint16(offset + 26, true);
+            const decoder = new TextDecoder();
+            const name = decoder.decode(new Uint8Array(batchZip.buffer, offset + 30, nameLength));
+            const start = offset + 30 + nameLength;
+            if (name.endsWith(`/Duplicate ZIP title.sng`) || name.endsWith(`/Duplicate ZIP title.mix`)) {
+                batchFiles.set(name, decoder.decode(new Uint8Array(batchZip.buffer, start, length)));
+            }
+            offset = start + length;
+        }
+        const exportedScores = [...batchFiles].filter(([name]) => name.endsWith(".sng"));
+        check(exportedScores.length === 2 && exportedScores.every(([, xml]) => DesktopSongFiles.readSong(xml).title === importedForBatch.title),
+            "Save All lost one of the songs with an identical title");
+        const batchOriginalScore = exportedScores.find(([, xml]) => DesktopSongFiles.readSong(xml).bars === importedForBatch.bars);
+        const batchSavedMix = batchFiles.get(batchOriginalScore?.[0].replace(/\.sng$/u, ".mix"));
+        check(Boolean(batchSavedMix) && DesktopSongFiles.readMix(batchSavedMix).length === mixForBatch.length, "Save All lost the imported mix");
+        check(editor.project === activeBeforeBatchSave && !songTabs.isDirty(songTabs.active), "Saving all songs changed tabs or kept a saved song marked as unsaved");
+        report.allSongsArchive = true;
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
