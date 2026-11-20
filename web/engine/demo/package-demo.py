@@ -118,6 +118,7 @@ def package(engine_dir, output):
     stylesheet = (DEMO / "demo.css").read_text(encoding="utf-8") + "\n" + desktop_icon_styles()
     locale = (DEMO / "locale.js").read_text(encoding="utf-8")
     preferences = (DEMO / "app-preferences.js").read_text(encoding="utf-8")
+    window_layout = (DEMO / "window-layout.js").read_text(encoding="utf-8")
     runtime = (engine_dir / "engine.wasm-runtime.js").read_text(encoding="utf-8")
     demo = (DEMO / "demo.js").read_text(encoding="utf-8")
     wasm = encode_gzip((engine_dir / "engine.wasm").read_bytes())
@@ -174,7 +175,7 @@ def package(engine_dir, output):
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
                             "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, preferences, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_memo, improvisation_guide, song_tabs, piano_score, piano_roll, chord_inspector, arranger, yjz_wizard, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, preferences, window_layout, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, audio_export, song_editor, song_print, song_folder, song_history, song_memo, improvisation_guide, song_tabs, piano_score, piano_roll, chord_inspector, arranger, yjz_wizard, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:

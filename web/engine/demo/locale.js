@@ -315,6 +315,16 @@ SysExを許可して接続|Connect with SysEx permission
 音色・エフェクト・音量・パンを送信する|Send program, effects, volume and pan
 内蔵音源も鳴らす|Also play the built-in synthesizer
 環境設定…|Preferences…
+パネル配置…|Panel Layout…
+パネル配置をリセット|Reset Panel Layout
+全画面表示|Full Screen
+パネル配置|Panel Layout
+ミキサーの位置|Mixer position
+左|Left
+右|Right
+下|Bottom
+左右に配置したミキサーの幅（%）|Side mixer width (%)
+コード譜の高さ上限（画面比 %）|Maximum lead-sheet height (% of window)
 環境設定|Preferences
 テーマ|Theme
 ダーク|Dark

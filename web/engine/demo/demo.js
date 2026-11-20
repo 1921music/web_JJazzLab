@@ -2285,6 +2285,7 @@ midiRemote.onDeviceChange = () => {
     arranger.resetKeys();
 };
 
+const windowLayout = new WindowLayout(workspace);
 const yjzWizard = new YjzWizard({
     choices: editor.onStyleChoices,
     resolve: findSavedStyle,

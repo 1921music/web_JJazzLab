@@ -2371,6 +2371,47 @@ AbM7 | G7 Cm7 |
             }
             report.appPreferences = true;
         }
+        {
+            const { form, dialog, key, settings } = windowLayout;
+            const saved = localStorage.getItem(key);
+            const button = document.querySelector("#toggle-fullscreen");
+            const request = document.documentElement.requestFullscreen;
+            const exit = document.exitFullscreen;
+            const property = Object.getOwnPropertyDescriptor(document, "fullscreenElement");
+            let active = null;
+            const update = element => { active = element; document.dispatchEvent(new Event("fullscreenchange")); };
+            try {
+                document.querySelector("#open-window-layout").click();
+                form.elements.mixerSide.value = "right";
+                form.elements.mixerWidth.value = "40";
+                form.elements.scoreHeight.value = "70";
+                form.requestSubmit();
+                check(!dialog.open && workspace.dataset.mixerSide === "right" && workspace.style.getPropertyValue("--mixer-width") === "40%"
+                    && workspace.style.getPropertyValue("--score-height") === "70vh" && JSON.parse(localStorage.getItem(key)).mixerSide === "right",
+                "Panel layout did not apply and persist");
+                document.querySelector("#reset-window-layout").click();
+                check(workspace.dataset.mixerSide === "left" && !workspace.style.getPropertyValue("--score-height")
+                    && !localStorage.getItem(key), "Panel layout reset did not restore the default");
+                Object.defineProperty(document, "fullscreenElement", { configurable: true, get: () => active });
+                document.documentElement.requestFullscreen = async () => update(document.documentElement);
+                document.exitFullscreen = async () => update(null);
+                await button.onclick();
+                check(active && button.getAttribute("aria-pressed") === "true", "The fullscreen command did not enter fullscreen");
+                await button.onclick();
+                check(!active && button.getAttribute("aria-pressed") === "false", "The fullscreen command did not restore the window");
+            } finally {
+                if (dialog.open) dialog.close();
+                windowLayout.settings = settings;
+                windowLayout.apply();
+                document.documentElement.requestFullscreen = request;
+                document.exitFullscreen = exit;
+                if (property) Object.defineProperty(document, "fullscreenElement", property);
+                else delete document.fullscreenElement;
+                if (saved === null) localStorage.removeItem(key);
+                else localStorage.setItem(key, saved);
+            }
+            report.windowLayout = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

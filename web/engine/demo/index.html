@@ -65,6 +65,10 @@
                 <details><summary>ウィンドウ</summary><div>
                     <button data-command="toggle-mixer" type="button">Mix Console</button>
                     <button data-command="toggle-structure" type="button">曲構成</button>
+                    <button id="open-window-layout" type="button">パネル配置…</button>
+                    <button id="reset-window-layout" type="button">パネル配置をリセット</button>
+                    <button id="toggle-fullscreen" type="button" aria-pressed="false">全画面表示</button>
+                    <output id="fullscreen-status" role="status" data-error></output>
                 </div></details>
                 <details><summary>ヘルプ</summary><div>
                     <a href="https://jjazzlab.gitbook.io/user-guide/" target="_blank" rel="noopener noreferrer">JJazzLab ユーザーガイド</a>
@@ -638,6 +642,19 @@
             <p role="status"></p>
             <div class="dialog-actions">
                 <button name="closeDialog" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="window-layout" aria-labelledby="window-layout-title">
+        <form method="dialog">
+            <h2 id="window-layout-title">パネル配置</h2>
+            <label class="field">ミキサーの位置 <select name="mixerSide"><option value="left">左</option><option value="right">右</option><option value="bottom">下</option></select></label>
+            <label class="field">左右に配置したミキサーの幅（%） <input name="mixerWidth" type="number" min="25" max="50" required></label>
+            <label class="field">コード譜の高さ上限（画面比 %） <input name="scoreHeight" type="number" min="30" max="85" required></label>
+            <div class="dialog-actions">
+                <button name="closeLayout" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
         </form>

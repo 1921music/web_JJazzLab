@@ -91,7 +91,7 @@ button:disabled { opacity: .5; cursor: default; }
 .workspace {
     min-height: 100vh;
     display: grid;
-    grid-template-columns: minmax(19rem, 30%) minmax(0, 1fr);
+    grid-template-columns: minmax(19rem, var(--mixer-width, 30%)) minmax(0, 1fr);
     grid-template-areas:
         "header header"
         "transport transport"
@@ -108,6 +108,23 @@ button:disabled { opacity: .5; cursor: default; }
 }
 .workspace.quick-view { grid-template-areas: "header header" "transport transport" "mixer settings" "mixer settings" "footer footer"; }
 .workspace.quick-view.mixer-closed { grid-template-areas: "header" "transport" "settings" "settings" "footer"; }
+@media (width > 62rem) {
+    .workspace[data-mixer-side="right"]:not(.mixer-closed) {
+        grid-template-columns: minmax(0, 1fr) minmax(19rem, var(--mixer-width, 30%));
+        grid-template-areas: "header header" "transport transport" "score mixer" "settings mixer" "footer footer";
+    }
+    .workspace[data-mixer-side="right"].quick-view:not(.mixer-closed) {
+        grid-template-areas: "header header" "transport transport" "settings mixer" "settings mixer" "footer footer";
+    }
+}
+.workspace[data-mixer-side="bottom"]:not(.mixer-closed) {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas: "header" "transport" "score" "mixer" "settings" "footer";
+    grid-template-rows: auto auto auto auto 1fr auto;
+}
+.workspace[data-mixer-side="bottom"].quick-view:not(.mixer-closed) {
+    grid-template-areas: "header" "transport" "settings" "mixer" "mixer" "footer";
+}
 .app-header {
     grid-area: header;
     padding: 0 .42rem;
@@ -222,7 +239,7 @@ button:disabled { opacity: .5; cursor: default; }
 .project-name input { width: clamp(9rem, 22vw, 24rem); font-weight: 650; }
 .sheet-toolbar { padding: .4rem .65rem; background: #303236; }
 #sheet-selection { margin-inline-start: auto; color: var(--muted); }
-.score-scroll { overflow: auto; max-height: min(50vh, 38rem); min-height: 10rem; background: #c6c3bb; padding: .4rem; }
+.score-scroll { overflow: auto; max-height: var(--score-height, min(50vh, 38rem)); min-height: 10rem; background: #c6c3bb; padding: .4rem; }
 .lead-sheet {
     display: grid;
     grid-template-columns: repeat(var(--sheet-columns, 4), minmax(0, 1fr));
@@ -546,7 +563,7 @@ dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display
     .brand { margin-right: 0; }
     .view-actions { margin-inline-start: 0; }
     .lead-sheet { grid-template-columns: repeat(var(--sheet-columns, 2), minmax(0, 1fr)); }
-    .score-scroll { max-height: 45vh; }
+    .score-scroll { max-height: var(--score-height, 45vh); }
     .chord-symbol { font-size: 1.03rem; }
     .pane-heading { gap: .35rem; }
     .project-name { margin-left: .25rem; }
