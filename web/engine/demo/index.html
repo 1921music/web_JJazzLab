@@ -52,6 +52,7 @@
                     <button id="open-arranger" type="button">MIDIアレンジャー…</button>
                     <button id="open-midi-output" type="button">MIDI出力設定…</button>
                     <button id="open-instrument-defaults" type="button">既定音色の割り当て…</button>
+                    <button id="open-app-preferences" type="button">環境設定…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button id="open-chord-inspector" type="button">コードインスペクター…</button>
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
@@ -637,6 +638,24 @@
             <p role="status"></p>
             <div class="dialog-actions">
                 <button name="closeDialog" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="app-preferences" aria-labelledby="app-preferences-title">
+        <form method="dialog">
+            <h2 id="app-preferences-title">環境設定</h2>
+            <label class="field">テーマ <select name="theme"><option value="dark">ダーク</option><option value="light">ライト</option><option value="system">システム設定に従う</option></select></label>
+            <label class="field">画面フォント <select name="font"><option value="system">標準</option><option value="sans">サンセリフ</option><option value="serif">セリフ</option></select></label>
+            <label class="field">画面の文字サイズ（%） <input name="fontSize" type="number" min="85" max="130" step="5" required></label>
+            <label><input type="checkbox" name="restoreSongs"> 起動時に開いていた曲を復元する</label>
+            <label><input type="checkbox" name="wheelChanges"> ホイールでミキサーの値を変更する</label>
+            <label class="field">コードの別名 <textarea name="aliases" rows="5" placeholder="CaltMaj=CMaj7"></textarea></label>
+            <p role="alert" data-error></p>
+            <div class="dialog-actions">
+                <button name="resetPreferences" type="button" class="secondary">既定値に戻す</button>
+                <button name="cancelPreferences" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
         </form>

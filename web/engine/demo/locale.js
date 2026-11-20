@@ -314,6 +314,20 @@ SysExを許可して接続|Connect with SysEx permission
 打楽器をチャンネル10にまとめる|Route percussion to channel 10
 音色・エフェクト・音量・パンを送信する|Send program, effects, volume and pan
 内蔵音源も鳴らす|Also play the built-in synthesizer
+環境設定…|Preferences…
+環境設定|Preferences
+テーマ|Theme
+ダーク|Dark
+ライト|Light
+システム設定に従う|Follow system
+画面フォント|Interface font
+サンセリフ|Sans serif
+セリフ|Serif
+画面の文字サイズ（%）|Interface text size (%)
+起動時に開いていた曲を復元する|Restore open songs on startup
+ホイールでミキサーの値を変更する|Use the mouse wheel to adjust mixer values
+コードの別名|Chord aliases
+既定値に戻す|Reset to Defaults
 出力を試聴|Test Output
 MIDI入力をこの出力に送る（MIDI Thru）|Send MIDI input to this output (MIDI Thru)
 MIDI出力遅延（ms）|MIDI output delay (ms)

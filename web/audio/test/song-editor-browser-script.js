@@ -2337,6 +2337,40 @@ AbM7 | G7 Cm7 |
             }
             report.yjzWizard = true;
         }
+        {
+            const original = appPreferences.settings;
+            const stored = localStorage.getItem(appPreferences.key);
+            const { form, dialog } = appPreferences;
+            const fields = form.elements;
+            editor.newSong();
+            try {
+                document.querySelector("#open-app-preferences").click();
+                fields.theme.value = "light";
+                fields.font.value = "serif";
+                fields.fontSize.value = "115";
+                fields.restoreSongs.checked = false;
+                fields.wheelChanges.checked = false;
+                fields.aliases.value = "Cm=C7";
+                await appPreferences.save();
+                check(dialog.open && dialog.querySelector("[role=alert]").textContent, "Reassigning a native chord alias was allowed");
+                fields.aliases.value = "CpracticeMajor=CMaj7";
+                await appPreferences.save();
+                const expected = (await getEngine()).exports.transposeChordSymbols(["DMaj7/A"], 0)[0];
+                const parsed = editor.parseBarChords(0, "DpracticeMajor/A")[0];
+                check(!dialog.open && parsed.name === expected, "A custom chord alias did not expand in the editor");
+                check(document.documentElement.dataset.theme === "light" && document.documentElement.dataset.uiFont === "serif"
+                    && getComputedStyle(document.documentElement).colorScheme === "light", "The light theme or serif font preference was not applied");
+                const prefs = JSON.parse(localStorage.getItem(appPreferences.key));
+                check(prefs.fontSize === 115 && !prefs.restoreSongs && !prefs.wheelChanges, "The preferences were not stored");
+            } finally {
+                if (dialog.open) dialog.close();
+                appPreferences.settings = original;
+                appPreferences.apply();
+                if (stored === null) localStorage.removeItem(appPreferences.key);
+                else localStorage.setItem(appPreferences.key, stored);
+            }
+            report.appPreferences = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

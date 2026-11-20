@@ -2649,7 +2649,7 @@ class SongEditor {
 
     concertChord(value, previous) {
         const label = value.replaceAll("♭", "b").replaceAll("♯", "#");
-        return previous && this.chordLabel(previous) === label ? previous : transposeChordLabel(label, -this.displayTranspose);
+        return previous && this.chordLabel(previous) === label ? previous : transposeChordLabel(this.onExpandChord?.(label) ?? label, -this.displayTranspose);
     }
 
     parseBarChords(bar, value) {

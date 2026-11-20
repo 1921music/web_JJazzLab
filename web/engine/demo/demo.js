@@ -3,6 +3,11 @@
 const form = document.querySelector("#midi-form");
 const options = document.querySelector("#options");
 const chordInput = document.querySelector("#chords");
+const appPreferences = new AppPreferences(async name => {
+    const wasm = await getEngine();
+    try { return wasm.exports.transposeChordSymbols([name], 0)[0]; }
+    catch { return undefined; }
+});
 const styleInput = document.querySelector("#style");
 const bundledExtension = document.querySelector("#bundled-extension");
 const extendedVariation = document.querySelector("#extended-variation");
@@ -513,7 +518,7 @@ function mixerKnob(part, key, label, min, max, value, onChange) {
     };
     input.oninput = () => { onChange(input.valueAsNumber); display(); applyMix(); };
     input.onwheel = event => {
-        if (document.activeElement !== input) return;
+        if (!appPreferences.settings.wheelChanges || document.activeElement !== input) return;
         event.preventDefault();
         input.value = Math.max(min, Math.min(max, input.valueAsNumber - Math.sign(event.deltaY)));
         input.oninput();
@@ -1183,6 +1188,7 @@ editor.onReadMusicXml = async file => {
     });
 };
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
+editor.onExpandChord = name => appPreferences.expandChord(name);
 editor.onTransposeChords = async (names, delta) => (await getEngine()).exports.transposeChordSymbols(names, delta);
 editor.onReadChordTools = async names => {
     const wasm = (await getEngine()).exports;
@@ -2014,7 +2020,7 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
     if (generating || (starting && !fromPlay)) return false;
     clearDownload();
     const project = editor.project;
-    const chords = chordInput.value.split(/[\s,|]+/u).filter(Boolean);
+    const chords = chordInput.value.split(/[\s,|]+/u).filter(Boolean).map(chord => appPreferences.expandChord(chord));
     if (!project && !chords.length) {
         showStatus("コードを1つ以上入力してください。", true);
         chordInput.focus();
@@ -2290,4 +2296,8 @@ const yjzWizard = new YjzWizard({
 
 document.querySelector("#new-project").click();
 bootingSong = false;
-void recentSongs.restore(songTabs.startup).then(() => songTabs.restore());
+if (appPreferences.settings.restoreSongs) void recentSongs.restore(songTabs.startup).then(() => songTabs.restore());
+else {
+    songTabs.restoring = false;
+    songTabs.refresh();
+}
