@@ -19,6 +19,28 @@
         language.dispatchEvent(new Event("change"));
         check(document.querySelector(".app-menu summary").textContent === "ファイル" && localStorage.getItem("jjazzlab.language") === "ja",
             "Japanese did not apply or persist");
+        const setDisplayKey = semitones => {
+            document.querySelector("#open-chord-display-key").click();
+            document.querySelector("#chord-display-semitones").value = semitones;
+            document.querySelector("#chord-display-form").requestSubmit();
+        };
+        const originalScore = DesktopSongFiles.writeSong(editor.project);
+        setDisplayKey(2);
+        showReader(true);
+        check(editor.grid.querySelector(".chord-symbol").textContent === "D" && readerCurrent.textContent === "D"
+            && localStorage.getItem("jjazzlab.chordDisplayTranspose") === "2", "Display transposition did not reach the score and reader");
+        check(DesktopSongFiles.writeSong(editor.project) === originalScore && editor.chordLabel("G7/B") === "A7/Db"
+            && editor.chordLabel("NC") === "NC", "Display transposition affected the saved song or slash-chord notation");
+        editor.openBarEditor();
+        check(editor.chordField.value === "D", "The chord entry dialog used a different display key");
+        editor.chordField.value = "E7/B";
+        document.querySelector("#bar-editor-form").requestSubmit();
+        check(editor.project.chords[0].name === "D7/A", "Editing a transposed chord did not save at concert pitch");
+        editor.undoButton.click();
+        setDisplayKey(0);
+        showReader(false);
+        editor.selectBar(0);
+        report.chordDisplayTranspose = true;
         const first = document.querySelector("#lead-sheet > div");
         check(first?.getAttribute("aria-selected") === "true" && !document.querySelector("#song-editor").hidden,
             "Startup did not open the chord sheet");

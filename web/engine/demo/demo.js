@@ -1067,7 +1067,7 @@ function buildReader() {
             const bar = range.from + i - range.sheetStart;
             readerBars.push({ name: part.name, beats, occurrence, sheetBar: i });
             for (const chord of (chordsByBar.get(i) ?? []).sort((a, b) => a.beat - b.beat)) {
-                const name = chord.name.replace(/([A-G])b/gu, "$1♭").replace(/([A-G])#/gu, "$1♯");
+                const name = editor.chordLabel(chord.name, true);
                 readerChords.push({ bar, beat: chord.beat, name });
             }
         }
@@ -1103,6 +1103,27 @@ function showReader(visible) {
     }
 }
 toggleReader.onclick = () => showReader(reader.hidden);
+const chordDisplayDialog = document.querySelector("#chord-display-key");
+const chordDisplaySemitones = document.querySelector("#chord-display-semitones");
+try {
+    const preference = Number(localStorage.getItem("jjazzlab.chordDisplayTranspose"));
+    if (Number.isInteger(preference) && preference >= 0 && preference < 12) editor.displayTranspose = preference;
+} catch { /* Preference storage is optional. */ }
+document.querySelector("#open-chord-display-key").onclick = () => {
+    const keys = ["C", "D♭", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];
+    chordDisplaySemitones.replaceChildren(new Option(t("コンサートキー", "Concert pitch"), 0),
+        ...keys.slice(1).map((key, index) => new Option(`${key} (+${index + 1})`, index + 1)));
+    chordDisplaySemitones.value = editor.displayTranspose;
+    chordDisplayDialog.showModal();
+};
+document.querySelector("#cancel-chord-display").onclick = () => chordDisplayDialog.close();
+document.querySelector("#chord-display-form").onsubmit = event => {
+    event.preventDefault();
+    editor.displayTranspose = Number(chordDisplaySemitones.value);
+    try { localStorage.setItem("jjazzlab.chordDisplayTranspose", editor.displayTranspose); } catch { /* Preference storage is optional. */ }
+    if (editor.project) editor.render();
+    chordDisplayDialog.close();
+};
 document.querySelector("#close-reader").onclick = () => { showReader(false); toggleReader.focus(); };
 editor.onRender = () => {
     pianoRoll.sync();

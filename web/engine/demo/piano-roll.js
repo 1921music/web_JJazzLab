@@ -797,7 +797,7 @@ class PianoRoll {
             const chords = this.chords[bar].toSorted((a, b) => a.beat - b.beat);
             for (const [index, chord] of chords.entries()) {
                 const available = (chords[index + 1]?.beat ?? next - first) - chord.beat;
-                if (available * this.pixels > 8) ctx.fillText(chord.name, x(first + chord.beat) + 5, 32, available * this.pixels - 7);
+                if (available * this.pixels > 8) ctx.fillText(this.editor.chordLabel(chord.name, true), x(first + chord.beat) + 5, 32, available * this.pixels - 7);
             }
         }
         const notes = drag?.preview && drag.kind !== "draw" && !drag.modifier

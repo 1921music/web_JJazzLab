@@ -32,6 +32,7 @@
                     <button id="show-generation-controls" type="button">伴奏設定…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
+                    <button id="open-chord-display-key" type="button">コード表示の移調…</button>
                     <button id="create-practice-song" type="button">選択小節から練習曲を作成…</button>
                     <button data-command="quick-mode" type="button">簡易入力</button>
                     <label class="language-picker">言語 <select id="ui-language" aria-label="画面の言語"><option value="ja">日本語</option><option value="en">English</option></select></label>
@@ -405,6 +406,17 @@
             <div class="dialog-actions">
                 <button id="clear-track-override" type="button" class="secondary">この上書きを解除</button>
                 <button id="close-track-overrides" type="button" class="secondary">閉じる</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="chord-display-key" aria-labelledby="chord-display-title">
+        <form id="chord-display-form" method="dialog">
+            <h2 id="chord-display-title">コード表示の移調</h2>
+            <label class="field">表示キー <select id="chord-display-semitones"></select></label>
+            <div class="dialog-actions">
+                <button id="cancel-chord-display" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
         </form>

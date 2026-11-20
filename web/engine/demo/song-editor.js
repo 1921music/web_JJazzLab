@@ -2,6 +2,16 @@
 
 const partMarkers = ["theme", "solo", "theme2", "theme3", "theme4", "solo2", "solo3", "solo4"];
 const songTemplatePreference = "jjazzlab.songTemplate";
+const flatChordNotes = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
+const sharpChordNotes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+
+function transposeChordLabel(name, semitones) {
+    if (!semitones || name === "NC") return name;
+    return name.replace(/^[A-G][#b]?|(?<=\/)[A-G][#b]?$/gu, note => {
+        const pitch = flatChordNotes.indexOf(note[0]) + (note[1] === "#" ? 1 : note[1] === "b" ? -1 : 0);
+        return (note.endsWith("#") ? sharpChordNotes : flatChordNotes)[(pitch + semitones + 24) % 12];
+    });
+}
 
 function desktopColor(value) {
     if (typeof value !== "string" || !/^-?\d+$/u.test(value)) return undefined;
@@ -65,6 +75,7 @@ class SongEditor {
         this.onOpen = onOpen;
         this.onChooseBar = onChooseBar;
         this.onPlay = onPlay;
+        this.displayTranspose = 0;
         this.grid = document.querySelector("#lead-sheet");
         this.parts = document.querySelector("#song-parts");
         this.title = document.querySelector("#project-title");
@@ -725,16 +736,16 @@ class SongEditor {
         this.annotationField.value = this.project.annotations?.find(note => note.bar === bar)?.text ?? "";
         this.barError.textContent = "";
         this.chordField.value = initialChord ?? this.project.chords.filter(chord => chord.bar === bar).sort((a, b) => a.beat - b.beat)
-            .map(chord => chord.beat ? `${Number((chord.beat + 1).toFixed(6))}:${chord.name}` : chord.name).join(" ");
+            .map(chord => chord.beat ? `${Number((chord.beat + 1).toFixed(6))}:${this.chordLabel(chord.name)}` : this.chordLabel(chord.name)).join(" ");
         if (this.editingChord) {
-            this.chordField.value = this.editingChord.name;
+            this.chordField.value = this.chordLabel(this.editingChord.name);
             const features = (this.editingChord.features ?? "").split(",").map(value => value.trim());
             for (const field of interpretation.querySelectorAll("#chord-accent, #chord-duration, #chord-crash")) {
                 field.value = [...field.options].find(option => features.includes(option.value))?.value ?? "";
             }
             for (const field of interpretation.querySelectorAll('input[type="checkbox"]')) field.checked = features.includes(field.value);
             const alternate = this.editingChord.alternate;
-            document.querySelector("#chord-alternate").value = alternate?.name ?? "";
+            document.querySelector("#chord-alternate").value = alternate ? this.chordLabel(alternate.name) : "";
             const condition = document.querySelector("#chord-alternate-condition");
             condition.value = alternate?.random ?? "";
             const markers = document.querySelector("#chord-alternate-markers");
@@ -763,8 +774,8 @@ class SongEditor {
 
     async updateChordScales(preferred) {
         const select = document.querySelector("#chord-scale");
-        const name = this.chordField.value.trim().replaceAll("♭", "b").replaceAll("♯", "#");
         const chord = this.editingChord;
+        const name = this.concertChord(this.chordField.value.trim(), chord.name);
         const request = {};
         this.scaleRequest = request;
         let original;
@@ -814,7 +825,7 @@ class SongEditor {
             else if (this.editingChord) {
                 const parsed = this.parseBarChords(bar, this.chordField.value);
                 if (parsed.length !== 1 || parsed[0].beat !== 0) throw new Error(t("コードを1つ入力してください。", "Enter one chord symbol."));
-                const name = parsed[0].name;
+                const name = this.concertChord(this.chordField.value.trim().replace(/^1(?:\.0+)?:/u, ""), this.editingChord.name);
                 const fields = document.querySelector("#chord-interpretation");
                 const accent = fields.querySelector("#chord-accent").value;
                 const duration = fields.querySelector("#chord-duration").value;
@@ -822,7 +833,7 @@ class SongEditor {
                     ...[...fields.querySelectorAll("input:checked")].map(field => field.value)].filter(Boolean).join(",");
                 const scaleChoice = fields.querySelector("#chord-scale").selectedOptions[0];
                 const scale = scaleChoice?.value ? { index: scaleChoice.value, pitch: scaleChoice.dataset.pitch } : undefined;
-                const alternateName = fields.querySelector("#chord-alternate").value.trim().replaceAll("♭", "b").replaceAll("♯", "#");
+                const alternateName = this.concertChord(fields.querySelector("#chord-alternate").value.trim(), this.editingChord.alternate?.name);
                 let alternate;
                 if (alternateName) {
                     if (/\s|:/u.test(alternateName)) throw new Error(t("代替コードを1つ入力してください。", "Enter one alternate chord symbol."));
@@ -1411,7 +1422,7 @@ class SongEditor {
             cell.style.setProperty("--section-color", colors[sectionIndex]);
             cell.classList.toggle("section-start", start);
             if (start && section.clientProperties?.PropSectionStartOnNewLine === "true") cell.style.gridColumnStart = "1";
-            const names = symbols.map(chord => chord.name).join(", ") || t("コードなし", "no chords");
+            const names = symbols.map(chord => this.chordLabel(chord.name, true)).join(", ") || t("コードなし", "no chords");
             cell.setAttribute("aria-label", t(`${bar + 1}小節、${section.name}、${meter}、${names}`, `Bar ${bar + 1}, ${section.name}, ${meter}, ${names}`));
             const number = document.createElement("span");
             number.className = "measure-number";
@@ -1444,9 +1455,9 @@ class SongEditor {
                     symbol.style.left = `${100 * chord.beat / beats}%`;
                     symbol.style.maxWidth = `${100 * ((next?.beat ?? beats) - chord.beat) / beats}%`;
                 }
-                symbol.textContent = chord.name.replace(/([A-G])b/gu, "$1♭").replace(/([A-G])#/gu, "$1♯");
+                symbol.textContent = this.chordLabel(chord.name, true);
                 if (compact) symbol.classList.add("compact");
-                symbol.title = chord.name;
+                symbol.title = symbol.textContent;
                 symbol.dataset.beat = chord.beat;
                 symbol.draggable = true;
                 const selectChord = (event) => {
@@ -1554,6 +1565,16 @@ class SongEditor {
         this.onRender?.();
     }
 
+    chordLabel(name, symbols = false) {
+        const label = transposeChordLabel(name, this.displayTranspose);
+        return symbols ? label.replace(/([A-G])b/gu, "$1♭").replace(/([A-G])#/gu, "$1♯") : label;
+    }
+
+    concertChord(value, previous) {
+        const label = value.replaceAll("♭", "b").replaceAll("♯", "#");
+        return previous && this.chordLabel(previous) === label ? previous : transposeChordLabel(label, -this.displayTranspose);
+    }
+
     parseBarChords(bar, value) {
         const previous = this.project.chords.filter(chord => chord.bar === bar);
         const section = this.project.sections.findLast(item => item.bar <= bar);
@@ -1561,13 +1582,13 @@ class SongEditor {
         return value.trim().split(/\s+/u).filter(Boolean).map(token => {
             const match = /^(?:(\d+(?:\.\d+)?):)?(.+)$/u.exec(token);
             const beat = Number(match[1] ?? 1) - 1;
-            const name = match[2].replaceAll("♭", "b").replaceAll("♯", "#");
+            const existing = previous.find(chord => Number((chord.beat + 1).toFixed(6)) === beat + 1);
+            const name = this.concertChord(match[2], existing?.name);
             if (name.includes(":") || beat < 0 || beat >= DesktopSongFiles.meters[section.meter][1] || beats.has(beat)) {
                 throw new Error(t(`${bar + 1}小節のコードの拍位置を確認してください。`, `Check the chord positions in bar ${bar + 1}.`));
             }
             beats.add(beat);
-            return previous.find(chord => Number((chord.beat + 1).toFixed(6)) === beat + 1 && chord.name === name)
-                ?? { name, bar, beat };
+            return existing?.name === name ? existing : { name, bar, beat };
         });
     }
 

@@ -141,6 +141,10 @@ Solo解除|Clear solo
 選択した音符だけ|Selected notes only
 縦ズーム|Vertical zoom
 ピアノロールの縦ズーム|Piano roll vertical zoom
+コード表示の移調|Transpose displayed chords
+コード表示の移調…|Transpose displayed chords…
+表示キー|Display key
+コンサートキー|Concert pitch
 全音符を表示|Fit all notes
 選択を反転|Invert selection
 音符を試聴|Audition notes
