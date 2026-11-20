@@ -343,8 +343,8 @@ class PianoRoll {
         this.show();
     }
 
-    openCustom(index, voice, phrase, offset) {
-        this.custom = { index, voice, phrase, offset };
+    openCustom(index, voice, phrase, offset, targets = [index]) {
+        this.custom = { index, voice, phrase, offset, targets };
         this.name = voice;
         this.show();
     }
@@ -520,8 +520,12 @@ class PianoRoll {
         if (encoded !== this.saved) {
             this.editor.rememberEdit(this.editor.captureEdit());
             this.saved = encoded;
-            if (this.custom) DesktopSongFiles.setCustomPhrase(this.savedTrack, this.name, encoded);
-            else this.savedTrack.phrase = encoded;
+            if (this.custom) {
+                for (const index of this.custom.targets) {
+                    const part = this.editor.project.parts[index];
+                    if (part?.styleId === this.savedTrack.styleId) DesktopSongFiles.setCustomPhrase(part, this.name, encoded);
+                }
+            } else this.savedTrack.phrase = encoded;
             this.editor.changed();
             this.measure();
         }

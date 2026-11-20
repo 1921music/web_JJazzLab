@@ -134,10 +134,11 @@ class SongEditor {
             const action = event.target.closest("button")?.dataset.action;
             this.partMenu.hidden = true;
             const index = this.selectedPart;
+            const selected = this.partIndices(index);
             if (action === "edit") this.openPartEditor(index);
-            if (action === "track-overrides") void this.openTrackOverrides(index);
-            if (action === "drum-transforms") void this.openDrumTransforms(index);
-            if (action === "custom-phrase") void this.openCustomPhrases(index);
+            if (action === "track-overrides") void this.openTrackOverrides(index, selected);
+            if (action === "drum-transforms") void this.openDrumTransforms(index, selected);
+            if (action === "custom-phrase") void this.openCustomPhrases(index, selected);
             if (action === "duplicate") this.duplicatePart(index, true);
             if (action === "remove") this.removePart(index, true);
             if (action === "remove-rhythm-change") this.removeRhythmChange(index);
@@ -1481,9 +1482,10 @@ class SongEditor {
     openPartContext(index, x, y) {
         if (!this.partSelection.has(this.project.parts[index])) this.selectPart(index);
         this.selectedPart = index;
-        const multi = this.partIndices(index).length > 1;
+        const selected = this.partIndices(index);
+        const multi = selected.length > 1;
         for (const action of ["track-overrides", "drum-transforms", "custom-phrase"]) {
-            this.partMenu.querySelector(`[data-action="${action}"]`).hidden = multi;
+            this.partMenu.querySelector(`[data-action="${action}"]`).hidden = this.customParameterParts(index, selected).length !== selected.length;
         }
         this.partMenu.querySelector('[data-action="remove"]').disabled = this.partIndices(index).length === this.project.parts.length;
         this.partMenu.querySelector('[data-action="remove-rhythm-change"]').disabled = multi || !this.canRemoveRhythmChange(index);
@@ -1677,9 +1679,15 @@ class SongEditor {
         return edits;
     }
 
-    async openTrackOverrides(index) {
+    customParameterParts(index, selected) {
+        const part = this.project.parts[index];
+        return selected.includes(index) && selected.every(position => this.project.parts[position]?.styleId === part.styleId) ? selected : [index];
+    }
+
+    async openTrackOverrides(index, selected = [index]) {
         const part = this.project.parts[index];
         if (!part) return;
+        const targets = this.customParameterParts(index, selected).map(position => this.project.parts[position]);
         const parameter = "RP_SYS_OverrideTracksID";
         const dialog = document.querySelector("#track-overrides");
         const form = document.querySelector("#track-overrides-form");
@@ -1690,6 +1698,7 @@ class SongEditor {
         const variation = document.querySelector("#override-variation");
         const clear = document.querySelector("#clear-track-override");
         const apply = form.querySelector('[type="submit"]');
+        apply.textContent = targets.length > 1 ? t(`${targets.length}区間に適用`, `Apply to ${targets.length} song parts`) : t("適用");
         const entries = new Map(DesktopSongFiles.readTrackOverrides(part.parameters[parameter]).map(entry => [entry.source, entry]));
         const sourceStyle = DesktopSongFiles.sourceStyleId(part.styleId);
         const choices = this.onStyleChoices();
@@ -1706,7 +1715,9 @@ class SongEditor {
         const updateDestinations = async useSaved => {
             const request = ++pending;
             const saved = useSaved ? entries.get(source.value) : undefined;
-            clear.disabled = !entries.has(source.value);
+            clear.disabled = !targets.some(position => DesktopSongFiles
+                .readTrackOverrides(this.project.parts[position]?.parameters[parameter])
+                .some(entry => entry.source === source.value));
             rhythm.disabled = !base;
             destination.disabled = variation.disabled = apply.disabled = true;
             destination.replaceChildren();
@@ -1732,15 +1743,19 @@ class SongEditor {
         };
         const save = entry => {
             if (this.project.parts[index] !== part) return dialog.close();
-            if (entry) entries.set(source.value, entry);
-            else entries.delete(source.value);
-            const saved = DesktopSongFiles.writeTrackOverrides([...entries.values()]);
             this.editArrangement(() => {
-                if (saved) part.parameters[parameter] = saved;
-                else delete part.parameters[parameter];
+                for (const target of targets) {
+                    if (!this.project.parts.includes(target)) continue;
+                    const overrides = new Map(DesktopSongFiles.readTrackOverrides(target.parameters[parameter]).map(item => [item.source, item]));
+                    if (entry) overrides.set(source.value, entry);
+                    else overrides.delete(source.value);
+                    const saved = DesktopSongFiles.writeTrackOverrides([...overrides.values()]);
+                    if (saved) target.parameters[parameter] = saved;
+                    else delete target.parameters[parameter];
+                }
             });
             dialog.close();
-            this.selectPart(index, true);
+            this.selectPart(index, true, { keep: targets.length > 1 });
         };
         source.replaceChildren();
         destination.replaceChildren();
@@ -1778,9 +1793,10 @@ class SongEditor {
         }
     }
 
-    async openDrumTransforms(index) {
+    async openDrumTransforms(index, selected = [index]) {
         const part = this.project.parts[index];
         if (!part) return;
+        const targets = this.customParameterParts(index, selected).map(position => this.project.parts[position]);
         const parameter = "RP_SYS_DrumsTransformId";
         const mixId = "DrumsMixIdhidden";
         const saved = part.parameters[parameter] ?? "[]";
@@ -1795,6 +1811,7 @@ class SongEditor {
         const add = document.querySelector("#add-drum-transform");
         const list = document.querySelector("#drum-transform-chain");
         const submit = form.querySelector('[type="submit"]');
+        submit.textContent = targets.length > 1 ? t(`${targets.length}区間に適用`, `Apply to ${targets.length} song parts`) : t("適用");
         const controls = document.querySelector("#drum-transform-offsets");
         const preview = document.querySelector("#preview-drum-transforms");
         const stop = document.querySelector("#stop-drum-transforms");
@@ -1885,12 +1902,15 @@ class SongEditor {
             event.preventDefault();
             if (submit.disabled || this.project.parts[index] !== part) return;
             const value = transformValue();
-            if (saved !== value) this.editArrangement(() => {
-                if (value !== "[]") part.parameters[parameter] = value;
-                else delete part.parameters[parameter];
+            if (targets.some(target => (target.parameters[parameter] ?? "[]") !== value)) this.editArrangement(() => {
+                for (const target of targets) {
+                    if (!this.project.parts.includes(target)) continue;
+                    if (value !== "[]") target.parameters[parameter] = value;
+                    else delete target.parameters[parameter];
+                }
             });
             dialog.close();
-            this.selectPart(index, true);
+            this.selectPart(index, true, { keep: targets.length > 1 });
         };
         render();
         dialog.showModal();
@@ -1914,33 +1934,39 @@ class SongEditor {
         }
     }
 
-    async openCustomPhrases(index) {
+    async openCustomPhrases(index, selected = [index]) {
         const part = this.project.parts[index];
         if (!part) return;
+        const targets = this.customParameterParts(index, selected);
         const dialog = document.querySelector("#custom-phrase");
         const form = document.querySelector("#custom-phrase-form");
         const status = document.querySelector("#custom-phrase-status");
         const track = document.querySelector("#custom-phrase-track");
         const clear = document.querySelector("#clear-custom-phrase");
         const edit = form.querySelector('[type="submit"]');
+        edit.textContent = targets.length > 1 ? t(`${targets.length}区間を編集`, `Edit ${targets.length} song parts`) : t("音符を編集");
         const saved = DesktopSongFiles.readCustomPhrases(part.parameters.RP_SYS_CustomPhraseId);
         status.hidden = false;
         status.textContent = t("リズムを読み込んでいます…", "Loading rhythm…");
         track.replaceChildren();
         track.disabled = clear.disabled = edit.disabled = true;
         document.querySelector("#cancel-custom-phrase").onclick = () => dialog.close();
-        track.onchange = () => { clear.disabled = !saved.has(track.value); };
+        track.onchange = () => {
+            clear.disabled = !targets.some(position => DesktopSongFiles.readCustomPhrases(this.project.parts[position]?.parameters.RP_SYS_CustomPhraseId).has(track.value));
+        };
         clear.onclick = () => {
-            if (this.project.parts[index] === part) this.editArrangement(() => DesktopSongFiles.setCustomPhrase(part, track.value));
+            if (this.project.parts[index] === part) this.editArrangement(() => {
+                for (const position of targets) DesktopSongFiles.setCustomPhrase(this.project.parts[position], track.value);
+            });
             dialog.close();
-            this.selectPart(index, true);
+            this.selectPart(index, true, { keep: targets.length > 1 });
         };
         form.onsubmit = event => {
             event.preventDefault();
             if (edit.disabled) return;
             const voice = track.value;
             dialog.close();
-            void this.onEditCustomPhrase(index, voice);
+            void this.onEditCustomPhrase(index, voice, targets);
         };
         dialog.showModal();
         try {

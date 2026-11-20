@@ -1558,6 +1558,56 @@
             check(score.bars === before.bars, "Undo did not return to the original score size");
             report.halveAndDoubleScore = true;
         }
+        {
+            const fixture = DesktopSongFiles.readSong(desktopFixture.legacySongs[1]);
+            for (const part of fixture.parts) Object.assign(part, { styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} });
+            const initial = UserPhrase.write({ channel: 10, drum: false, notes: [{ pitch: 48, position: 0, duration: .5, velocity: 70 }] });
+            DesktopSongFiles.setCustomPhrase(fixture.parts[0], "Bass", initial);
+            editor.open(fixture, [], undefined, true);
+            editor.selectPart(0);
+            editor.selectPart(1, false, { extend: true });
+            const openCustom = action => {
+                editor.openPartContext(0, 0, 0);
+                const button = editor.partMenu.querySelector(`[data-action="${action}"]`);
+                check(!button.hidden, `The selected song parts did not offer ${action}`);
+                button.click();
+            };
+            const ready = async (field, label) => {
+                for (let attempt = 0; field.disabled && attempt < 120; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+                check(!field.disabled, `${label} was not ready`);
+            };
+            openCustom("drum-transforms");
+            const add = document.querySelector("#add-drum-transform");
+            await ready(add, "Drum transforms");
+            document.querySelector("#drum-transform-type").value = "AddTambourineEightsId";
+            add.click();
+            document.querySelector("#drum-transforms-form").requestSubmit();
+            const drumValue = fixture.parts[0].parameters.RP_SYS_DrumsTransformId;
+            check(drumValue.includes("AddTambourineEightsId") && fixture.parts[1].parameters.RP_SYS_DrumsTransformId === drumValue
+                && !fixture.parts[2].parameters.RP_SYS_DrumsTransformId, "The drum chain was not assigned only to the selected group");
+            openCustom("track-overrides");
+            const overrides = document.querySelector("#track-overrides-form");
+            await ready(overrides.querySelector('[type="submit"]'), "Track overrides");
+            overrides.requestSubmit();
+            const voiceOverride = fixture.parts[0].parameters.RP_SYS_OverrideTracksID;
+            check(Boolean(voiceOverride) && fixture.parts[1].parameters.RP_SYS_OverrideTracksID === voiceOverride
+                && !fixture.parts[2].parameters.RP_SYS_OverrideTracksID, "The accompaniment override did not stay in the selected group");
+            openCustom("custom-phrase");
+            const phrases = document.querySelector("#custom-phrase-form");
+            await ready(phrases.querySelector('[type="submit"]'), "Custom phrases");
+            document.querySelector("#custom-phrase-track").value = "Bass";
+            phrases.requestSubmit();
+            check(!pianoRoll.panel.hidden && pianoRoll.custom.targets.join() === "0,1", "The piano roll did not retain the selected group");
+            pianoRoll.commit([{ pitch: 55, position: 0, duration: .5, velocity: 90 }]);
+            const updated = DesktopSongFiles.readCustomPhrases(fixture.parts[0].parameters.RP_SYS_CustomPhraseId).get("Bass");
+            check(updated !== initial && DesktopSongFiles.readCustomPhrases(fixture.parts[1].parameters.RP_SYS_CustomPhraseId).get("Bass") === updated
+                && !fixture.parts[2].parameters.RP_SYS_CustomPhraseId, "The edited phrase did not reach both selected parts");
+            editor.undoButton.click();
+            check(DesktopSongFiles.readCustomPhrases(fixture.parts[0].parameters.RP_SYS_CustomPhraseId).get("Bass") === initial
+                && !fixture.parts[1].parameters.RP_SYS_CustomPhraseId, "Undo did not restore each original phrase");
+            pianoRoll.close();
+            report.batchCustomRhythmParameters = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

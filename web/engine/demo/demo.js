@@ -1397,7 +1397,7 @@ editor.onPreviewDrumTransforms = async (index, value, stillValid) => {
     const instrument = mixerInstruments.find(item => item.drum && (track.patch === item.patch || track.instrument === item.desktop.id));
     await queueAudition(notes, true, instrument?.program ?? 0, project.tempo, stillValid, { start, end });
 };
-editor.onEditCustomPhrase = async (index, voice) => {
+editor.onEditCustomPhrase = async (index, voice, targets = [index]) => {
     const project = editor.project;
     const part = project.parts[index];
     try {
@@ -1419,7 +1419,7 @@ editor.onEditCustomPhrase = async (index, voice) => {
                     duration: Math.fround(Math.min(note.duration, end - note.position)) }));
             phrase = UserPhrase.write({ ...original, notes });
         }
-        pianoRoll.openCustom(index, voice, phrase, offset);
+        pianoRoll.openCustom(index, voice, phrase, offset, targets);
     } catch (error) { editor.notify(error.message, true); }
 };
 editor.onUsePartStyles = () => {
