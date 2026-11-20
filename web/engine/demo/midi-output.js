@@ -11,25 +11,37 @@ class MidiOutput {
     constructor(onDisconnect) {
         this.onDisconnect = onDisconnect;
         this.key = "jjazzlab.midiOutput";
-        this.settings = { device: "", gmDrums: true, sendSetup: true, monitor: true, mode: "", delay: 0, drumMap: [] };
+        this.defaults = { gmDrums: true, sendSetup: true, monitor: true, thru: false, mode: "", delay: 0, drumMap: [] };
+        this.settings = { device: "", ...this.defaults, profiles: {} };
         try { Object.assign(this.settings, JSON.parse(localStorage.getItem(this.key) ?? "{}")); } catch { /* Optional storage. */ }
         if (!Array.isArray(this.settings.drumMap)) this.settings.drumMap = [];
+        if (this.settings.device && !this.settings.profiles?.[this.settings.device]) {
+            const { device, profiles, ...profile } = this.settings;
+            this.settings.profiles = { ...profiles, [device]: profile };
+        }
         this.channels = new Set();
+        this.heldNotes = new Map();
+        this.sustainedChannels = new Set();
         this.dialog = document.querySelector("#midi-output");
         this.form = this.dialog.querySelector("form");
         this.status = this.dialog.querySelector("[role=status]");
-        const { device, gmDrums, sendSetup, monitor, mode, delay, drumMap, connect, connectSysex, closeDialog } = this.form.elements;
+        const { device, gmDrums, sendSetup, monitor, thru, mode, delay, drumMap, connect, connectSysex, testOutput, closeDialog } = this.form.elements;
         const range = { minimum: 0, maximum: 127 };
+        const showProfile = profile => {
+            for (const field of [gmDrums, sendSetup, monitor, thru]) field.checked = Boolean(profile[field.name]);
+            for (const field of [mode, delay]) field.value = profile[field.name];
+            drumMap.value = profile.drumMap.map(([source, target]) => `${source}=${target}`).join("\n");
+        };
         document.querySelector("#open-midi-output").onclick = () => {
-            for (const field of [gmDrums, sendSetup, monitor]) field.checked = Boolean(this.settings[field.name]);
-            for (const field of [mode, delay]) field.value = this.settings[field.name];
-            drumMap.value = this.settings.drumMap.map(([source, target]) => `${source}=${target}`).join("\n");
+            showProfile(this.settings);
             this.show("");
             this.showDevices();
             this.dialog.showModal();
         };
         connect.onclick = () => this.connect(false);
         connectSysex.onclick = () => this.connect(true);
+        device.onchange = () => showProfile({ ...this.defaults, ...this.settings.profiles?.[device.value] });
+        testOutput.onclick = () => this.test(device.value);
         closeDialog.onclick = () => this.dialog.close();
         this.form.onsubmit = event => {
             event.preventDefault();
@@ -50,8 +62,10 @@ class MidiOutput {
                 return;
             }
             this.silence(true);
-            this.settings = { device: device.value, gmDrums: gmDrums.checked, sendSetup: sendSetup.checked,
-                monitor: monitor.checked, mode: mode.value, delay: delay.valueAsNumber, drumMap: map };
+            this.releaseThru();
+            const profile = { gmDrums: gmDrums.checked, sendSetup: sendSetup.checked,
+                monitor: monitor.checked, thru: thru.checked, mode: mode.value, delay: delay.valueAsNumber, drumMap: map };
+            this.settings = { device: device.value, ...profile, profiles: { ...this.settings.profiles, [device.value]: profile } };
             try { localStorage.setItem(this.key, JSON.stringify(this.settings)); } catch { /* Optional storage. */ }
             this.dialog.close();
         };
@@ -69,16 +83,19 @@ class MidiOutput {
         }
         try {
             const access = await navigator.requestMIDIAccess({ sysex });
-            if (this.access) this.access.onstatechange = null;
+            this.unsubscribe?.();
             this.access = access;
-            access.onstatechange = () => {
+            const statechange = () => {
+                if (this.thruPort?.state === "disconnected") this.releaseThru();
                 if (this.port?.state === "disconnected") {
                     this.silence(true);
                     this.onDisconnect();
                 }
                 if (this.dialog.open) this.showDevices(this.form.elements.device.value);
             };
-            this.showDevices();
+            access.addEventListener?.("statechange", statechange);
+            this.unsubscribe = () => access.removeEventListener?.("statechange", statechange);
+            this.showDevices(this.form.elements.device.value);
             this.show(sysex ? t("MIDI出力とSysExを許可しました。", "MIDI output and SysEx are available.")
                 : t("MIDI出力を許可しました。", "MIDI output is available."));
         } catch (error) { this.show(error.message, true); }
@@ -91,6 +108,57 @@ class MidiOutput {
             ...ports.map(port => new Option(port.name || port.id, port.id)));
         if (selected && !ports.some(port => port.id === selected)) device.add(new Option(t("未接続の機器", "Disconnected device"), selected));
         device.value = selected;
+    }
+
+    async test(device) {
+        const port = this.access?.outputs.get(device);
+        if (!port || port.state === "disconnected") {
+            this.show(t("テストするMIDI出力を選んでください。", "Choose a MIDI output to test."), true);
+            return;
+        }
+        try {
+            await port.open();
+            const now = performance.now();
+            [60, 64, 67].forEach((pitch, index) => {
+                port.send([0x90, pitch, 82], now + index * 150);
+                port.send([0x80, pitch, 0], now + index * 150 + 120);
+            });
+            this.show(t("テスト音を3音送りました。", "Sent three test notes."));
+        } catch (error) { this.show(error.message, true); }
+    }
+
+    forward(bytes) {
+        if (!this.settings.thru) return;
+        const port = this.access?.outputs.get(this.settings.device);
+        const [status, number, value] = bytes;
+        if (!port || port.state === "disconnected" || status < 0x80 || status >= 0xf0) return;
+        if (this.thruPort !== port) this.releaseThru();
+        try {
+            port.send(bytes);
+            this.thruPort = port;
+            const channel = status & 15;
+            const command = status & 0xf0;
+            const key = channel * 128 + number;
+            if (command === 0x90 && value) this.heldNotes.set(key, [0x80 | channel, number, 0]);
+            else if (command === 0x80 || command === 0x90) this.heldNotes.delete(key);
+            else if (command === 0xb0 && number === 64) {
+                if (value >= 64) this.sustainedChannels.add(channel);
+                else this.sustainedChannels.delete(channel);
+            }
+        } catch (error) { this.show(error.message, true); }
+    }
+
+    releaseThru() {
+        const port = this.thruPort;
+        if (port?.state === "connected") {
+            try {
+                for (const channel of this.sustainedChannels) port.send([0xb0 | channel, 64, 0]);
+                for (const note of this.heldNotes.values()) port.send(note);
+            } catch { /* The device may disconnect before the release. */ }
+        }
+        this.thruPort = undefined;
+        this.heldNotes.clear();
+        this.sustainedChannels.clear();
     }
 
     async begin(reset) {

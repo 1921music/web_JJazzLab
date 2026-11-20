@@ -1922,8 +1922,9 @@
             const sent = [];
             const output = { id: "external-gm", name: "Test GM output", state: "connected",
                 open: async () => {}, send: (bytes, time) => sent.push({ bytes: Array.from(bytes), time }), clear: () => {} };
+            const other = { ...output, id: "other-gm", name: "Second output" };
             Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async ({ sysex }) => ({
-                sysexEnabled: sysex, outputs: new Map([[output.id, output]])
+                sysexEnabled: sysex, outputs: new Map([[output.id, output], [other.id, other]])
             }) });
             const prior = midiOutput.settings;
             const saved = localStorage.getItem(midiOutput.key);
@@ -1942,6 +1943,11 @@
                 fields.drumMap.value = `${drum.a}=${drumTarget}`;
                 fields.delay.value = "5";
                 fields.sendSetup.checked = false;
+                fields.thru.checked = true;
+                await fields.testOutput.onclick();
+                check(sent.length === 6 && sent[0].bytes.join() === "144,60,82"
+                    && sent[5].bytes.join() === "128,67,0", "Test output did not send three timed notes");
+                sent.length = 0;
                 midiOutput.form.requestSubmit();
                 check(!dialog.open && JSON.parse(localStorage.getItem(midiOutput.key)).device === output.id, "The output settings did not save");
                 precount.setAttribute("aria-pressed", "false");
@@ -1954,10 +1960,29 @@
                 check(!sent.some(({ bytes }) => (bytes[0] & 0xf0) === 0xc0), "Program changes were sent with mixer setup disabled");
                 await player.stop();
                 check(sent.some(({ bytes }) => bytes[0] === 0xb9 && bytes[1] === 123), "Stop did not release the drum channel");
+                sent.length = 0;
+                midiRemote.receive(Uint8Array.of(0x92, 62, 87));
+                midiRemote.receive(Uint8Array.of(0xb2, 64, 127));
+                midiRemote.receive(Uint8Array.of(0xf8));
+                midiRemote.onDeviceChange();
+                check(sent.map(({ bytes }) => bytes.join()).join(";") === "146,62,87;178,64,127;178,64,0;130,62,0",
+                    "MIDI Thru did not relay notes and sustain or release the input on a device change");
+                document.querySelector("#open-midi-output").click();
+                fields.device.value = other.id;
+                fields.device.dispatchEvent(new Event("change"));
+                check(!fields.drumMap.value && !fields.thru.checked, "A different device inherited the first device's setup");
+                fields.delay.value = "20";
+                midiOutput.form.requestSubmit();
+                document.querySelector("#open-midi-output").click();
+                fields.device.value = output.id;
+                fields.device.dispatchEvent(new Event("change"));
+                check(fields.drumMap.value === `${drum.a}=${drumTarget}` && fields.thru.checked && fields.delay.value === "5",
+                    "Returning to the first device did not restore its profile");
             } finally {
                 await player.stop();
                 if (dialog.open) dialog.close();
                 midiOutput.silence(true);
+                midiOutput.releaseThru();
                 midiOutput.settings = prior;
                 precount.setAttribute("aria-pressed", oldCount);
                 if (saved === null) localStorage.removeItem(midiOutput.key);

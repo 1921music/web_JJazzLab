@@ -314,6 +314,8 @@ SysExを許可して接続|Connect with SysEx permission
 打楽器をチャンネル10にまとめる|Route percussion to channel 10
 音色・エフェクト・音量・パンを送信する|Send program, effects, volume and pan
 内蔵音源も鳴らす|Also play the built-in synthesizer
+出力を試聴|Test Output
+MIDI入力をこの出力に送る（MIDI Thru）|Send MIDI input to this output (MIDI Thru)
 MIDI出力遅延（ms）|MIDI output delay (ms)
 打楽器のキーマップ|Drum key mapping
 五線譜|Staff notation

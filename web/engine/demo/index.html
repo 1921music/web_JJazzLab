@@ -622,6 +622,7 @@
             <div class="rhythm-picker-fields">
                 <button name="connect" type="button" class="secondary">MIDI出力に接続</button>
                 <button name="connectSysex" type="button" class="secondary">SysExを許可して接続</button>
+                <button name="testOutput" type="button" class="secondary">出力を試聴</button>
             </div>
             <label class="field">出力機器 <select name="device"></select></label>
             <label class="field">再生開始時の初期化
@@ -630,6 +631,7 @@
             <label><input name="gmDrums" type="checkbox"> 打楽器をチャンネル10にまとめる</label>
             <label><input name="sendSetup" type="checkbox"> 音色・エフェクト・音量・パンを送信する</label>
             <label><input name="monitor" type="checkbox"> 内蔵音源も鳴らす</label>
+            <label><input name="thru" type="checkbox"> MIDI入力をこの出力に送る（MIDI Thru）</label>
             <label class="field">MIDI出力遅延（ms） <input name="delay" type="number" min="0" max="250" step="1" required></label>
             <label class="field">打楽器のキーマップ <textarea name="drumMap" rows="4" placeholder="36=35"></textarea></label>
             <p role="status"></p>

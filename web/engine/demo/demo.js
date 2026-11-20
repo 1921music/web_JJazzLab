@@ -2270,8 +2270,14 @@ const arranger = new Arranger({
         accompanimentDirty = true;
     }
 });
-midiRemote.onRawMessage = bytes => arranger.receive(bytes);
-midiRemote.onDeviceChange = () => arranger.resetKeys();
+midiRemote.onRawMessage = bytes => {
+    midiOutput.forward(bytes);
+    return arranger.receive(bytes);
+};
+midiRemote.onDeviceChange = () => {
+    midiOutput.releaseThru();
+    arranger.resetKeys();
+};
 
 const yjzWizard = new YjzWizard({
     choices: editor.onStyleChoices,
