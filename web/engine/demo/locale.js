@@ -284,6 +284,13 @@ JJazzLab公開スタイル集|JJazzLab public style library
 リズムを選択|Select Rhythm
 リズムライブラリ…|Rhythm Library…
 リズムライブラリ|Rhythm Library
+クリック音の設定…|Click Settings…
+クリック音の設定|Click Settings
+強拍|Emphasized beats
+弱拍|Other beats
+打楽器|Percussion
+優先 MIDI チャンネル|Preferred MIDI channel
+標準に戻す|Restore Defaults
 リズムを追加|Add rhythms
 フォルダーを読み込み・再スキャン|Scan or rescan a folder
 この拍子の既定のリズム|Default rhythm for this time signature

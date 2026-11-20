@@ -44,6 +44,7 @@
                 <details><summary>ツール</summary><div>
                     <button id="show-generation-controls" type="button">伴奏設定…</button>
                     <button id="show-rhythm-library" type="button">リズムライブラリ…</button>
+                    <button id="open-click-settings" type="button">クリック音の設定…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
                     <button id="open-chord-display-key" type="button">コード表示の移調…</button>
@@ -469,6 +470,30 @@
             </div>
             <p id="rhythm-library-status" role="status"></p>
             <div class="dialog-actions"><button id="close-rhythm-library" type="button" class="secondary">閉じる</button></div>
+        </form>
+    </dialog>
+
+    <dialog id="click-settings" aria-labelledby="click-settings-title">
+        <form method="dialog">
+            <h2 id="click-settings-title">クリック音の設定</h2>
+            <fieldset class="rhythm-picker-fields">
+                <legend>強拍</legend>
+                <label class="field">打楽器 <select name="highPitch"></select></label>
+                <label class="field">ベロシティ <input name="highVelocity" type="number" required min="0" max="127"></label>
+            </fieldset>
+            <fieldset class="rhythm-picker-fields">
+                <legend>弱拍</legend>
+                <label class="field">打楽器 <select name="lowPitch"></select></label>
+                <label class="field">ベロシティ <input name="lowVelocity" type="number" required min="0" max="127"></label>
+            </fieldset>
+            <label class="field">優先 MIDI チャンネル <select name="channel"></select></label>
+            <p id="click-settings-status" role="status"></p>
+            <div class="dialog-actions">
+                <button name="resetClick" type="button" class="secondary">標準に戻す</button>
+                <button name="previewClick" type="button" class="secondary">試聴</button>
+                <button name="cancelClick" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
         </form>
     </dialog>
 

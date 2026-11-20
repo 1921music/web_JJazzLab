@@ -97,9 +97,10 @@ test("two-bar count-in produces clicks before the first MIDI note", async () => 
     assert.ok(render()[0].some(value => value !== 0));
     render(3);
     assert.equal(p.frame, 0);
-    assert.ok(!calls.some(call => call[2] === 0x90));
+    assert.ok(calls.some(call => call[2] === 0x90 && call[1] === 1 && call[3] === 37));
+    assert.ok(!calls.some(call => call[2] === 0x90 && call[1] === 0));
     render();
-    assert.ok(calls.some(call => call[2] === 0x90));
+    assert.ok(calls.some(call => call[2] === 0x90 && call[1] === 0 && call[3] === 60));
 });
 
 test("one-bar and automatic count-in respect the starting meter and tempo", async () => {

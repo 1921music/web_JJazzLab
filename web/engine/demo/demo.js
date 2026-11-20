@@ -213,6 +213,23 @@ const player = new AccompanimentPlayer(updatePosition, (message) => {
 });
 let pendingAudition = Promise.resolve();
 let auditionRequest = 0;
+const clickSettings = new ClickSettings({
+    mix: () => mixerParts,
+    stopPreview: stopAudition,
+    preview: async (settings, active) => {
+        if (playing || paused || starting || generating) throw new Error(t("再生を停止してから試聴してください。", "Stop playback before previewing."));
+        const notes = [
+            { pitch: settings.highPitch, velocity: settings.highVelocity, position: 0, duration: .5 },
+            { pitch: settings.lowPitch, velocity: settings.lowVelocity, position: 1, duration: .5 }
+        ].filter(note => note.velocity);
+        if (notes.length) await queueAudition(notes, true, settings.program, 120, active, { start: 0, end: 2 });
+    },
+    onChange: settings => {
+        if (player.ready && player.loadedSong && !player.previewing) {
+            player.send("click-settings", { settings }).catch(error => showPlayStatus(error.message, true));
+        }
+    }
+});
 
 function updateButtons() {
     generateButton.disabled = tempoInput.disabled = generating || starting;
@@ -804,6 +821,7 @@ async function startPlayback(restart = false, stopAtEnd = false) {
             resume: paused && !restart && !refresh,
             stopAtEnd,
             click: metronome.getAttribute("aria-pressed") === "true",
+            clickSettings: clickSettings.resolve(),
             precount: !restart && precount.getAttribute("aria-pressed") === "true" && precountMode.value,
             tempo: tempoInput.valueAsNumber,
             rate: playbackTempoRate()

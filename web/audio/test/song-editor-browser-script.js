@@ -1777,6 +1777,58 @@
             }
             report.liveAccompanimentRefresh = true;
         }
+        {
+            const dialog = document.querySelector("#click-settings");
+            const fields = dialog.querySelector("form").elements;
+            const before = { ...clickSettings.values };
+            const saved = localStorage.getItem(clickSettings.key);
+            const modeBefore = precountMode.value;
+            const countBefore = precount.getAttribute("aria-pressed");
+            const clickBefore = metronome.getAttribute("aria-pressed");
+            try {
+                document.querySelector("#open-click-settings").click();
+                fields.highPitch.value = "56";
+                fields.highVelocity.value = "110";
+                fields.lowPitch.value = "75";
+                fields.lowVelocity.value = "40";
+                const occupied = mixerParts.find(track => !track.drum);
+                fields.channel.value = String(occupied.outputChannel);
+                await fields.previewClick.onclick();
+                check(player.previewing && player.loadedSong.events.some(event => event.type === 0x90 && event.a === 56 && event.b === 110)
+                    && player.loadedSong.events.some(event => event.type === 0x90 && event.a === 75 && event.b === 40),
+                "The click preview did not play both chosen drum keys and velocities");
+                dialog.querySelector("form").requestSubmit();
+                check(JSON.parse(localStorage.getItem(clickSettings.key)).lowVelocity === 40 && clickSettings.resolve().channel === 9,
+                    "Click settings were not persisted or did not fall back from a melodic channel");
+                precountMode.value = "1";
+                precount.setAttribute("aria-pressed", "true");
+                metronome.setAttribute("aria-pressed", "true");
+                const send = player.send;
+                let configuredPlay;
+                player.send = function (type, message, transfer) {
+                    if (type === "play") configuredPlay = message;
+                    return send.call(this, type, message, transfer);
+                };
+                try {
+                    await startPlayback();
+                    check(playing && configuredPlay?.precount === "1" && configuredPlay.clickSettings.highPitch === 56
+                        && configuredPlay.clickSettings.lowVelocity === 40 && configuredPlay.clickSettings.channel === 9,
+                    `Transport did not start with the configured clicks: ${playStatus.textContent}`);
+                } finally {
+                    player.send = send;
+                    await player.stop();
+                }
+            } finally {
+                if (dialog.open) dialog.close();
+                clickSettings.values = before;
+                if (saved === null) localStorage.removeItem(clickSettings.key);
+                else localStorage.setItem(clickSettings.key, saved);
+                precountMode.value = modeBefore;
+                precount.setAttribute("aria-pressed", countBefore);
+                metronome.setAttribute("aria-pressed", clickBefore);
+            }
+            report.clickToneSettings = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

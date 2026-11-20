@@ -104,6 +104,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.loop = this.prepareLoop(message.loop);
                 this.pendingLoop = null;
                 this.pendingRefresh = null;
+                this.clickPart = -1;
                 this.effects.clear();
             } else if (type === "refresh") {
                 this.pendingRefresh = message.song && (this.playing || this.paused) && !this.preview
@@ -137,6 +138,9 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 if (message.rate !== undefined || !message.resume) this.setTempoRate(message.rate ?? 1);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.clickEnabled = message.click ?? this.clickEnabled;
+                if (message.clickSettings) this.configureClick(message.clickSettings);
+                else if ((this.clickEnabled || message.precount) && this.clickPart < 0) this.configureClick(
+                    { highPitch: 37, lowPitch: 37, highVelocity: 120, lowVelocity: 90, channel: 9, program: 0 });
                 if (!this.paused || !message.resume) {
                     this.effects.clear();
                     const start = this.loop.enabled || message.startFromSelection ? this.loop.start : 0;
@@ -153,6 +157,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                             const oneBarBelow = this.countBeats <= 3 ? 55 : this.countBeats <= 4 ? 100 : 120;
                             countBars = tempo < oneBarBelow ? 1 : 2;
                         }
+                        this.countBars = countBars;
                         this.countFrames = this.countStep * this.countBeats * countBars;
                     }
                 }
@@ -165,14 +170,18 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.reportPosition();
             } else if (type === "click") {
                 this.clickEnabled = message.enabled;
+            } else if (type === "click-settings") {
+                this.configureClick(message.settings);
             } else if (type === "panic") {
                 for (let i = 0; i < this.parts.length; i++) this.api.synth_silence(i);
+                this.resetClick();
                 this.effects.clear();
             } else if (type === "stop") {
                 this.playing = false;
                 this.paused = false;
                 this.countFrames = 0;
                 this.pendingRefresh = null;
+                this.resetClick();
                 for (let i = 0; i < this.parts.length; i++) this.api.synth_reset(i);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.frame = 0;
@@ -243,7 +252,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         while (this.index < this.events.length && this.events[this.index].frame < frame) this.index++;
         this.beatIndex = this.beats.findIndex(beat => beat.frame >= frame);
         if (this.beatIndex < 0) this.beatIndex = this.beats.length;
-        this.clickRemaining = 0;
+        this.resetClick();
         this.fadeStart = frame;
     }
 
@@ -273,15 +282,38 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             paused: Boolean(this.paused), counting: this.countFrames > 0, preview: this.preview });
     }
 
-    clickSample(accent) {
-        if (accent !== undefined) {
-            this.clickRemaining = Math.round(sampleRate * 0.025);
-            this.clickPhase = 0;
-            this.clickStep = (accent ? 1600 : 1040) * 2 * Math.PI / sampleRate;
+    configureClick(settings) {
+        const newPart = this.clickPart < 0;
+        if (newPart) this.clickPart = this.api.synth_part(1);
+        if (this.clickPart >= 0 && (newPart || settings.program !== this.clickSettings?.program)) {
+            this.resetClick();
+            this.api.synth_event(this.clickPart, 0xc0, settings.program, 0);
         }
-        if (this.clickRemaining <= 0) return 0;
-        this.clickPhase += this.clickStep;
-        return Math.sin(this.clickPhase) * this.clickRemaining-- / sampleRate * 5;
+        this.clickSettings = settings;
+    }
+
+    resetClick() {
+        if (this.clickPart >= 0) this.api.synth_silence(this.clickPart);
+        this.clickNoteFrames = 0;
+    }
+
+    hitClick(strong, halfBeat, quiet = false) {
+        if (this.clickPart < 0 || !this.clickSettings) return;
+        if (this.clickNoteFrames) this.api.synth_event(this.clickPart, 0x80, this.clickPitch, 0);
+        const { highPitch, lowPitch, highVelocity, lowVelocity } = this.clickSettings;
+        const velocity = strong ? highVelocity : quiet ? Math.trunc(lowVelocity / 4) : lowVelocity;
+        this.clickPitch = strong ? highPitch : lowPitch;
+        this.clickNoteFrames = velocity ? Math.max(1, Math.round(halfBeat)) : 0;
+        if (velocity) this.api.synth_event(this.clickPart, 0x90, this.clickPitch, velocity);
+    }
+
+    releaseClick(rendered) {
+        if (!this.clickNoteFrames) return;
+        this.clickNoteFrames -= rendered;
+        if (this.clickNoteFrames <= 0) {
+            this.clickNoteFrames = 0;
+            this.api.synth_event(this.clickPart, 0x80, this.clickPitch, 0);
+        }
     }
 
     process(inputs, outputs) {
@@ -291,11 +323,24 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             let offset = 0;
             const rate = this.tempoRate;
             while (offset < left.length && this.countFrames > 0) {
-                const beat = this.countFrames / this.countStep;
-                const value = this.clickSample(Number.isInteger(beat) ? beat % this.countBeats === 0 : undefined);
-                left[offset] = right[offset] = value * this.master;
-                offset++;
-                this.countFrames--;
+                const remaining = this.countFrames % this.countStep;
+                if (!remaining) {
+                    const beat = this.countBars * this.countBeats - this.countFrames / this.countStep;
+                    const special = this.countBars === 2 && this.countBeats === 4 && beat < 4;
+                    this.hitClick(special ? beat % 2 === 0 : beat % this.countBeats === 0, this.countStep / 2, special);
+                }
+                const n = Math.min(128, left.length - offset, remaining || this.countStep, this.clickNoteFrames || Infinity);
+                if (this.clickPart >= 0) {
+                    const pointer = this.api.synth_render(n) / 4 + this.clickPart * 256;
+                    for (let f = 0; f < n; f++) {
+                        this.master += (this.masterTarget - this.master) * 0.01;
+                        left[offset + f] = this.pcm[pointer + f * 2] * this.master;
+                        right[offset + f] = this.pcm[pointer + f * 2 + 1] * this.master;
+                    }
+                }
+                this.releaseClick(n);
+                offset += n;
+                this.countFrames -= n;
                 if (!this.countFrames) this.reportPosition();
             }
             while (offset < left.length && this.playing) {
@@ -319,8 +364,15 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 while (this.index < this.events.length && this.events[this.index].frame <= this.frame) {
                     this.event(this.events[this.index++]);
                 }
-                const next = Math.min(this.events[this.index]?.frame ?? boundary, this.pendingRefresh?.frame ?? boundary);
-                const n = Math.min(128, left.length - offset, Math.max(1, Math.ceil((Math.min(boundary, next) - this.frame) / rate)));
+                while (this.beats[this.beatIndex]?.frame <= this.frame) {
+                    const beat = this.beats[this.beatIndex++];
+                    const next = this.beats[this.beatIndex]?.frame ?? this.duration;
+                    if (this.clickEnabled) this.hitClick(beat.beat === 1, (next - beat.frame) / rate / 2);
+                }
+                const next = Math.min(this.events[this.index]?.frame ?? boundary, this.pendingRefresh?.frame ?? boundary,
+                    this.clickEnabled ? this.beats[this.beatIndex]?.frame ?? boundary : boundary);
+                const n = Math.min(128, left.length - offset, this.clickNoteFrames || Infinity,
+                    Math.max(1, Math.ceil((Math.min(boundary, next) - this.frame) / rate)));
                 const pointer = this.api.synth_render(n) / 4;
                 for (let f = 0; f < n; f++) {
                     this.master += (this.masterTarget - this.master) * 0.01;
@@ -346,15 +398,15 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                         room += mono * p.reverbSend;
                     }
                     this.effects.process(chorus, room);
-                    const beat = this.beats[this.beatIndex];
                     const playFrame = this.frame + f * rate;
-                    const click = beat?.frame <= playFrame;
-                    if (click) this.beatIndex++;
-                    const clickSound = this.clickEnabled ? this.clickSample(click ? beat.beat === 1 : undefined) : 0;
+                    const clickOffset = pointer + this.clickPart * 256 + f * 2;
+                    const clickLeft = this.clickPart >= 0 ? this.pcm[clickOffset] : 0;
+                    const clickRight = this.clickPart >= 0 ? this.pcm[clickOffset + 1] : 0;
                     const fade = Math.min(1, (playFrame - this.fadeStart) / (64 * rate), (boundary - playFrame) / (64 * rate));
-                    left[offset + f] = (l + this.effects.left) * this.master * fade + clickSound * this.master;
-                    right[offset + f] = (r + this.effects.right) * this.master * fade + clickSound * this.master;
+                    left[offset + f] = ((l + this.effects.left) * fade + clickLeft) * this.master;
+                    right[offset + f] = ((r + this.effects.right) * fade + clickRight) * this.master;
                 }
+                this.releaseClick(n);
                 this.frame += n * rate; offset += n;
             }
             if (++this.report >= 32) { this.report = 0; this.reportPosition(); }
