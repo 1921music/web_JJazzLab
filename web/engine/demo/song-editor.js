@@ -607,6 +607,8 @@ class SongEditor {
             menu.querySelector('[data-action="cut"]').disabled = target === "bar" ? last - first + 1 >= this.project.bars
                 : target === "section" && (first === 0 || !this.canCutSection(first));
             menu.querySelector('[data-action="insert"]').disabled = this.project.bars >= 1024;
+            menu.querySelector('[data-action="chord-progression"]').disabled = first !== last;
+            for (const button of menu.querySelectorAll("[data-song-boundary]")) button.disabled = this.project.bars >= 1024;
             menu.querySelector('[data-action="remove-bars"]').disabled = last - first + 1 >= this.project.bars;
             menu.querySelector('[data-action="end"]').disabled = last === this.project.bars - 1;
             menu.querySelector('[data-action="clear"]').disabled = !this.selectedChord
@@ -716,6 +718,8 @@ class SongEditor {
             case "paste-text": case "paste-clipboard":
                 void this.pasteClipboardText(first, action === "paste-clipboard");
                 break;
+            case "chord-progression": this.openChordProgressions(first); break;
+            case "add-intro": case "add-ending": void this.insertSongBoundary(action === "add-intro"); break;
             case "clear":
                 this.editArrangement(() => {
                     this.project.chords = this.project.chords.filter(chord => this.selectedChord ? chord !== this.selectedChord : chord.bar < first || chord.bar > last);
@@ -865,12 +869,13 @@ class SongEditor {
     }
 
     insertScoreExcerpt(bar, excerpt) {
-        this.editArrangement(() => {
+        return this.editArrangement(() => {
             const project = this.project;
             const { length, chords, annotations = [] } = excerpt;
             if (project.bars + length > 1024) throw new Error(t("譜面の上限は1024小節です。", "The lead sheet is limited to 1024 bars."));
             const shift = item => ({ ...item, bar: item.bar + (item.bar >= bar ? length : 0) });
             const oldSections = project.sections.map(shift);
+            if (excerpt.breakAfter) oldSections[0].clientProperties = { ...oldSections[0].clientProperties, PropSectionStartOnNewLine: "true" };
             const names = new Set(oldSections.map(section => section.name));
             const create = (section, position) => {
                 let name = section.name;
@@ -880,11 +885,11 @@ class SongEditor {
             };
             const inserted = excerpt.sections.map(section => create(section, bar + section.bar));
             const after = project.sections.findLastIndex(section => section.bar <= bar);
-            const split = project.sections[after].bar < bar;
+            const split = bar < project.bars && project.sections[after].bar < bar;
             if (split) inserted.push(create(project.sections[after], bar + length));
             const sections = [...oldSections, ...inserted].sort((a, b) => a.bar - b.bar);
             const parts = project.parts.map(part => ({ ...part, section: sections.indexOf(oldSections[part.section]) }));
-            const previous = project.parts.findIndex(part => part.section === after - Number(!split));
+            const previous = bar === project.bars ? project.parts.length - 1 : project.parts.findIndex(part => part.section === after - Number(!split));
             const fallback = project.parts[previous] ?? project.parts[0];
             parts.splice(previous + 1, 0, ...inserted.map((section, index) => {
                 const saved = excerpt.parts?.find(part => part.section === index && part.styleId);
@@ -895,6 +900,83 @@ class SongEditor {
                 annotations: [...(project.annotations ?? []).map(shift), ...annotations.map(note => ({ ...structuredClone(note), bar: bar + note.bar }))],
                 loopRestartBar: project.loopRestartBar >= bar ? project.loopRestartBar + length : project.loopRestartBar });
         });
+    }
+
+    openChordProgressions(bar) {
+        const project = this.project;
+        const dialog = document.querySelector("#chord-progressions");
+        const form = dialog.querySelector("form");
+        const chooser = form.elements.progression;
+        const status = document.querySelector("#chord-progressions-status");
+        const submit = form.querySelector('[type="submit"]');
+        chooser.replaceChildren();
+        let group = chooser;
+        for (const raw of embeddedChordProgressions.split(/\r?\n/u)) {
+            const line = raw.replace(/\/\/.*$/u, "").trim();
+            if (!line) continue;
+            if (line.startsWith("|")) group.append(new Option(line, line));
+            else {
+                group = document.createElement("optgroup");
+                group.label = line;
+                chooser.append(group);
+            }
+        }
+        status.textContent = "";
+        submit.disabled = false;
+        form.elements.cancelProgression.onclick = () => dialog.close();
+        form.onsubmit = async event => {
+            event.preventDefault();
+            submit.disabled = true;
+            try {
+                const preset = await this.onReadTextSong(chooser.value);
+                const end = bar + preset.bars;
+                if (end > 1024) throw new Error(t("譜面の上限は1024小節です。", "The lead sheet is limited to 1024 bars."));
+                const swing = new Map();
+                const chords = [];
+                for (const chord of preset.chords) {
+                    const target = bar + chord.bar;
+                    const section = project.sections.findLast(section => section.bar <= target);
+                    const beats = DesktopSongFiles.meters[section.meter][1];
+                    if (chord.beat && beats === 3 && !swing.has(section)) swing.set(section, await this.onSectionSwing(project, section));
+                    const half = beats === 3 ? (swing.get(section) ? Math.fround(5 / 3) : 1.5) : Math.ceil(beats / 2);
+                    chords.push({ ...chord, bar: target, beat: chord.beat ? half : 0 });
+                }
+                if (!dialog.open || this.project !== project) return;
+                this.editArrangement(() => {
+                    project.bars = Math.max(project.bars, end);
+                    project.chords = [...project.chords.filter(chord => chord.bar < bar || chord.bar >= end), ...chords];
+                });
+                dialog.close();
+                this.selectBar(bar);
+                this.selectBar(end - 1, true, true);
+            } catch (error) { if (dialog.open) status.textContent = error.message; }
+            finally { submit.disabled = false; }
+        };
+        dialog.showModal();
+    }
+
+    async insertSongBoundary(intro) {
+        const project = this.project;
+        if (project.bars >= 1024) return;
+        const bar = intro ? 0 : project.bars;
+        const part = intro ? project.parts[0] : project.parts.at(-1);
+        const meter = (intro ? project.sections[0] : project.sections.at(-1)).meter;
+        const name = intro ? "Start" : "End";
+        const preferred = intro ? "Intro A-1" : "Ending A-1";
+        let variation = this.parametersFor(part.styleId).get("rpVariationID");
+        if (!variation?.values.length) {
+            try { variation = (await this.onDescribeRhythm(part.styleId)).parameters.get("rpVariationID"); }
+            catch { /* A missing style retains its default when it becomes available. */ }
+        }
+        if (this.project !== project || (!intro && project.bars !== bar)) return;
+        const chords = project.chords.toSorted((a, b) => a.bar - b.bar || a.beat - b.beat);
+        const chord = intro ? chords[0] : chords.at(-1);
+        const value = variation?.values.includes(preferred) ? preferred : variation?.fallback;
+        const parameters = value ? { rpVariationID: value } : {};
+        if (this.insertScoreExcerpt(bar, { length: 1, breakAfter: intro, sections: [{ name, meter, bar: 0 }],
+            chords: chord ? [{ ...chord, bar: 0, beat: 0 }] : [], parts: [{ ...part, section: 0, parameters }] })) {
+            this.selectBar(bar, false, true);
+        }
     }
 
     chordsForTools() {

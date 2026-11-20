@@ -30,6 +30,8 @@ DESKTOP_OPEN = (
 )
 DESKTOP_MIXER = DEMO.parents[2] / "app/MixConsole/src/main/resources/org/jjazz/mixconsole/resources"
 DESKTOP_PIANO = DEMO.parents[2] / "app/PianoRoll/src/main/resources/org/jjazz/pianoroll"
+DESKTOP_CHORD_PROGRESSIONS = (DEMO.parents[2] / "app/CL_EditorImpl/src/main/resources/org/jjazz/cl_editorimpl"
+                              / "actions/resources/ChordProgressions.txt")
 
 
 def encode_gzip(data):
@@ -127,6 +129,7 @@ def package(engine_dir, output):
     data += f'\nconst embeddedDiscoHouse = "{disco_house}";'
     data += f'\nconst embeddedExtendedStyles = {json.dumps(extended_styles)};'
     data += f'\nconst embeddedDesktopMixerPatches = {json.dumps(desktop_mixer_patches())};'
+    data += f'\nconst embeddedChordProgressions = {json.dumps(DESKTOP_CHORD_PROGRESSIONS.read_text(encoding="utf-8"))};'
     data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",

@@ -1506,6 +1506,33 @@
                 else delete navigator.clipboard;
             }
         }
+        {
+            const fixture = DesktopSongFiles.readSong(desktopFixture.legacySongs[1]);
+            for (const part of fixture.parts) Object.assign(part, { styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} });
+            editor.open(fixture, [], undefined, true);
+            const score = editor.project;
+            const bars = score.bars;
+            editor.selectBar(2);
+            editor.barAction("chord-progression");
+            const form = document.querySelector("#chord-progressions form");
+            const preset = [...form.elements.progression.options].find(option => option.value.startsWith("|C7M Am"));
+            check(Boolean(preset), "The desktop major presets were not available");
+            form.elements.progression.value = preset.value;
+            await form.onsubmit(new Event("submit", { cancelable: true }));
+            check(!form.parentElement.open && score.chords.some(chord => chord.bar === 2 && chord.beat === 2 && chord.name === "Am")
+                && editor.selectedRange().join() === "2,5", "The preset did not apply at the expected beat or select the resulting passage");
+            await editor.insertSongBoundary(true);
+            await editor.insertSongBoundary(false);
+            check(score.bars === bars + 2 && score.sections[0].name === "Start" && score.sections[1].bar === 1
+                && score.sections[1].clientProperties.PropSectionStartOnNewLine === "true" && score.sections.at(-1).name === "End"
+                && score.parts[0].parameters.rpVariationID === "Intro A-1" && score.parts.at(-1).parameters.rpVariationID === "Ending A-1",
+                "Intro and ending did not create one bar each with desktop variations");
+            await generate();
+            check(song.barTimes.length > score.bars && song.events.some(event => event.type === 0x90 && event.b > 0), "The intro and ending arrangement could not generate accompaniment");
+            editor.undoButton.click(); editor.undoButton.click();
+            check(score.bars === bars && score.sections.length === 1, "Undo did not restore both boundary inserts");
+            report.chordProgressionsAndBoundaries = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

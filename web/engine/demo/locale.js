@@ -13,6 +13,11 @@ MIDIを取り込む…|Import MIDI…
 切り取り|Cut
 コピーした小節を挿入|Insert copied bars
 テキスト譜面を貼り付け|Paste text lead sheet
+定型コード進行|Chord progressions
+定型コード進行…|Chord progressions…
+コード進行|Chord progression
+イントロを挿入|Insert intro
+エンディングを挿入|Insert ending
 メモの行数|Annotation lines
 曲を閉じる|Close song
 開いている曲|Open songs

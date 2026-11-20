@@ -652,6 +652,17 @@
             </div>
         </form>
     </dialog>
+    <dialog id="chord-progressions" aria-labelledby="chord-progressions-title">
+        <form method="dialog">
+            <h2 id="chord-progressions-title">定型コード進行</h2>
+            <label class="field">コード進行 <select name="progression"></select></label>
+            <p id="chord-progressions-status" class="editor-error" role="status"></p>
+            <div class="dialog-actions">
+                <button name="cancelProgression" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
     <div id="bar-context" class="bar-context" role="group" aria-label="小節の操作" hidden>
         <button type="button" data-action="edit" data-target="bar">小節を編集 <kbd>Enter</kbd></button>
         <button type="button" data-action="chord" data-target="chord">コードを編集</button>
@@ -670,6 +681,9 @@
         <button type="button" data-action="paste-text" data-target="bar">テキスト譜面を貼り付け</button>
         <button type="button" data-action="clear" data-target="bar chord">コードを削除 <kbd>Del</kbd></button>
         <button type="button" data-action="insert" data-target="bar">小節を挿入</button>
+        <button type="button" data-action="chord-progression" data-target="bar">定型コード進行…</button>
+        <button type="button" data-action="add-intro" data-target="bar" data-song-boundary>イントロを挿入</button>
+        <button type="button" data-action="add-ending" data-target="bar" data-song-boundary>エンディングを挿入</button>
         <button type="button" data-action="remove-bars" data-target="bar">選択小節を削除</button>
         <button type="button" data-action="end" data-target="bar">最終小節にする</button>
         <button type="button" data-action="restart" data-target="bar" aria-pressed="false">ループの折り返し位置にする</button>

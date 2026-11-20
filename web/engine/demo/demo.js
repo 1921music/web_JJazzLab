@@ -1119,16 +1119,19 @@ editor.onAuditionChords = async (names, valid) => {
     const piano = mixerParts.find(part => !part.drum && (part.instrumentChoice?.program ?? part.program) < 8);
     await queueAudition(notes, false, piano?.instrumentChoice?.program ?? piano?.program ?? 0, 120, valid);
 };
+editor.onSectionSwing = async (project, section) => {
+    const wasm = (await getEngine()).exports;
+    const part = project.parts.find(item => project.sections[item.section] === section) ?? project.parts[0];
+    const source = DesktopSongFiles.sourceStyleId(part.styleId);
+    const style = await readSavedStyle(source, project.sections[part.section].meter);
+    const name = style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name;
+    return wasm.isTernaryRhythm(style.bytes, name, style.extension ?? new Int8Array(), style.extension ? style.name : "");
+};
 editor.onQuantizeChordDrop = async (project, section, bar, beat) => {
     const wasm = (await getEngine()).exports;
     let quantization = section.clientProperties?.PropSectionQuantization;
     if (!chordDropQuantizations.has(quantization)) {
-        const part = project.parts.find(item => project.sections[item.section] === section) ?? project.parts[0];
-        const source = DesktopSongFiles.sourceStyleId(part.styleId);
-        const style = await readSavedStyle(source, project.sections[part.section].meter);
-        const name = style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name;
-        const ternary = wasm.isTernaryRhythm(style.bytes, name, style.extension ?? new Int8Array(), style.extension ? style.name : "");
-        quantization = ternary ? "ONE_THIRD_BEAT" : "ONE_QUARTER_BEAT";
+        quantization = await editor.onSectionSwing(project, section) ? "ONE_THIRD_BEAT" : "ONE_QUARTER_BEAT";
     }
     return wasm.quantizeChordDrop(quantization, section.meter, bar, beat, project.bars - 1);
 };
