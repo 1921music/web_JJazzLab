@@ -3,6 +3,7 @@ package org.jjazz.web.engine;
 import java.util.HashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.HashSet;
 import java.util.stream.Stream;
 import org.jjazz.midi.api.DrumKit;
 import org.jjazz.midi.api.Instrument;
@@ -54,12 +55,20 @@ final class SongMix
             }
         }
         var channels = mix.getUsedChannels();
-        boolean compatible = imported.size() == channels.size() && channels.stream().allMatch(channel -> imported.containsKey(key(mix, channel)));
+        var expectedRhythm = new HashSet<String>();
+        for (int channel : channels)
+        {
+            if (!(mix.getRhythmVoice(channel) instanceof UserRhythmVoice)) expectedRhythm.add(key(mix, channel));
+        }
+        var importedRhythm = new HashSet<>(imported.keySet());
+        importedRhythm.removeIf(key -> key.startsWith("SpUserChannelRhythmID\t") || key.startsWith("SpDrumsUserChannelRhythmID\t"));
+        boolean compatible = expectedRhythm.equals(importedRhythm);
         if (!compatible) return false;
 
         for (int channel : channels)
         {
             var fields = imported.get(key(mix, channel));
+            if (fields == null) continue; // A new user channel has its default settings.
             var instrumentMix = mix.getInstrumentMix(channel);
             var values = instrumentMix.getSettings();
             values.setVolume(Integer.parseInt(fields[5]));

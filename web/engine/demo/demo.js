@@ -185,6 +185,7 @@ function updateButtons() {
     previousPart.disabled ||= quickMode.getAttribute("aria-pressed") === "true";
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
     structureToggle.disabled = !editor.project;
+    document.querySelector("#add-user-track").disabled = !editor.project || generating || starting;
     editor.updateUndo();
     editor.undoButton.disabled ||= generating || starting;
     editor.redoButton.disabled ||= generating || starting;
@@ -216,6 +217,8 @@ function updatePosition(position) {
     const beat = song.beatTimes.findLast(beat => beat.seconds <= position.seconds + .00002);
     displayPosition(Math.max(1, bar), beat?.bar === bar ? beat.beat : 1, position.seconds);
     if (editor.project) editor.showPlayingBar((playing || paused) && showPoint.getAttribute("aria-pressed") === "true" ? bar : 0);
+    const from = song.barTimes[bar - 1], to = song.barTimes[bar];
+    pianoRoll.position(bar, Math.max(0, Math.min(1, (position.seconds - from) / (to - from))), playing || paused);
     updateButtons();
     showPlayStatus(paused ? "一時停止中" : position.counting ? "カウントイン" : playing ? "演奏中" : "停止中");
 }
@@ -504,7 +507,16 @@ function renderMixer() {
                 context.fillRect(note.seconds / song.duration * (preview.width - 2), (1 - note.a / 127) * (preview.height - 2), 2, 1);
             }
         }
-        strip.append(preview);
+        if (part.source === "user" && editor.project?.userTracks.some(track => track.name === part.name)) {
+            const overview = document.createElement("button");
+            overview.type = "button";
+            overview.className = "user-track-overview";
+            overview.title = `${t("ピアノロール")} · ${part.name}`;
+            overview.setAttribute("aria-label", overview.title);
+            overview.append(preview);
+            overview.onclick = () => pianoRoll.open(part.name);
+            strip.append(overview);
+        } else strip.append(preview);
         container.append(strip);
     }
 }
@@ -697,6 +709,7 @@ function clearPlayback() {
 }
 
 const editor = new SongEditor((opened) => {
+    pianoRoll.close();
     chosenRange = null;
     activeProject = undefined;
     usesDesktopSoundFont = !opened.mix.length || opened.mix.some(track => track.instrument?.startsWith("FluidSynth#:#"));
@@ -727,6 +740,17 @@ const editor = new SongEditor((opened) => {
     if (!chosenRange) showStatus("選択した小節は曲構成の演奏順に含まれていません。");
     else startPlayback(true);
 });
+const pianoRoll = new PianoRoll(editor, range => {
+    chosenRange = range;
+    if (song && range.to < song.barTimes.length) {
+        loopStart.value = range.from;
+        loopEnd.value = range.to;
+    }
+    startPlayback(true);
+});
+editor.onRender = () => pianoRoll.sync();
+document.querySelector("#open-piano-roll").onclick = () => pianoRoll.panel.hidden ? pianoRoll.open() : pianoRoll.close();
+document.querySelector("#add-user-track").onclick = () => pianoRoll.addTrack();
 quickMode.addEventListener("click", () => {
     if (!editor.project) {
         if (draft) editor.open(draft.project, draft.mix, draft.style);
@@ -734,6 +758,7 @@ quickMode.addEventListener("click", () => {
         return;
     }
     draft = { project: editor.project, mix: editor.mix, style: editor.style };
+    pianoRoll.close();
     editor.project = null;
     activeProject = undefined;
     chosenRange = null;
@@ -1036,10 +1061,13 @@ async function generateAccompaniment(fromPlay = false) {
             const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
             const applied = engine.exports.wasImportedMixApplied();
             const original = new Map(editor.mix.map(track => [`${track.rhythmId}\t${track.name}`, track]));
+            const keepAssignments = applied && original.size === defaults.length
+                && defaults.every(track => original.has(`${track.rhythmId}\t${track.name}`));
             const completeMix = defaults.map(track => {
                 if (!applied) return track;
                 const source = original.get(`${track.rhythmId}\t${track.name}`);
-                return { ...source, sourceChannel: source.sourceChannel ?? source.channel, channel: track.channel };
+                if (!source) return track;
+                return { ...source, sourceChannel: keepAssignments ? source.sourceChannel ?? source.channel : track.channel, channel: track.channel };
             });
             const notices = [];
             if (requestedSwing && (styles.length !== 1 || styles[0].id !== "jjSwing-ID")) {

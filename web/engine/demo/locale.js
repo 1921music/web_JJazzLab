@@ -69,7 +69,7 @@ JJazzLab ユーザーガイド|JJazzLab User Guide
 Solo解除|Clear solo
 .mixを書き出す|Export .mix
 ミックスを読み込む…|Import mix…
-伴奏を生成すると、トラックを調整できます。|Play the song to open the channel controls.
+曲を再生すると、各トラックを調整できます。|Play the song to open the channel controls.
 コード進行|Chord progression
 1小節に1コード。空白、改行、カンマ、または | で区切ります。|One chord per bar. Separate chords with a space, newline, comma, or a vertical bar.
 リズムエンジン|Rhythm engine
@@ -115,6 +115,27 @@ Jazz、Bossa、Waltz…|Jazz, Bossa, Waltz…
 演奏区間を編集|Edit song part
 複製|Duplicate
 削除|Delete
+ピアノロール|Piano roll
+ピアノロールを閉じる|Close piano roll
+ユーザートラック|User track
+ユーザートラックを追加|Add user track
+音符編集|Note editing
+編集ツール|Edit tools
+選択|Select
+描画|Draw
+消去|Erase
+グリッドに合わせる|Snap to grid
+グリッド|Grid
+クオンタイズ|Quantize
+この位置から再生|Play from here
+ベロシティ|Velocity
+ピアノロールの横ズーム|Piano roll horizontal zoom
+音符グリッド|Note grid
+ベロシティレーン|Velocity lane
+音符の値|Note properties
+位置（拍）|Position (beats)
+長さ（拍）|Length (beats)
+ドラッグで音符を移動。音符の右端をドラッグして長さを変更します。|Drag to move notes or drag the right edge to resize them.
 チャンネル設定|Channel settings
 チャンネル設定…|Channel settings…
 チャンネルを元に戻す|Reset channel

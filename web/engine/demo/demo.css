@@ -430,3 +430,36 @@ footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; 
     .sheet-file-actions { margin-inline-start: 0; }
     .sheet-toolbar button { font-size: .85rem; }
 }
+#project-editor:has(#piano-roll:not([hidden])) > :is(.sheet-toolbar, .score-scroll, #structure) { display: none; }
+.roll-tab h3 { margin-inline-end: .35rem; }
+.roll-tab #roll-close { margin-inline-start: auto; }
+.roll-tab select { max-width: 16rem; }
+.roll-toolbar, .roll-footer, #roll-note-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: .4rem;
+    padding: .32rem .55rem;
+}
+.roll-toolbar { background: #303436; border-bottom: 1px solid #1d2023; }
+.roll-toolbar input[type="number"], #roll-note-form input { width: 5.4rem; }
+.roll-toolbar .tool-button[aria-pressed="true"] { background-color: #4d6975; border-color: #75a0aa; }
+.roll-surface { position: relative; background: #383c40; }
+#roll-scroll { position: relative; height: clamp(245px, 54vh, 650px); overflow: auto; touch-action: none; }
+#roll-scroll[data-tool="draw"] { cursor: crosshair; }
+#roll-scroll[data-tool="erase"] { cursor: not-allowed; }
+#roll-scroll:focus-visible { outline-offset: -2px; }
+#roll-canvas { pointer-events: none; position: absolute; top: 0; left: 0; }
+#roll-velocity-lane { display: block; cursor: ns-resize; touch-action: none; border-top: 1px solid #737a7e; }
+.roll-footer { justify-content: space-between; border-top: 1px solid #1c1e21; font-size: .85rem; }
+#roll-help { width: 100%; }
+#roll-note-form { padding: .4rem 0 0; }
+.strip .user-track-overview {
+    width: 100%;
+    min-width: 0;
+    display: block;
+    padding: 0;
+    background: #323940;
+    border-color: #76718b;
+}
+.user-track-overview:hover:not(:disabled) { border-color: #d6c1ee; }

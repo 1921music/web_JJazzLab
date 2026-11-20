@@ -90,6 +90,7 @@
                     <h2 id="song-editor-title">コード譜</h2>
                     <label class="project-name">曲名 <input id="project-title" type="text"></label>
                     <div class="sheet-file-actions">
+                        <button id="open-piano-roll" type="button" class="secondary">ピアノロール</button>
                         <button id="export-project" type="button" class="secondary">JJazzLab形式で書き出す</button>
                     </div>
                 </div>
@@ -117,6 +118,50 @@
                 <div class="arrangement-scroll"><ol id="song-parts" class="song-parts" aria-label="演奏順"></ol></div>
                 <p id="user-track-summary" class="hint"></p>
                 </section>
+                <section id="piano-roll" hidden aria-labelledby="roll-title">
+                    <div class="pane-heading roll-tab">
+                        <h3 id="roll-title">ピアノロール</h3>
+                        <label class="visually-hidden" for="roll-track">ユーザートラック</label>
+                        <select id="roll-track"></select>
+                        <button id="roll-close" type="button" class="tool-button" aria-label="ピアノロールを閉じる" title="ピアノロールを閉じる">×</button>
+                    </div>
+                    <div class="roll-toolbar" aria-label="音符編集">
+                        <div class="toolbar-group" aria-label="編集ツール">
+                            <button class="tool-button" type="button" data-roll-tool="select" data-icon="roll-select" aria-label="選択" title="選択" aria-pressed="true"></button>
+                            <button class="tool-button" type="button" data-roll-tool="draw" data-icon="roll-draw" aria-label="描画" title="描画" aria-pressed="false"></button>
+                            <button class="tool-button" type="button" data-roll-tool="erase" data-icon="roll-erase" aria-label="消去" title="消去" aria-pressed="false"></button>
+                        </div>
+                        <button id="roll-snap" class="tool-button" type="button" data-icon="roll-snap" aria-label="グリッドに合わせる" title="グリッドに合わせる" aria-pressed="true"></button>
+                        <select id="roll-grid" aria-label="グリッド">
+                            <option value="1">1/4</option><option value="0.5">1/8</option>
+                            <option value="0.3333333333333333">1/8 ♫₃</option><option value="0.25" selected>1/16</option><option value="0.125">1/32</option>
+                        </select>
+                        <button id="roll-quantize" class="secondary" type="button">クオンタイズ</button>
+                        <button id="roll-play" class="tool-button" type="button" data-icon="roll-play" aria-label="この位置から再生" title="この位置から再生"></button>
+                        <label>ベロシティ <input id="roll-velocity" type="number" min="1" max="127" value="90"></label>
+                        <label class="zoom-control">横ズーム <input id="roll-zoom" type="range" min="24" max="144" value="64" aria-label="ピアノロールの横ズーム"></label>
+                    </div>
+                    <div class="roll-surface">
+                        <div id="roll-scroll" tabindex="0" role="region" aria-label="音符グリッド" aria-describedby="roll-help">
+                            <div id="roll-size"></div>
+                        </div>
+                        <canvas id="roll-canvas" aria-hidden="true"></canvas>
+                        <canvas id="roll-velocity-lane" aria-label="ベロシティレーン"></canvas>
+                    </div>
+                    <div class="roll-footer">
+                        <output id="roll-status" aria-live="polite"></output>
+                        <details id="roll-note-fields">
+                            <summary>音符の値</summary>
+                            <form id="roll-note-form">
+                                <label>MIDI <input id="roll-pitch" type="number" min="0" max="127" required></label>
+                                <label>位置（拍） <input id="roll-position" type="number" min="0" step="any" required></label>
+                                <label>長さ（拍） <input id="roll-length" type="number" min="0.010416666" step="any" required></label>
+                                <button class="secondary" type="submit">適用</button>
+                            </form>
+                        </details>
+                        <p id="roll-help" class="hint">ドラッグで音符を移動。音符の右端をドラッグして長さを変更します。</p>
+                    </div>
+                </section>
             </div>
         </section>
 
@@ -135,8 +180,9 @@
                 <button id="mute-all" class="tool-button" type="button" aria-label="全Mute" title="全Mute" aria-pressed="false">M</button>
                 <button id="clear-solo" class="tool-button" type="button" aria-label="Solo解除" title="Solo解除">S</button>
                 <button id="panic" class="tool-button panel-toggle" type="button">Panic</button>
+                <button id="add-user-track" class="tool-button panel-toggle" type="button" aria-label="ユーザートラックを追加" title="ユーザートラックを追加">＋</button>
             </div>
-            <div id="mixer-empty" class="mixer-empty">伴奏を生成すると、トラックを調整できます。</div>
+            <div id="mixer-empty" class="mixer-empty">曲を再生すると、各トラックを調整できます。</div>
             <div id="mixer-parts"></div>
         </aside>
         <form id="midi-form">
@@ -286,6 +332,14 @@
         <button type="button" data-action="mute">Mute</button>
         <button type="button" data-action="solo">Solo</button>
         <button type="button" data-action="reset">チャンネルを元に戻す</button>
+    </div>
+    <div id="roll-context" class="bar-context" role="group" aria-label="音符編集" hidden>
+        <button data-action="select" type="button">選択</button>
+        <button data-action="draw" type="button">描画</button>
+        <button data-action="erase" type="button">消去</button>
+        <button data-action="copy" type="button">コピー</button>
+        <button data-action="paste" type="button">貼り付け</button>
+        <button data-action="delete" type="button">削除</button>
     </div>
     <!-- DEMO_SCRIPTS -->
 </body>

@@ -29,6 +29,7 @@ DESKTOP_OPEN = (
     / "org/jjazz/songeditormanager/resources/OpenFile24.png"
 )
 DESKTOP_MIXER = DEMO.parents[2] / "app/MixConsole/src/main/resources/org/jjazz/mixconsole/resources"
+DESKTOP_PIANO = DEMO.parents[2] / "app/PianoRoll/src/main/resources/org/jjazz/pianoroll"
 
 
 def encode_gzip(data):
@@ -72,6 +73,11 @@ def desktop_icon_styles():
         "mute": (DESKTOP_MIXER / "MuteOff_Icon-21x21.png", DESKTOP_MIXER / "MuteOn_Icon-21x21.png"),
         "solo": (DESKTOP_MIXER / "SoloOff_Icon-21x21.png", DESKTOP_MIXER / "SoloOn_Icon-21x21.png"),
         "channel-settings": (DESKTOP_MIXER / "Settings11x11.png",),
+        "roll-select": tuple(DESKTOP_PIANO / "edittools/resources" / f"Selection{state}.png" for state in ("OFF", "ON")),
+        "roll-draw": tuple(DESKTOP_PIANO / "edittools/resources" / f"Pencil{state}.png" for state in ("OFF", "ON")),
+        "roll-erase": tuple(DESKTOP_PIANO / "edittools/resources" / f"Eraser{state}.png" for state in ("OFF", "ON")),
+        "roll-snap": tuple(DESKTOP_PIANO / "actions/resources" / f"Snap{state}.png" for state in ("OFF", "ON")),
+        "roll-play": (DESKTOP_PIANO / "actions/resources/PlayEditor-OFF.png",),
     }
     for family in ("User", "Drums", "Bass", "Guitar", "Keyboard", "HornSection", "Strings", "Notes"):
         icons[f"track-{family.lower()}"] = (DESKTOP_MIXER / f"{family}-48x48.png",)
@@ -97,6 +103,7 @@ def package(engine_dir, output):
     midi = (DEMO / "midi.js").read_text(encoding="utf-8")
     song_files = (DEMO / "song-files.js").read_text(encoding="utf-8")
     song_editor = (DEMO / "song-editor.js").read_text(encoding="utf-8")
+    piano_roll = (DEMO / "piano-roll.js").read_text(encoding="utf-8")
     archive = (DEMO / "style-archive.js").read_text(encoding="utf-8")
     with ZipFile(STYLE_ARCHIVE) as styles:
         style = encode_gzip(styles.read("8Beat.T160.STY"))
@@ -119,7 +126,7 @@ def package(engine_dir, output):
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, player, song_editor, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, player, song_editor, piano_roll, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:

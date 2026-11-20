@@ -172,6 +172,40 @@
         check(engine.exports.wasImportedMixApplied(), "The Web project lost its mix on reopening");
         check(song.events.some(event => event.channel === bassChannel && event.type === 0xc0 && event.a === 42),
             "Generating again lost the selected GM instrument");
+        document.querySelector("#open-piano-roll").click();
+        check(!pianoRoll.panel.hidden && pianoRoll.name === "User1" && pianoRoll.phrase.notes.length === 4,
+            "The note editor did not open an imported user track");
+        const originalNote = pianoRoll.phrase.notes[0];
+        pianoRoll.select([originalNote]);
+        document.querySelector("#roll-pitch").value = "74";
+        document.querySelector("#roll-position").value = "2.5";
+        document.querySelector("#roll-length").value = "3.5";
+        document.querySelector("#roll-note-form").requestSubmit();
+        document.querySelector("#roll-velocity").value = "104";
+        document.querySelector("#roll-velocity").dispatchEvent(new Event("change"));
+        check(pianoRoll.phrase.notes.some(note => note.pitch === 74 && note.position === 2.5 && note.duration === 3.5 && note.velocity === 104),
+            "The piano roll did not store the selected note changes");
+        editor.undoButton.click();
+        check(pianoRoll.phrase.notes.some(note => note.pitch === 74 && note.velocity === originalNote.velocity),
+            "Undo did not restore the velocity in the note editor");
+        editor.redoButton.click();
+        document.querySelector("#add-user-track").click();
+        check(pianoRoll.name === "User2" && pianoRoll.tool === "draw" && editor.project.userTracks.length === 2,
+            "The Mix Console add action did not open a new user track in Draw mode");
+        const newNote = { pitch: 64, position: 1.25, duration: .5, velocity: 98 };
+        pianoRoll.commit([newNote], [newNote]);
+        pianoRoll.close();
+        await generate();
+        check(engine.exports.wasImportedMixApplied() && editor.renderedMix.find(track => track.name === "Bass").patch === "Cello",
+            "Adding a user track replaced the existing rhythm mix");
+        const tracks = new Map(song.parts.map((part, index) => [part.name, index]));
+        for (const [name, pitch] of [["User1", 74], ["User2", 64]]) {
+            check(song.events.some(event => event.part === tracks.get(name) && event.type === 0x90 && event.a === pitch && event.b > 0),
+                `Generated MIDI does not contain the edited note for ${name}`);
+        }
+        const editedSong = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+        check(editedSong.userTracks.length === 2 && UserPhrase.read(editedSong.userTracks[1].phrase).notes[0].duration === .5,
+            "Desktop song export did not retain the newly added note");
         report.editedMix = { instrument: editedBass.patch, reverb: editedBass.reverb, chorus: editedBass.chorus, chorusEnabled: editedBass.chorusEnabled };
         report.importedBars = song.barTimes.length - 1;
 

@@ -183,8 +183,8 @@ class SongEditor {
     }
 
     captureEdit() {
-        const { bars, sections, chords, parts, annotations, loopRestartBar } = this.project;
-        return structuredClone({ bars, sections, chords, parts, annotations, loopRestartBar });
+        const { bars, sections, chords, parts, annotations, loopRestartBar, userTracks } = this.project;
+        return structuredClone({ bars, sections, chords, parts, annotations, loopRestartBar, userTracks });
     }
 
     rememberEdit(before) {
@@ -901,6 +901,7 @@ class SongEditor {
         this.markSelection();
         const users = userTracks.map(track => track.name).join(", ");
         document.querySelector("#user-track-summary").textContent = users ? t(`ユーザートラック: ${users}`, `User tracks: ${users}`) : "";
+        this.onRender?.();
     }
 
     parseBarChords(bar, value) {

@@ -24,7 +24,7 @@ const sourceUrl = "https://github.com/" + owner + "/" + repository + "/tree/" + 
 const readSource = file => fs.readFileSync(path.join(root, file), "utf8").replace(/\r\n/gu, "\n");
 let html = fs.readFileSync(path.resolve(input), "utf8").replace(/\r\n/gu, "\n");
 if (!/^<!doctype html>/iu.test(html) || html.includes("JJAZZ_SMOKE_RESULT")) throw new Error("Expected a production demo HTML, without test instrumentation");
-for (const file of ["demo.js", "locale.js", "midi.js", "song-files.js", "song-editor.js", "style-archive.js", "player.js"]) {
+for (const file of ["demo.js", "locale.js", "midi.js", "song-files.js", "song-editor.js", "piano-roll.js", "style-archive.js", "player.js"]) {
     const expected = readSource("web/engine/demo/" + file).trim().replace(/<\/script/giu, "<\\/script");
     if (!html.includes(expected)) throw new Error("Build is stale: " + file + ". Rebuild and test before publishing.");
 }
