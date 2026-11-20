@@ -5,10 +5,9 @@ const songTemplatePreference = "jjazzlab.songTemplate";
 const compactParameterLabels = new Map([
     ["rpVariationID", "バリエーション"], ["BassStyleId", "ベースの奏法"], ["DrumsStyleId", "ドラムの奏法"],
     ["rpIntensityID", "強弱"], ["RpFillID", "フィル"], ["rpTempoID", "テンポ比"], ["rpSysMarkerID", "マーカー"],
-    ["RpSysMuteID", "区間のミュート"]
+    ["RpSysMuteID", "区間のミュート"], ["RP_SYS_DrumsTransformId", "区間のドラム変形"],
+    ["RP_SYS_CustomPhraseId", "区間のカスタムフレーズ"], ["RP_SYS_OverrideTracksID", "伴奏トラックの上書き"]
 ]);
-const compactDefaults = new Map([["BassStyleId", "auto"], ["DrumsStyleId", "auto"], ["rpIntensityID", "0"],
-    ["RpFillID", ""], ["rpTempoID", "100"], ["rpSysMarkerID", "theme"], ["RpSysMuteID", "[]"]]);
 const compactProperty = id => `PropCompactViewModeVisibleRps_${id}`;
 const flatChordNotes = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const sharpChordNotes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
@@ -112,7 +111,7 @@ class SongEditor {
         this.partDialog = document.querySelector("#part-editor");
         this.sectionMeter = document.querySelector("#edit-section-meter");
         this.sectionMeter.replaceChildren(...Object.entries(DesktopSongFiles.meters).map(([id, [name]]) => new Option(name, id)));
-        this.styleVariations = new Map();
+        this.styleParameters = new Map();
         this.undoButton = document.querySelector("#undo");
         this.redoButton = document.querySelector("#redo");
         this.undoButton.onclick = () => this.restoreEdit(this.undoStack, this.redoStack);
@@ -354,7 +353,7 @@ class SongEditor {
         this.selectedChord = null;
         this.undoStack = [];
         this.redoStack = [];
-        this.styleVariations.clear();
+        this.styleParameters.clear();
         this.updateUndo();
         this.selectedBar = this.selectionAnchor = 0;
         this.changed();
@@ -606,7 +605,7 @@ class SongEditor {
         const numbered = field.type === "number";
         const current = options?.indexOf(field.value) ?? -1;
         const valueForDirection = direction => numbered
-            ? String(field.valueAsNumber + direction)
+            ? String(field.valueAsNumber + direction * (Number(field.step) || 1))
             : options?.[current + direction];
         const buttons = Object.fromEntries([...this.parameterMenu.querySelectorAll("button")].map(button => [button.dataset.action, button]));
         buttons.paste.disabled = this.parameterClipboard?.key !== key
@@ -1472,8 +1471,27 @@ class SongEditor {
         const saved = this.project.clientProperties?.[compactProperty(styleId)];
         if (saved !== undefined) return new Set(saved.split(",").filter(Boolean));
         const parts = this.project.parts.filter(part => part.styleId === styleId);
-        return new Set(["rpVariationID", ...Array.from(compactDefaults, ([id, value]) =>
-            parts.some(part => (part.parameters[id] ?? value) !== value) ? id : null).filter(Boolean)]);
+        return new Set(["rpVariationID", ...Array.from(this.parametersFor(styleId).values()).filter(parameter =>
+            parts.some(part => (part.parameters[parameter.id] ?? parameter.fallback) !== parameter.fallback)).map(parameter => parameter.id)]);
+    }
+
+    parametersFor(styleId) {
+        const source = DesktopSongFiles.sourceStyleId(styleId);
+        const native = this.styleParameters.get(source);
+        if (native) return native;
+        const swing = source === "jjSwing-ID";
+        const choices = selector => Array.from(document.querySelector(selector).options, option => option.value);
+        const variation = swing ? choices("#swing-variation") : [];
+        const descriptors = [
+            ["rpVariationID", variation[0] ?? "", "state", variation],
+            ["rpIntensityID", "0", "number", [-10, 10, 1]],
+            ["RpFillID", "", "state", ["", "always", "random", "random_rare", "break", "fade_out"]],
+            ["rpTempoID", "100", "number", [50, 200, 1]],
+            ["rpSysMarkerID", "theme", "state", partMarkers],
+            ["RpSysMuteID", "[]", "set", []]
+        ];
+        if (swing) descriptors.push(["BassStyleId", "auto", "state", choices("#swing-bass")], ["DrumsStyleId", "auto", "state", choices("#swing-drums")]);
+        return new Map(descriptors.map(([id, fallback, type, values]) => [id, { id, fallback, type, values }]));
     }
 
     openCompactSettings() {
@@ -1486,16 +1504,14 @@ class SongEditor {
             legend.textContent = name;
             group.append(legend);
             const initial = this.compactRows(styleId);
-            const visible = Array.from(compactParameterLabels).filter(([key]) =>
-                !["BassStyleId", "DrumsStyleId"].includes(key) || DesktopSongFiles.sourceStyleId(styleId) === "jjSwing-ID");
-            const controls = visible.map(([key, label]) => {
+            const controls = Array.from(this.parametersFor(styleId), ([key, parameter]) => {
                 const field = document.createElement("label");
                 field.className = "check";
                 const box = document.createElement("input");
                 box.type = "checkbox";
                 box.checked = initial.has(key);
                 box.value = key;
-                field.append(box, t(label));
+                field.append(box, t(compactParameterLabels.get(key) ?? parameter.name ?? key));
                 group.append(field);
                 return box;
             });
@@ -1603,27 +1619,37 @@ class SongEditor {
         header.append(name, span, select, meter, styleName);
         item.append(header);
 
-        const source = DesktopSongFiles.sourceStyleId(part.styleId);
-        const swing = source === "jjSwing-ID";
-        const variationChoices = this.styleVariations.get(source) ?? (swing ? Array.from(document.querySelector("#swing-variation").options, option => option.value) : []);
-        const rows = [
-            ["rpVariationID", "バリエーション", variationChoices[0] ?? "", variationChoices],
-            ["BassStyleId", "ベースの奏法", "auto", swing ? Array.from(document.querySelector("#swing-bass").options, option => option.value) : []],
-            ["DrumsStyleId", "ドラムの奏法", "auto", swing ? Array.from(document.querySelector("#swing-drums").options, option => option.value) : []],
-            ["rpIntensityID", "強弱", "0"],
-            ["RpFillID", "フィル", "", ["", "always", "random", "random_rare", "break", "fade_out"]],
-            ["rpTempoID", "テンポ比", "100"],
-            ["rpSysMarkerID", "マーカー", "theme", partMarkers]
-        ];
-        for (const [key, label, fallback, options] of rows) {
-            if (!visibleRows.has(key)) continue;
-            const row = document.createElement("label");
+        const parameters = this.parametersFor(part.styleId);
+        const special = { RP_SYS_DrumsTransformId: () => this.openDrumTransforms(index),
+            RP_SYS_CustomPhraseId: () => this.openCustomPhrases(index), RP_SYS_OverrideTracksID: () => this.openTrackOverrides(index) };
+        for (const [key, reference] of visibleRows) {
+            const parameter = parameters.get(key);
+            const { type, fallback, values } = parameter ?? reference;
+            const label = compactParameterLabels.get(key) ?? reference.name ?? key;
+            const row = document.createElement(type === "state" || type === "number" ? "label" : "div");
             row.className = "rp-row";
             row.classList.toggle("compact-rp", compactRows.has(key));
             row.dataset.rhythmParameter = key;
             const title = document.createElement("span");
             title.textContent = t(label);
-            const enabled = swing || !["BassStyleId", "DrumsStyleId"].includes(key);
+            if (type === "set" || type === "custom") {
+                const muted = type === "set" ? (part.parameters[key] ?? fallback).slice(1, -1).split(",").filter(Boolean) : [];
+                const source = DesktopSongFiles.sourceStyleId(part.styleId);
+                const channels = values.length ? values : (this.unresolvedStyleMix ?? this.mix)
+                    .filter(track => DesktopSongFiles.sourceStyleId(track.rhythmId) === source).map(track => track.name);
+                const choices = [...new Set([...channels, "UserTrack1", "UserTrack2", "UserTrack3", ...muted])];
+                const edit = type === "set" && key === "RpSysMuteID" ? () => this.openPartMute(part, choices, muted) : special[key];
+                const caption = type === "set" ? muted.join(", ") || t("ミュートなし") : t("編集…", "Edit…");
+                const button = this.button(parameter ? caption : "–", edit);
+                button.disabled = !parameter || !edit;
+                button.setAttribute("aria-label", t(`${index + 1}番目の${label}`, `${t(label)} of song part ${index + 1}`));
+                if (key === "RpSysMuteID") button.dataset.partMute = "";
+                row.append(title, button);
+                item.append(row);
+                continue;
+            }
+            const options = type === "state" ? values : [];
+            const enabled = Boolean(parameter);
             const field = document.createElement("input");
             field.disabled = !enabled;
             field.setAttribute("aria-label", t(`${index + 1}番目の${label}`, `${t(label)} of song part ${index + 1}`));
@@ -1635,14 +1661,16 @@ class SongEditor {
                 field.setAttribute("list", suggestions.id);
                 row.append(suggestions);
             }
-            if (key === "rpIntensityID" || key === "rpTempoID") {
+            if (type === "number" && enabled) {
                 field.type = "number";
-                field.min = key === "rpIntensityID" ? -10 : 50;
-                field.max = key === "rpIntensityID" ? 10 : 200;
+                [field.min, field.max, field.step] = values;
             }
             const write = value => {
                 field.value = value;
-                if (!field.validity.valid) { field.value = part.parameters[key] ?? fallback; return; }
+                if (!field.validity.valid || (value && options.length && !options.includes(value))) {
+                    field.value = part.parameters[key] ?? fallback;
+                    return;
+                }
                 this.rememberEdit(this.captureEdit());
                 if (value === "") delete part.parameters[key];
                 else part.parameters[key] = value;
@@ -1665,21 +1693,6 @@ class SongEditor {
             row.append(title, field);
             item.append(row);
         }
-        const muteRow = document.createElement("div");
-        muteRow.className = "rp-row";
-        muteRow.classList.toggle("compact-rp", compactRows.has("RpSysMuteID"));
-        muteRow.dataset.rhythmParameter = "RpSysMuteID";
-        const muteTitle = document.createElement("span");
-        muteTitle.textContent = t("区間のミュート");
-        const muted = (part.parameters.RpSysMuteID ?? "[]").slice(1, -1).split(",").filter(Boolean);
-        const matchStyle = track => DesktopSongFiles.sourceStyleId(track.rhythmId) === source;
-        const choices = [...new Set([...(this.unresolvedStyleMix ?? this.mix).filter(matchStyle).map(track => track.name),
-            "UserTrack1", "UserTrack2", "UserTrack3", ...muted])];
-        const muteButton = this.button(muted.join(", ") || t("ミュートなし"), () => this.openPartMute(part, choices, muted));
-        muteButton.dataset.partMute = "";
-        muteButton.setAttribute("aria-label", t(`${index + 1}番目の区間のミュート`, `Mute tracks in song part ${index + 1}`));
-        muteRow.append(muteTitle, muteButton);
-        item.append(muteRow);
         const controls = document.createElement("div");
         controls.className = "part-controls";
         const up = this.button("←", () => this.movePart(index, index - 1)); up.disabled = index === 0;
@@ -1882,9 +1895,7 @@ class SongEditor {
         this.structureCompact.setAttribute("aria-pressed", String(compact));
         this.parts.classList.toggle("compact-view", compact);
         const compactRows = new Map(Array.from(new Set(parts.map(part => part.styleId)), id => [id, this.compactRows(id)]));
-        const showSwingRows = parts.some(part => DesktopSongFiles.sourceStyleId(part.styleId) === "jjSwing-ID");
-        const visibleRows = new Set(["rpVariationID", "rpIntensityID", "RpFillID", "rpTempoID", "rpSysMarkerID"]);
-        if (showSwingRows) { visibleRows.add("BassStyleId"); visibleRows.add("DrumsStyleId"); }
+        const visibleRows = new Map(parts.flatMap(part => [...this.parametersFor(part.styleId)]));
         this.parts.replaceChildren(...parts.map((part, index) => this.renderPart(part, ranges[index], colors, visibleRows, compactRows.get(part.styleId))));
         this.markSelection();
         const users = userTracks.map(track => track.name).join(", ");

@@ -866,6 +866,21 @@
             }
             await generate();
             check(engine.exports.wasImportedMixApplied(), `${fixture.name} lost its original mix`);
+            if (fixture.name.startsWith("Django")) {
+                const swing = editor.project.parts.findIndex(part => DesktopSongFiles.sourceStyleId(part.styleId) === "jjSwing-ID");
+                const yamaha = editor.project.parts.findIndex(part => DesktopSongFiles.sourceStyleId(part.styleId) !== "jjSwing-ID");
+                const row = (index, id) => editor.parts.children[index].querySelector(`[data-rhythm-parameter="${id}"]`);
+                check(!row(swing, "BassStyleId").querySelector("input").disabled && row(yamaha, "BassStyleId").querySelector("input").disabled,
+                    "The Yamaha and jjSwing parts did not distinguish their native parameters");
+                for (const index of [swing, yamaha]) {
+                    const variationList = row(index, "rpVariationID").querySelector("datalist");
+                    const native = editor.parametersFor(editor.project.parts[index].styleId).get("rpVariationID");
+                    check(Array.from(variationList.options, option => option.value).join() === native.values.join(), "Variation choices differ from the native rhythm");
+                    check(!row(index, "RP_SYS_OverrideTracksID").querySelector("button").disabled,
+                        "The native custom parameter could not open its editor");
+                }
+                report.rhythmParameterDefinitions = true;
+            }
             check(arrangement.title === editor.project.title && originalIds.join() === editor.project.parts.map(part => part.styleId).join(),
                 `${fixture.name} did not retain its saved style IDs`);
             check(originalVariations.join() === editor.project.parts.map(part => part.parameters.rpVariationID).join(),

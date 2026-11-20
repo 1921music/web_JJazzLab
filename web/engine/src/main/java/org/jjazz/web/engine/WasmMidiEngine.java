@@ -28,7 +28,11 @@ import org.jjazz.phrasetransform.api.PhraseTransformCategory;
 import org.jjazz.phrasetransform.api.PhraseTransformManager;
 import org.jjazz.quantizer.api.Quantization;
 import org.jjazz.quantizer.api.Quantizer;
+import org.jjazz.rhythm.api.RP_Integer;
+import org.jjazz.rhythm.api.RP_State;
+import org.jjazz.rhythm.api.RP_StringSet;
 import org.jjazz.rhythm.api.Rhythm;
+import org.jjazz.rhythm.api.RhythmParameter;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.jjazz.utilities.api.FloatRange;
 import org.teavm.jso.JSExport;
@@ -388,6 +392,25 @@ public final class WasmMidiEngine
     public static boolean isTernaryRhythm(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
     {
         return readRhythm(bytes, name, extensionBytes, extensionName).getFeatures().division().isTernary();
+    }
+
+    @JSExport
+    public static String[] getRhythmParameters(byte[] bytes, String name, byte[] extensionBytes, String extensionName) throws Exception
+    {
+        var rhythm = readRhythm(bytes, name, extensionBytes, extensionName);
+        var result = new ArrayList<String>();
+        result.add(rhythm.getTimeSignature().name());
+        rhythm.getRhythmParameters().forEach(parameter -> result.add(describeRhythmParameter(parameter)));
+        return result.toArray(String[]::new);
+    }
+
+    private static <T> String describeRhythmParameter(RhythmParameter<T> parameter)
+    {
+        var prefix = parameter.getId() + "\t" + parameter.getDisplayName() + "\t" + parameter.saveAsString(parameter.getDefaultValue()) + "\t";
+        if (parameter instanceof RP_State states) return prefix + "state\t" + String.join("\t", states.getPossibleValues());
+        if (parameter instanceof RP_Integer numbers) return prefix + "number\t" + numbers.getMinValue() + "\t" + numbers.getMaxValue() + "\t" + numbers.getStep();
+        if (parameter instanceof RP_StringSet set) return prefix + "set\t" + String.join("\t", set.getMaxValue());
+        return prefix + "custom";
     }
 
     @JSExport

@@ -1599,12 +1599,14 @@ async function findSavedStyle(id) {
 }
 
 function describeStyle(style) {
-    if (style.id === "jjSwing-ID") return { ...style, meter: "FOUR_FOUR", variations: Array.from(engine.exports.getSwingVariations()) };
-    const info = style.extension
-        ? engine.exports.getExtendedYamahaStyleInfo(style.bytes, style.baseName, style.extension, style.name)
-        : engine.exports.getYamahaStyleInfo(style.bytes, style.name);
-    const [meter, ...variations] = Array.from(info);
-    return { ...style, meter, variations };
+    const styleName = style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name;
+    const [meter, ...rows] = engine.exports.getRhythmParameters(style.bytes, styleName,
+        style.extension ?? new Int8Array(), style.extension ? style.name : "");
+    const parameters = new Map(rows.map(row => {
+        const [id, name, fallback, type, ...values] = row.split("\t");
+        return [id, { id, name, fallback, type, values }];
+    }));
+    return { ...style, meter, parameters, variations: parameters.get("rpVariationID")?.values ?? [] };
 }
 
 function arrangePart(part, style, partMeter) {
@@ -1804,7 +1806,7 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
             editor.unresolvedStyleMix = unresolved ? savedStyleMix : undefined;
             if (!followSong) editor.project.parts = arrangement.parts;
             editor.project.tempo = arrangement.tempo;
-            editor.styleVariations = new Map(styles.map(style => [style.id, style.variations]));
+            editor.styleParameters = new Map(styles.map(style => [style.id, style.parameters]));
             editor.render();
             const attached = new Map((followSong ? editor.attachedStyles : []).map(style => [style.id, style]));
             for (const style of allStyles.filter(item => item.attach)) attached.set(style.id, { name: style.name, id: style.id,
