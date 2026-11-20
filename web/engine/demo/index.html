@@ -13,7 +13,10 @@
                 <details><summary>ファイル</summary><div>
                     <button data-command="new-project" type="button">新規作成</button>
                     <button data-command="open-project-button" type="button">曲を開く…</button>
+                    <button id="open-song-folder" type="button" hidden>フォルダーから曲を開く…</button>
                     <button data-command="save-project" type="button">Web用に保存</button>
+                    <button id="overwrite-song-file" type="button" hidden>本家形式で上書き保存</button>
+                    <button id="save-as-song-file" type="button" hidden>本家形式で名前を付けて保存…</button>
                     <button id="duplicate-song" type="button">曲のコピーを保存…</button>
                     <button id="linearize-song" type="button">演奏順に展開した曲を保存…</button>
                     <button id="save-song-template" type="button">新規曲のテンプレートにする</button>
@@ -426,6 +429,27 @@
                 <button id="clear-track-override" type="button" class="secondary">この上書きを解除</button>
                 <button id="close-track-overrides" type="button" class="secondary">閉じる</button>
                 <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="song-folder-dialog" aria-labelledby="song-folder-title">
+        <form id="song-folder-form" method="dialog">
+            <h2 id="song-folder-title">フォルダー内の曲</h2>
+            <label class="field">曲ファイル <select id="song-folder-files"></select></label>
+            <div class="dialog-actions">
+                <button id="cancel-song-folder" type="button" class="secondary">キャンセル</button>
+                <button type="submit">開く</button>
+            </div>
+        </form>
+    </dialog>
+    <dialog id="song-folder-save-dialog" aria-labelledby="song-folder-save-title">
+        <form id="song-folder-save-form" method="dialog">
+            <h2 id="song-folder-save-title">本家形式で名前を付けて保存</h2>
+            <label class="field">ファイル名 <input id="song-folder-save-name" required></label>
+            <div class="dialog-actions">
+                <button id="cancel-song-folder-save" type="button" class="secondary">キャンセル</button>
+                <button type="submit">保存</button>
             </div>
         </form>
     </dialog>

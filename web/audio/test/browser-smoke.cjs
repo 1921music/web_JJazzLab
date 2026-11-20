@@ -5,7 +5,7 @@ const path = require("node:path");
 const { spawn } = require("node:child_process");
 const { pathToFileURL } = require("node:url");
 
-let fixtureServer;
+let fixtureServer, pageServer;
 (async () => {
 let fixtureUrl = null;
 if (process.env.JJAZZ_SMOKE_SUITE === "style-library" && process.env.JJAZZ_STYLE_FIXTURE === "1") {
@@ -140,10 +140,21 @@ const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
 })();`;
 const selectQuickMode = songFixture ? "" : 'applyLanguage("ja"); document.querySelector("#quick-mode").click();\n';
 fs.writeFileSync(smokePath, fs.readFileSync(htmlPath, "utf8").replace("</body>", "<script>" + selectQuickMode + harness + "</script></body>"));
+let pageUrl = pathToFileURL(smokePath).href;
+if (songFixture && process.env.JJAZZ_SMOKE_HTTP === "1") {
+    const page = fs.readFileSync(smokePath);
+    pageServer = require("node:http").createServer((request, reply) => {
+        if (request.url !== "/") { reply.writeHead(404); reply.end(); return; }
+        reply.writeHead(200, { "Content-Type": "text/html; charset=UTF-8", "Content-Length": page.length });
+        reply.end(page);
+    });
+    await new Promise(resolve => pageServer.listen(0, "127.0.0.1", resolve));
+    pageUrl = "http://127.0.0.1:" + pageServer.address().port + "/";
+}
 const child = spawn(chrome, [
     "--headless=new", "--no-first-run", "--no-default-browser-check", "--disable-background-networking",
     "--autoplay-policy=no-user-gesture-required", "--enable-logging=stderr", "--log-level=0",
-    "--user-data-dir=" + path.join(scratch, "profile"), pathToFileURL(smokePath).href
+    "--user-data-dir=" + path.join(scratch, "profile"), pageUrl
 ], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
 const log = fs.createWriteStream(path.join(scratch, "chrome.log"));
 let buffer = "", finished = false;
@@ -152,6 +163,7 @@ function finish(result) {
     if (finished) return; finished = true;
     clearTimeout(timeout); child.kill(); log.end();
     fixtureServer?.close();
+    pageServer?.close();
     console.log(JSON.stringify(result, null, 2));
     process.exitCode = result.ok ? 0 : 1;
 }
@@ -166,4 +178,4 @@ function read(data) {
 child.stderr.on("data", read); child.stdout.on("data", read);
 child.on("error", error => finish({ ok: false, error: error.message }));
 child.on("exit", code => { if (!finished) finish({ ok: false, error: "Chrome exited before reporting: " + code, scratch }); });
-})().catch(error => { fixtureServer?.close(); console.error(error.message); process.exitCode = 1; });
+})().catch(error => { fixtureServer?.close(); pageServer?.close(); console.error(error.message); process.exitCode = 1; });

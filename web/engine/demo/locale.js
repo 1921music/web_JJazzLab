@@ -163,6 +163,15 @@ Solo解除|Clear solo
 小節の高さ|Bar height
 演奏順に展開|Unfold in playback order
 コード譜を簡略化|Simplify the lead sheet
+フォルダーから曲を開く…|Open song from folder…
+本家形式で上書き保存|Save to original JJazzLab files
+本家形式で名前を付けて保存…|Save JJazzLab files as…
+本家形式で名前を付けて保存|Save JJazzLab files as
+フォルダー内の曲|Songs in the folder
+曲ファイル|Song file
+ファイル名|Filename
+開く|Open
+保存|Save
 全音符を表示|Fit all notes
 選択を反転|Invert selection
 音符を試聴|Audition notes

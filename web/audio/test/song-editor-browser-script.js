@@ -1135,6 +1135,46 @@
         check(editor.project.title.startsWith("SpeakNoEvil") && engine.exports.wasImportedMixApplied(),
             "Dropping a desktop song with its mix did not keep the paired mix");
         report.textAndDropImport = true;
+        if (location.protocol !== "file:") {
+            const privateFiles = await navigator.storage.getDirectory();
+            const songDirectory = await privateFiles.getDirectoryHandle("desktop-song-file-test", { create: true });
+            const writeFixture = async (name, contents) => {
+                const handle = await songDirectory.getFileHandle(name, { create: true });
+                const stream = await handle.createWritable();
+                await stream.write(contents);
+                await stream.close();
+            };
+            await writeFixture("original.sng", desktopFixture.song);
+            await writeFixture("ORIGINAL.mix", desktopFixture.mix);
+            const directoryPicker = window.showDirectoryPicker;
+            try {
+                window.showDirectoryPicker = async () => songDirectory;
+                await folderIO.openButton.onclick();
+                check(folderIO.dialog.open && folderIO.options.options.length === 1,
+                    "The folder dialog did not find the native song");
+                await document.querySelector("#song-folder-form").onsubmit({ preventDefault() {} });
+                while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+                check(folderIO.active?.song.name === "original.sng" && folderIO.active.mix?.name === "ORIGINAL.mix"
+                    && engine.exports.wasImportedMixApplied(), "Folder open did not locate the same-name mix");
+                editor.title.value = "Edited on the Web";
+                editor.title.dispatchEvent(new Event("input", { bubbles: true }));
+                await folderIO.saveButton.onclick();
+                const readLocal = async name => (await (await songDirectory.getFileHandle(name)).getFile()).text();
+                check(DesktopSongFiles.readSong(await readLocal("original.sng")).title === "Edited on the Web"
+                    && DesktopSongFiles.readMix(await readLocal("ORIGINAL.mix")).length === editor.nativeMix.length,
+                    `Overwriting the pair did not reflect the current song and mix: ${editor.status.textContent}`);
+                const savingCopy = folderIO.copyButton.onclick();
+                const nameDialog = document.querySelector("#song-folder-save-dialog");
+                for (let attempt = 0; !nameDialog.open && attempt < 50; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+                document.querySelector("#song-folder-save-name").value = "Separate Copy";
+                document.querySelector("#song-folder-save-form").requestSubmit();
+                await savingCopy;
+                check(DesktopSongFiles.readSong(await readLocal("Separate Copy.sng")).title === "Edited on the Web"
+                    && DesktopSongFiles.readMix(await readLocal("Separate Copy.mix")).length === editor.nativeMix.length,
+                    "Save As did not create the independently named pair");
+            } finally { window.showDirectoryPicker = directoryPicker; }
+            report.songFolderAccess = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
