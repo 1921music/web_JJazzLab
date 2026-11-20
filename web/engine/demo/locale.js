@@ -524,10 +524,12 @@ Autoでは選んだバリエーションの奏法に従います。ベースと�
 (MIT) / TimGM6mb — Tim Brechbill (GPL-2.0)。初回の再生にはネット接続が必要です。|(MIT) / TimGM6mb — Tim Brechbill (GPL-2.0). The first play requires an internet connection.
 `.trim().split("\n").map(line => line.split(/\|(?=[^|]*$)/u)));
 
-let uiLanguage = (navigator.languages?.[0] ?? navigator.language).toLowerCase().startsWith("ja") ? "ja" : "en";
+const languagePicker = document.querySelector("#ui-language");
+const supportedLanguages = new Set(Array.from(languagePicker.options, option => option.value));
+let uiLanguage = (navigator.languages?.[0] ?? navigator.language).toLowerCase().split("-")[0];
 try { uiLanguage = localStorage.getItem("jjazzlab.language") || uiLanguage; } catch { /* Preference storage is optional. */ }
-if (!["ja", "en"].includes(uiLanguage)) uiLanguage = "en";
-const t = (ja, en = labels.get(ja) ?? ja) => uiLanguage === "ja" ? ja : en;
+if (!supportedLanguages.has(uiLanguage)) uiLanguage = "en";
+const t = (ja, en = labels.get(ja) ?? ja) => uiLanguage === "ja" ? ja : additionalTranslations.get(en)?.[uiLanguage] ?? en;
 const translatedText = new Map();
 function localizedText(node, ja, en) {
     translatedText.set(node, [ja, en]);
@@ -551,7 +553,7 @@ for (const node of document.querySelectorAll("[aria-label], [title], [placeholde
 function applyLanguage(language) {
     uiLanguage = language;
     document.documentElement.lang = language;
-    document.querySelector("#ui-language").value = language;
+    languagePicker.value = language;
     localeBindings.forEach(apply => apply());
     for (const [node, [ja, en]] of translatedText) node.textContent = t(ja, en);
 }

@@ -8,9 +8,17 @@
         check(song && !status.hasAttribute("data-error"), status.textContent);
     }
     try {
-        const initialLanguage = (navigator.languages?.[0] ?? navigator.language).toLowerCase().startsWith("ja") ? "ja" : "en";
+        const browserLanguage = (navigator.languages?.[0] ?? navigator.language).toLowerCase().split("-")[0];
+        const initialLanguage = ["ja", "en", "fr", "de", "es"].includes(browserLanguage) ? browserLanguage : "en";
         check(document.documentElement.lang === initialLanguage, "Initial language did not follow the browser");
         const language = document.querySelector("#ui-language");
+        for (const [code, file, play] of [["fr", "Fichier", "Lire"], ["de", "Datei", "Wiedergabe"], ["es", "Archivo", "Reproducir"]]) {
+            language.value = code;
+            language.dispatchEvent(new Event("change"));
+            check(document.documentElement.lang === code && document.querySelector(".app-menu summary").textContent === file
+                && playButton.getAttribute("aria-label") === play && localStorage.getItem("jjazzlab.language") === code,
+            `The menu, playback label or saved language did not change to ${code}`);
+        }
         language.value = "en";
         language.dispatchEvent(new Event("change"));
         check(document.querySelector(".app-menu summary").textContent === "File" && editor.selection.textContent === "Bar 1",

@@ -119,6 +119,7 @@ def package(engine_dir, output):
     template = (DEMO / "index.html").read_text(encoding="utf-8")
     stylesheet = (DEMO / "demo.css").read_text(encoding="utf-8") + "\n" + desktop_icon_styles()
     locale = (DEMO / "locale.js").read_text(encoding="utf-8")
+    translations = (DEMO / "locale-translations.js").read_text(encoding="utf-8")
     preferences = (DEMO / "app-preferences.js").read_text(encoding="utf-8")
     window_layout = (DEMO / "window-layout.js").read_text(encoding="utf-8")
     diagnostics = (DEMO / "app-diagnostics.js").read_text(encoding="utf-8")
@@ -182,7 +183,7 @@ def package(engine_dir, output):
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
                             "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, preferences, window_layout, diagnostics, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, synth_settings, audio_export, song_editor, song_print, song_folder, song_history, song_memo, improvisation_guide, song_tabs, piano_score, piano_roll, chord_inspector, arranger, yjz_wizard, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, translations, locale, preferences, window_layout, diagnostics, midi, song_files, archive, music_xml_navigation, music_xml, rhythm_library, click_settings, midi_remote, midi_output, instrument_defaults, player, synth_settings, audio_export, song_editor, song_print, song_folder, song_history, song_memo, improvisation_guide, song_tabs, piano_score, piano_roll, chord_inspector, arranger, yjz_wizard, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     root_pom = ElementTree.parse(DEMO.parents[2] / "pom.xml")
     build_info = {"engineVersion": root_pom.findtext("{*}version"), "engineBytes": len(engine_wasm),
