@@ -309,6 +309,14 @@ MIDI出力遅延（ms）|MIDI output delay (ms)
 五線譜|Staff notation
 コードインスペクター…|Chord Inspector…
 コードインスペクター|Chord Inspector
+リンクを挿入…|Insert Link…
+リンクを挿入|Insert Link
+メモのリンク先ファイル|File linked in the song memo
+種類|Type
+Webリンク|Web link
+ローカルファイル|Local file
+URLまたはファイルのパス|URL or file path
+リンクを試す|Test Link
 鍵盤|Keyboard
 ギター|Guitar
 表示方法|View

@@ -1619,36 +1619,7 @@ document.querySelector("#show-generation-controls").onclick = () => {
     generationControls.scrollIntoView({ block: "nearest" });
     generationControls.querySelector("summary").focus({ preventScroll: true });
 };
-const songMemo = document.querySelector("#song-memo");
-const songMemoText = document.querySelector("#song-memo-text");
-const songMemoLinks = document.querySelector("#song-memo-links");
-songMemoText.oninput = () => {
-    const links = new Set(songMemoText.value.match(/https?:\/\/[^\s<>"\])]+/giu) ?? []);
-    songMemoLinks.replaceChildren(...[...links].map(url => {
-        const item = document.createElement("li");
-        const link = document.createElement("a");
-        link.href = url;
-        link.textContent = url;
-        link.target = "_blank";
-        link.rel = "noopener noreferrer";
-        item.append(link);
-        return item;
-    }));
-    songMemoLinks.hidden = !links.size;
-};
-document.querySelector("#open-song-memo").onclick = () => {
-    if (!editor.project) return;
-    songMemoText.value = editor.project.comments ?? "";
-    songMemoText.oninput();
-    songMemo.showModal();
-};
-document.querySelector("#cancel-song-memo").onclick = () => songMemo.close();
-document.querySelector("#song-memo-form").onsubmit = () => {
-    if (songMemoText.value === (editor.project.comments ?? "")) return;
-    editor.rememberEdit(editor.captureEdit());
-    editor.project.comments = songMemoText.value;
-    updateMenus();
-};
+const songMemo = new SongMemo(editor, folderIO);
 structureToggle.onclick = () => {
     const panel = document.querySelector("#structure");
     panel.hidden = !panel.hidden;

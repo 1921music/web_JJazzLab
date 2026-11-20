@@ -361,7 +361,9 @@
             <h2 id="song-memo-title">曲のメモ</h2>
             <textarea id="song-memo-text" aria-labelledby="song-memo-title" rows="9"></textarea>
             <ul id="song-memo-links" hidden></ul>
+            <p id="song-memo-status" role="status"></p>
             <div class="dialog-actions">
+                <button id="open-memo-link-form" type="button" class="secondary">リンクを挿入…</button>
                 <button id="cancel-song-memo" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
@@ -378,6 +380,23 @@
             <div class="dialog-actions">
                 <button id="cancel-practice-song" type="button" class="secondary">キャンセル</button>
                 <button type="submit">練習曲を保存</button>
+            </div>
+        </form>
+    </dialog>
+
+    <input id="song-memo-local-file" type="file" aria-label="メモのリンク先ファイル" hidden>
+    <dialog id="insert-memo-link" aria-labelledby="insert-memo-link-title">
+        <form method="dialog">
+            <h2 id="insert-memo-link-title">リンクを挿入</h2>
+            <label class="field">種類
+                <select name="linkType"><option value="web">Webリンク</option><option value="local">ローカルファイル</option></select>
+            </label>
+            <label class="field">URLまたはファイルのパス <input name="address" required></label>
+            <p class="editor-error" role="alert"></p>
+            <div class="dialog-actions">
+                <button name="testLink" class="secondary" type="button">リンクを試す</button>
+                <button name="cancelLink" class="secondary" type="button">キャンセル</button>
+                <button type="submit">挿入</button>
             </div>
         </form>
     </dialog>

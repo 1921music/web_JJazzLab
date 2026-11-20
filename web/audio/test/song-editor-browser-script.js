@@ -2155,6 +2155,48 @@ AbM7 | G7 Cm7 |
             dialog.close();
             report.chordInspector = true;
         }
+        {
+            editor.newSong();
+            document.querySelector("#open-song-memo").click();
+            const insertion = document.querySelector("#insert-memo-link");
+            const insert = insertion.querySelector("form");
+            const newLink = document.querySelector("#open-memo-link-form");
+            newLink.click();
+            insert.elements.address.value = "https://example.org/listening";
+            insert.requestSubmit();
+            newLink.click();
+            insert.elements.linkType.value = "local";
+            insert.elements.address.value = "/music/Song Sheet.pdf";
+            insert.requestSubmit();
+            check(songMemo.links.querySelector("a")?.href === "https://example.org/listening"
+                && songMemo.links.querySelector("button")?.textContent === "file:///music/Song%20Sheet.pdf",
+            "The insert dialog did not create both web and desktop file links");
+            const click = songMemo.file.click, original = HTMLAnchorElement.prototype.click;
+            let requested = 0, downloaded;
+            songMemo.file.click = () => { requested++; };
+            HTMLAnchorElement.prototype.click = function () {
+                if (this.download === "Song Sheet.pdf") downloaded = fetch(this.href).then(response => response.text());
+                else original.call(this);
+            };
+            try {
+                await songMemo.links.querySelector("button").onclick();
+                check(requested === 1, "The unbound local link was not passed to the file chooser");
+                const files = new DataTransfer();
+                files.items.add(new File(["score"], "Song Sheet.pdf", { type: "application/pdf" }));
+                songMemo.file.files = files.files;
+                songMemo.file.onchange();
+                check(await downloaded === "score", "The memo did not open the explicitly chosen file");
+            } finally {
+                songMemo.file.click = click;
+                HTMLAnchorElement.prototype.click = original;
+            }
+            document.querySelector("#song-memo-form").requestSubmit();
+            const reopened = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+            check(reopened.comments.includes("file:///music/Song%20Sheet.pdf"), "The desktop-compatible file link was removed from .sng");
+            editor.undoButton.click();
+            check(!editor.project.comments, "Undo did not remove the inserted links");
+            report.songMemoLinks = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
