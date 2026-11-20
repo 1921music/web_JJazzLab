@@ -1829,6 +1829,56 @@
             }
             report.clickToneSettings = true;
         }
+        {
+            const requestDescriptor = Object.getOwnPropertyDescriptor(navigator, "requestMIDIAccess");
+            const midiInput = { id: "test-keyboard", name: "Test Keyboard", state: "connected" };
+            const access = { inputs: new Map([[midiInput.id, midiInput]]) };
+            Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async options => {
+                check(options.sysex === false, "Remote control requested unnecessary SysEx permissions");
+                return access;
+            } });
+            const saved = localStorage.getItem(midiRemote.key);
+            const loopWasEnabled = loopEnabled.checked;
+            const dialog = document.querySelector("#midi-remote");
+            const send = (...data) => midiInput.onmidimessage?.({ data: Uint8Array.from(data) });
+            try {
+                editor.newSong();
+                editor.selectPart(0);
+                const part = editor.project.parts[0];
+                document.querySelector("#open-midi-remote").click();
+                await document.querySelector("#midi-remote-connect").onclick();
+                check(document.querySelector("#midi-remote-device").value === midiInput.id, "The browser MIDI input was not selected");
+                const row = midiRemote.actions.findIndex(action => action.id === "loop");
+                midiRemote.rows.rows[row].querySelector("button").click();
+                send(0xb2, 64, 127);
+                check(JSON.parse(localStorage.getItem(midiRemote.key)).bindings.loop === "cc:2:64", "MIDI Learn did not store the pedal");
+                dialog.close();
+                send(0xb2, 64, 0);
+                send(0xb2, 64, 127);
+                check(loopEnabled.checked !== loopWasEnabled, "The learned pedal did not toggle looping");
+                send(0xb2, 64, 100);
+                check(loopEnabled.checked !== loopWasEnabled, "A held pedal toggled looping twice");
+                send(0x90, 16, 100);
+                check(/^Main B/u.test(part.parameters.rpVariationID), "The desktop default note did not change the selected variation");
+                send(0x90, 24, 100);
+                for (let attempt = 0; !playing && attempt < 160; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+                check(playing, "The default MIDI Play note did not start accompaniment");
+                send(0x90, 26, 100);
+                for (let attempt = 0; playing && attempt < 80; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+                check(!playing, "The default MIDI Stop note did not stop accompaniment");
+                midiInput.state = "disconnected";
+                access.onstatechange();
+                check(!midiInput.onmidimessage && !midiRemote.input, "A disconnected keyboard was still active");
+            } finally {
+                if (dialog.open) dialog.close();
+                loopEnabled.checked = loopWasEnabled;
+                if (saved === null) localStorage.removeItem(midiRemote.key);
+                else localStorage.setItem(midiRemote.key, saved);
+                if (requestDescriptor) Object.defineProperty(navigator, "requestMIDIAccess", requestDescriptor);
+                else delete navigator.requestMIDIAccess;
+            }
+            report.midiRemote = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

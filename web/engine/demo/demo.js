@@ -863,6 +863,24 @@ function jumpPart(direction) {
     }
 }
 
+async function changeRemoteVariation(direction) {
+    if (generating || starting || !editor.project) return;
+    const project = editor.project;
+    const part = project.parts[editor.partIndices(editor.selectedPart)[0] ?? 0];
+    try {
+        let variation = editor.parametersFor(part.styleId).get("rpVariationID");
+        if (!variation?.values.length) variation = (await editor.onDescribeStyle(part.styleId)).parameters.get("rpVariationID");
+        if (!variation?.values.length || editor.project !== project || !project.parts.includes(part)) return;
+        const { values, fallback } = variation;
+        const current = Math.max(0, values.indexOf(part.parameters.rpVariationID ?? fallback));
+        const value = typeof direction === "number" ? values[(current + direction + values.length) % values.length]
+            : values.find(value => value.startsWith(`Main ${direction}`));
+        if (value && value !== (part.parameters.rpVariationID ?? fallback)) {
+            editor.editArrangement(() => { part.parameters.rpVariationID = value; });
+        }
+    } catch (error) { editor.notify(error.message, true); }
+}
+
 stopButton.addEventListener("click", async () => {
     try {
         await player.stop();
@@ -2118,6 +2136,31 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
         generating = false; updateButtons();
     }
 }
+const midiRemote = new MidiRemote([
+    { id: "play", note: 24, japanese: "再生", english: "Play", run: () => playButton.click() },
+    { id: "stop", note: 26, japanese: "停止", english: "Stop", run: () => stopButton.click() },
+    { id: "pause", japanese: "一時停止", english: "Pause", run: () => pauseButton.click() },
+    { id: "restart", note: 28, japanese: "再生範囲の先頭へ", english: "Restart playback",
+        run: () => { if (playing || paused) void startPlayback(true); } },
+    { id: "previous-part", note: 25, japanese: "前の演奏区間", english: "Previous song part", run: () => previousPart.click() },
+    { id: "next-part", note: 27, japanese: "次の演奏区間", english: "Next song part", run: () => nextPart.click() },
+    { id: "play-selection", note: 32, japanese: "選択範囲のみ再生", english: "Play selection",
+        run: () => { if (editor.project) editor.playSelection(); } },
+    { id: "loop", note: 33, japanese: "ループ切り替え", english: "Toggle loop", run: () => toggleLoop.click() },
+    { id: "previous-variation", note: 21, japanese: "前のバリエーション", english: "Previous variation",
+        run: () => void changeRemoteVariation(-1) },
+    { id: "next-variation", note: 23, japanese: "次のバリエーション", english: "Next variation",
+        run: () => void changeRemoteVariation(1) },
+    ...["A", "B", "C", "D"].map((letter, index) => ({
+        id: `variation-${letter}`, note: [14, 16, 17, 19][index], japanese: `バリエーション ${letter}`, english: `Variation ${letter}`,
+        run: () => void changeRemoteVariation(letter)
+    })),
+    { id: "transpose-down", note: 29, japanese: "半音下げる", english: "Transpose down a semitone",
+        run: () => { if (editor.project) void editor.transposeChords(-1); } },
+    { id: "transpose-up", note: 31, japanese: "半音上げる", english: "Transpose up a semitone",
+        run: () => { if (editor.project) void editor.transposeChords(1); } }
+], () => player.initialize(showPlayStatus).catch(error => showPlayStatus(error.message, true)));
+
 document.querySelector("#new-project").click();
 bootingSong = false;
 void recentSongs.restore(songTabs.startup).then(() => songTabs.restore());

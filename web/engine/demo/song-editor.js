@@ -1893,8 +1893,8 @@ class SongEditor {
         const updateDestinations = async useSaved => {
             const request = ++pending;
             const saved = useSaved ? entries.get(source.value) : undefined;
-            clear.disabled = !targets.some(position => DesktopSongFiles
-                .readTrackOverrides(this.project.parts[position]?.parameters[parameter])
+            clear.disabled = !targets.some(target => DesktopSongFiles
+                .readTrackOverrides(target.parameters[parameter])
                 .some(entry => entry.source === source.value));
             rhythm.disabled = !base;
             destination.disabled = variation.disabled = apply.disabled = true;

@@ -114,6 +114,7 @@ def package(engine_dir, output):
     archive = (DEMO / "style-archive.js").read_text(encoding="utf-8")
     rhythm_library = (DEMO / "rhythm-library.js").read_text(encoding="utf-8")
     click_settings = (DEMO / "click-settings.js").read_text(encoding="utf-8")
+    midi_remote = (DEMO / "midi-remote.js").read_text(encoding="utf-8")
     with ZipFile(STYLE_ARCHIVE) as styles:
         style = encode_gzip(styles.read("8Beat.T160.STY"))
         jazz_waltz = encode_gzip(styles.read("JazzWaltzMed.S351.sst"))
@@ -137,7 +138,7 @@ def package(engine_dir, output):
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
                             "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, rhythm_library, click_settings, player, audio_export, song_editor, song_print, song_folder, song_history, song_tabs, piano_roll, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, rhythm_library, click_settings, midi_remote, player, audio_export, song_editor, song_print, song_folder, song_history, song_tabs, piano_roll, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:

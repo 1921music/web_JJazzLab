@@ -286,6 +286,13 @@ JJazzLab公開スタイル集|JJazzLab public style library
 リズムライブラリ|Rhythm Library
 クリック音の設定…|Click Settings…
 クリック音の設定|Click Settings
+MIDI遠隔操作…|MIDI Remote Control…
+MIDI遠隔操作|MIDI Remote Control
+MIDI入力に接続|Connect to MIDI Input
+入力機器|Input device
+遠隔操作を有効にする|Enable remote control
+操作|Action
+MIDI割り当て|MIDI binding
 強拍|Emphasized beats
 弱拍|Other beats
 打楽器|Percussion
