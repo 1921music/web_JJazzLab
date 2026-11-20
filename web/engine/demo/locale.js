@@ -214,6 +214,8 @@ MIDI設定|MIDI settings
 MIDIチャンネル|MIDI channel
 移調（半音）|Transpose (semitones)
 ベロシティ補正|Velocity shift
+ドラムを試聴|Preview drums
+試聴を停止|Stop preview
 音色を送信|Send instrument
 音色を検索|Search instruments
 音色を試聴|Audition instrument

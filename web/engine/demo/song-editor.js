@@ -1295,13 +1295,32 @@ class SongEditor {
         const list = document.querySelector("#drum-transform-chain");
         const submit = form.querySelector('[type="submit"]');
         const controls = document.querySelector("#drum-transform-offsets");
+        const preview = document.querySelector("#preview-drum-transforms");
+        const stop = document.querySelector("#stop-drum-transforms");
         const choices = new Map();
         const render = () => {
             list.replaceChildren(...transforms.map((entry, index) => {
-                const id = entry.split("#", 1)[0];
+                const [id, settings = ""] = entry.split("#");
                 const row = document.createElement("div");
                 const label = document.createElement("span");
-                label.textContent = choices.get(id) ?? id;
+                const choice = choices.get(id);
+                label.textContent = choice?.name ?? id;
+                row.append(label);
+                if (choice?.velocity !== "" && choice?.velocity !== undefined) {
+                    const properties = new Map(settings.split(",").filter(Boolean).map(value => value.split("=")));
+                    const velocity = document.createElement("input");
+                    velocity.type = "number"; velocity.min = -63; velocity.max = 64; velocity.required = true;
+                    velocity.value = properties.get("VelocityOffset") ?? choice.velocity;
+                    velocity.dataset.transformVelocity = id;
+                    velocity.setAttribute("aria-label", `${choice.name} – ${t("ベロシティ補正", "Velocity offset")}`);
+                    velocity.oninput = () => {
+                        if (!velocity.validity.valid) return;
+                        if (velocity.valueAsNumber === Number(choice.velocity)) properties.delete("VelocityOffset");
+                        else properties.set("VelocityOffset", velocity.value);
+                        transforms[index] = `${id}#${Array.from(properties, ([key, value]) => `${key}=${value}`).join(",")}`;
+                    };
+                    row.append(velocity);
+                }
                 const move = displacement => {
                     const target = index + displacement;
                     if (target < 0 || target >= transforms.length) return;
@@ -1315,7 +1334,7 @@ class SongEditor {
                 down.setAttribute("aria-label", t("下へ移動", "Move down"));
                 down.disabled = index === transforms.length - 1;
                 const remove = this.button(t("削除", "Delete"), () => { transforms.splice(index, 1); render(); });
-                row.append(label, up, down, remove);
+                row.append(up, down, remove);
                 return row;
             }));
         };
@@ -1332,22 +1351,41 @@ class SongEditor {
         });
         controls.replaceChildren(...inputs);
         type.replaceChildren();
-        add.disabled = submit.disabled = type.disabled = true;
+        add.disabled = submit.disabled = type.disabled = preview.disabled = true;
+        stop.disabled = true;
         status.hidden = false;
         status.textContent = t("リズムを読み込んでいます…", "Loading rhythm…");
         document.querySelector("#cancel-drum-transforms").onclick = () => dialog.close();
         add.onclick = () => { transforms.push(type.value + "#"); render(); };
-        form.onsubmit = event => {
-            event.preventDefault();
-            if (submit.disabled || this.project.parts[index] !== part) return;
+        const transformValue = () => {
             for (const field of controls.querySelectorAll("input")) {
                 if (field.valueAsNumber) offsets.set(field.dataset.drumOffset, String(field.valueAsNumber));
                 else offsets.delete(field.dataset.drumOffset);
             }
             const properties = Array.from(offsets, ([key, value]) => key + "=" + value).join(",");
-            const value = "[" + [...transforms, mixId + "#" + properties].join("|") + "]";
+            return transforms.length || properties ? "[" + [...transforms, mixId + "#" + properties].join("|") + "]" : "[]";
+        };
+        let request = 0;
+        const endPreview = () => { request++; stop.disabled = true; preview.disabled = submit.disabled; this.onStopDrumPreview(); };
+        stop.onclick = endPreview;
+        dialog.onclose = endPreview;
+        preview.onclick = async () => {
+            if (!form.reportValidity()) return;
+            const current = ++request;
+            const valid = () => current === request && dialog.open && this.project.parts[index] === part;
+            preview.disabled = true;
+            stop.disabled = false;
+            status.hidden = true;
+            try { await this.onPreviewDrumTransforms(index, transformValue(), valid); }
+            catch (error) { if (valid()) { status.textContent = error.message; status.hidden = false; } }
+            finally { if (valid()) preview.disabled = false; }
+        };
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (submit.disabled || this.project.parts[index] !== part) return;
+            const value = transformValue();
             if (saved !== value) this.editArrangement(() => {
-                if (transforms.length || properties) part.parameters[parameter] = value;
+                if (value !== "[]") part.parameters[parameter] = value;
                 else delete part.parameters[parameter];
             });
             dialog.close();
@@ -1364,10 +1402,10 @@ class SongEditor {
             }
             const available = await this.onDrumTransformChoices();
             if (!dialog.open || this.project.parts[index] !== part) return;
-            for (const [id, name] of available) choices.set(id, name);
-            type.replaceChildren(...Array.from(choices, ([id, name]) => new Option(name, id)));
+            for (const [id, name, velocity] of available) choices.set(id, { name, velocity });
+            type.replaceChildren(...Array.from(choices, ([id, choice]) => new Option(choice.name, id)));
             add.disabled = type.disabled = !choices.size;
-            submit.disabled = false;
+            submit.disabled = preview.disabled = false;
             status.hidden = true;
             render();
         } catch (error) {

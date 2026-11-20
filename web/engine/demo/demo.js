@@ -855,24 +855,25 @@ function decompress(encoded) {
     return new Response(stream).arrayBuffer();
 }
 
-async function loadEngine() {
+async function instantiateEngine() {
     const wasm = await decompress(embeddedWasm);
     const url = URL.createObjectURL(new Blob([wasm], { type: "application/wasm" }));
     try {
-        const engine = await globalThis.TeaVM.wasmGC.load(url, { nodejs: false });
-        mixerInstruments = Array.from(engine.exports.getMixerInstruments(), row => {
-            const [program, drum, patch, id] = row.split("\t");
-            const bank = embeddedDesktopMixerPatches[drum === "true" ? "Drums" : "GM Bank"];
-            return { program: Number(program), drum: drum === "true", patch, id, desktop: bank[program] };
-        });
-        return engine;
+        return await globalThis.TeaVM.wasmGC.load(url, { nodejs: false });
     } finally {
         URL.revokeObjectURL(url);
     }
 }
 
 function getEngine() {
-    engineLoad ??= loadEngine().catch(error => {
+    engineLoad ??= instantiateEngine().then(engine => {
+        mixerInstruments = Array.from(engine.exports.getMixerInstruments(), row => {
+            const [program, drum, patch, id] = row.split("\t");
+            const bank = embeddedDesktopMixerPatches[drum === "true" ? "Drums" : "GM Bank"];
+            return { program: Number(program), drum: drum === "true", patch, id, desktop: bank[program] };
+        });
+        return engine;
+    }).catch(error => {
         engineLoad = undefined;
         throw error;
     });
@@ -1054,8 +1055,8 @@ pianoRoll.onAudition = notes => {
         name === pianoRoll.name && project === editor.project && custom === pianoRoll.custom);
 };
 
-function queueAudition(notes, drum, program, tempo, stillValid) {
-    if (playing || paused || starting || generating) return;
+function queueAudition(notes, drum, program, tempo, stillValid, range) {
+    if (!notes.length || playing || paused || starting || generating) return;
     const request = ++auditionRequest;
     const audio = player.initialize(showPlayStatus);
     audio.catch(() => {});
@@ -1063,20 +1064,21 @@ function queueAudition(notes, drum, program, tempo, stillValid) {
         await audio;
         if (request !== auditionRequest || !stillValid() || playing || paused || starting || generating) return;
         const secondsPerBeat = 60 / tempo;
-        const start = notes.reduce((min, note) => Math.min(min, note.position), Infinity);
+        const start = range?.start ?? notes.reduce((min, note) => Math.min(min, note.position), Infinity);
         const events = [];
         for (const note of notes) {
             events.push({ seconds: (note.position - start) * secondsPerBeat, part: 0, type: 0x90, a: note.pitch, b: note.velocity },
                 { seconds: (note.position - start + note.duration) * secondsPerBeat, part: 0, type: 0x80, a: note.pitch, b: 0 });
         }
         events.sort((a, b) => a.seconds - b.seconds || a.type - b.type);
-        const duration = events.at(-1).seconds + .15;
+        const duration = range ? (range.end - start) * secondsPerBeat : events.at(-1).seconds + .15;
         events.unshift({ seconds: 0, part: 0, type: 0xc0, a: program, b: 0 });
         const part = { drum, volume: 1, pan: 0 };
         await player.play({ parts: [part], events, duration }, { enabled: false, start: 0, end: duration },
             [part], Number(masterInput.value) / 100, false, { preview: true, click: false });
         showPlayStatus("");
     }).catch(error => showPlayStatus(error.message, true));
+    return pendingAudition;
 }
 
 function stopAudition() {
@@ -1237,7 +1239,40 @@ editor.onDescribeRhythm = async id => {
     });
     return { ...describeStyle(style), voices };
 };
-editor.onDrumTransformChoices = async () => new Map(Array.from((await getEngine()).exports.getDrumTransforms(), row => row.split("\t")));
+editor.onDrumTransformChoices = async () => Array.from((await getEngine()).exports.getDrumTransforms(), row => row.split("\t"));
+editor.onStopDrumPreview = stopAudition;
+let drumPreviewEngine;
+editor.onPreviewDrumTransforms = async (index, value, stillValid) => {
+    if (playing || paused || starting || generating) throw new Error(t("再生を停止してから試聴してください。", "Stop playback before previewing."));
+    const audio = player.initialize(showPlayStatus);
+    audio.catch(() => {});
+    const project = editor.project;
+    const range = editor.partRanges()[index];
+    const preview = { ...project, parts: project.parts.map((part, position) => position === index
+        ? { ...part, parameters: { ...part.parameters, RP_SYS_DrumsTransformId: value } } : part) };
+    drumPreviewEngine ??= instantiateEngine().catch(error => { drumPreviewEngine = undefined; throw error; });
+    const [wasm, arrangement] = await Promise.all([drumPreviewEngine, resolveArrangement(preview, rhythmEngine.value === "jjswing"), audio]);
+    if (!stillValid()) return;
+    const { parts, sources, styles, overrideStyles } = arrangement;
+    wasm.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(
+        { ...preview, parts }, [...styles, ...overrideStyles], sources, editor.unresolvedStyleMix ?? editor.mix));
+    const style = styles[sources[index]];
+    const voices = wasm.exports.getRhythmVoices(style.bytes, style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name,
+        style.extension ?? new Int8Array(), style.extension ? style.name : "");
+    const drumVoice = Array.from(voices, row => row.split("\t")).find(([, type]) => type === "DRUMS")?.[0];
+    const tracks = DesktopSongFiles.decodeEngineMix(wasm.exports.getSongMix());
+    const track = tracks.find(track => DesktopSongFiles.sourceStyleId(track.rhythmId) === style.id && track.name === drumVoice);
+    if (!track) throw new Error(t("このリズムにドラムトラックがありません。", "This rhythm has no drums track."));
+    const generated = wasm.exports.getRhythmTrackPhrase(track.channel);
+    const bars = DesktopSongFiles.barBeats(preview);
+    const start = bars.slice(0, range.from - 1).reduce((sum, beats) => sum + beats, 0);
+    const end = start + bars.slice(range.from - 1, range.to).reduce((sum, beats) => sum + beats, 0);
+    const notes = (generated ? UserPhrase.read(generated).notes : []).filter(note => note.position >= start && note.position < end)
+        .map(note => ({ ...note, duration: Math.min(note.duration, end - note.position) }));
+    if (!notes.length) throw new Error(t("この区間に試聴できるドラム音符がありません。", "There are no drum notes to preview in this song part."));
+    const instrument = mixerInstruments.find(item => item.drum && (track.patch === item.patch || track.instrument === item.desktop.id));
+    await queueAudition(notes, true, instrument?.program ?? 0, project.tempo, stillValid, { start, end });
+};
 editor.onEditCustomPhrase = async (index, voice) => {
     const project = editor.project;
     const part = project.parts[index];

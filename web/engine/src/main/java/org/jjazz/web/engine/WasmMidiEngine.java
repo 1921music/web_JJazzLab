@@ -21,6 +21,7 @@ import org.jjazz.importers.api.TextReader;
 import org.jjazz.phrase.api.NoteEvent;
 import org.jjazz.phrase.api.Phrase;
 import org.jjazz.phrase.api.Phrases;
+import org.jjazz.phrasetransform.DrumsAccentsTransform;
 import org.jjazz.phrasetransform.api.PhraseTransform;
 import org.jjazz.phrasetransform.api.PhraseTransformCategory;
 import org.jjazz.phrasetransform.api.PhraseTransformManager;
@@ -373,9 +374,9 @@ public final class WasmMidiEngine
     {
         WebServices.install();
         return PhraseTransformManager.getDefault().getPhraseTransforms(PhraseTransformCategory.DRUMS).stream()
-                .map(PhraseTransform::getInfo)
-                .filter(info -> !info.getUniqueId().contains(PhraseTransform.HIDDEN_ID_TOKEN))
-                .map(info -> info.getUniqueId() + "\t" + info.getName())
+                .filter(transform -> !transform.getInfo().getUniqueId().contains(PhraseTransform.HIDDEN_ID_TOKEN))
+                .map(transform -> transform.getInfo().getUniqueId() + "\t" + transform.getInfo().getName() + "\t"
+                    + transform.getProperties().getProperty(DrumsAccentsTransform.PROP_VELOCITY_OFFSET, ""))
                 .toArray(String[]::new);
     }
 

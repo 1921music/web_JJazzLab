@@ -424,6 +424,7 @@ dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display
 #track-override-list { margin: 0; padding-inline-start: 1.4rem; }
 #drum-transform-chain > div { display: flex; align-items: center; gap: .3rem; }
 #drum-transform-chain > div > span { flex: 1; }
+#drum-transform-chain input { width: 4.75rem; }
 #drum-transform-offsets { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: .5rem; }
 #channel-midi-values { display: grid; grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr)); gap: .5rem; }
 #channel-midi-flags { display: flex; flex-wrap: wrap; gap: .4rem 1rem; margin-top: .65rem; }

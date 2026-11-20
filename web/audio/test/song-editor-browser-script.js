@@ -1091,15 +1091,41 @@
                 type.value = "AddTambourineEightsId";
                 check(type.value === "AddTambourineEightsId", document.querySelector("#drum-transform-status").textContent);
                 document.querySelector("#add-drum-transform").click();
+                const velocity = document.querySelector('[data-transform-velocity="AddTambourineEightsId"]');
+                check(velocity?.value === "0", "The selected drum transform did not expose its desktop default");
+                velocity.value = "-20";
+                velocity.dispatchEvent(new Event("input"));
                 document.querySelector('[data-drum-offset="SNARE"]').value = "-20";
+                const originalPlay = player.play;
+                const originalStop = player.stop;
+                const beforePreview = song;
+                const savedTransform = editor.project.parts[index].parameters.RP_SYS_DrumsTransformId;
+                let previewNotes, stoppedPreview = false;
+                player.play = async (previewSong, ...args) => {
+                    if (args.at(-1)?.preview) previewNotes = previewSong.events;
+                    return originalPlay.call(player, previewSong, ...args);
+                };
+                player.stop = async () => { stoppedPreview = true; return originalStop.call(player); };
+                try {
+                    await document.querySelector("#preview-drum-transforms").onclick();
+                    check(previewNotes?.some(note => note.type === 0x90 && note.a === 54 && note.b > 0),
+                        `The preview did not play the unsaved pattern: ${document.querySelector("#drum-transform-status").textContent}`);
+                    check(song === beforePreview && editor.project.parts[index].parameters.RP_SYS_DrumsTransformId === savedTransform,
+                        "Preview changed the project or replaced the prepared accompaniment");
+                    document.querySelector("#stop-drum-transforms").click();
+                    await pendingAudition;
+                    check(stoppedPreview, "Stop did not stop the drum preview");
+                } finally { player.play = originalPlay; player.stop = originalStop; }
                 document.querySelector("#drum-transforms-form").requestSubmit();
                 const layered = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
-                check(layered.parts[index].parameters.RP_SYS_DrumsTransformId === "[AddTambourineEightsId#|DrumsMixIdhidden#SNARE=-20]",
+                check(layered.parts[index].parameters.RP_SYS_DrumsTransformId === "[AddTambourineEightsId#VelocityOffset=-20|DrumsMixIdhidden#SNARE=-20]",
                     "The drum transform edit lost its pattern or velocity offset in the saved song");
                 await generate();
                 const tambourine = notesIn(song, index, drums);
                 check(tambourine.filter(note => note[1] === 54).length > baseline.filter(note => note[1] === 54).length,
                     "The built-in Tambourine pattern was not applied from the edited transform chain");
+                check(tambourine.some(note => note[1] === 54 && previewNotes.some(event => event.type === 0x90 && event.a === 54 && event.b === note[2])),
+                    "The tambourine velocity did not match between preview and saved playback");
                 // The desktop AccentProcessor may insert or choose a crash at random.
                 const withoutCrash = notes => notes.filter(note => ![49, 52, 55, 57].includes(note[1]));
                 report.drumsTransform = { originalNotes: transformed.length, addedTambourineNotes: tambourine.length - baseline.length,
