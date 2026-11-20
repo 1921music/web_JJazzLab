@@ -315,6 +315,11 @@ SysExを許可して接続|Connect with SysEx permission
 音色・エフェクト・音量・パンを送信する|Send program, effects, volume and pan
 内蔵音源も鳴らす|Also play the built-in synthesizer
 環境設定…|Preferences…
+内蔵音源…|Built-in Synthesizer…
+内蔵音源|Built-in Synthesizer
+使用中のSoundFont|Current SoundFont
+GM用のSoundFont（.sf2、16MB以下）|GM SoundFont (.sf2, up to 16 MB)
+TimGM6mbに戻す|Restore TimGM6mb
 JJazzLab フォーラム|JJazzLab Forum
 JJazzLab に寄付|Donate to JJazzLab
 バージョンと診断…|Version and Diagnostics…

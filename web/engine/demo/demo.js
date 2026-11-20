@@ -618,7 +618,7 @@ function openMixerContext(part, strip, x, y) {
 
 let exportingAudio = false;
 async function exportAudio(format, trackId, allTracks = false) {
-    if (exportingAudio || generating || starting || !form.reportValidity()) return;
+    if (exportingAudio || generating || starting || synthSettings.switching || !form.reportValidity()) return;
     exportingAudio = true;
     updateMenus();
     try {
@@ -830,6 +830,7 @@ function renderMixer() {
 }
 
 async function startPlayback(restart = false, stopAtEnd = false) {
+    if (synthSettings.switching) return;
     if (generating || starting || (playing && !restart)) return;
     const refresh = !song || accompanimentDirty || (tempoDirty && (!paused || restart));
     if (refresh && !form.reportValidity()) return;
@@ -1294,7 +1295,7 @@ pianoRoll.onAudition = notes => {
 };
 
 function queueAudition(notes, drum, program, tempo, stillValid, range) {
-    if (!notes.length || playing || paused || starting || generating) return;
+    if (!notes.length || playing || paused || starting || generating || synthSettings.switching) return;
     const request = ++auditionRequest;
     const audio = player.initialize(showPlayStatus);
     audio.catch(() => {});
@@ -2293,6 +2294,8 @@ midiRemote.onDeviceChange = () => {
     arranger.resetKeys();
 };
 
+const synthSettings = new SynthSettings(player, () => playing || paused || starting || generating || exportingAudio,
+    showPlayStatus, () => { stopAudition(); return pendingAudition; });
 const windowLayout = new WindowLayout(workspace);
 const yjzWizard = new YjzWizard({
     choices: editor.onStyleChoices,

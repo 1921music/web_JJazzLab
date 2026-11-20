@@ -2,8 +2,29 @@
 
 const soundFontUrl = "https://raw.githubusercontent.com/craffel/pretty-midi/0df351ff2949ef80e788343e952fe15e473f0cde/pretty_midi/TimGM6mb.sf2";
 let synthAssets;
+let selectedSoundFont;
+
+function validateSoundFont(soundfont) {
+    if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000) {
+        throw new Error(t("SoundFontは16MB以下の .sf2 を選んでください。", "Choose an .sf2 SoundFont of up to 16 MB."));
+    }
+    const header = new DataView(soundfont);
+    if (header.getUint32(0) !== 0x52494646 || header.getUint32(8) !== 0x7366626b
+        || header.getUint32(4, true) !== soundfont.byteLength - 8) {
+        throw new Error(t("SoundFontファイルの形式が不正です。", "Invalid SoundFont file format."));
+    }
+    return soundfont;
+}
 
 function loadSynthAssets(onStatus) {
+    if (selectedSoundFont) {
+        const soundfont = selectedSoundFont.soundfont;
+        synthAssets ??= decompress(embeddedSynth).then(wasm => ({ wasm, soundfont })).catch(error => {
+            synthAssets = undefined;
+            throw error;
+        });
+        return synthAssets;
+    }
     synthAssets ??= (async () => {
         onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
         const abort = new AbortController();
@@ -16,10 +37,7 @@ function loadSynthAssets(onStatus) {
                 })
             ]);
             if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
-            const soundfont = await response.arrayBuffer();
-            const header = new DataView(soundfont);
-            if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000 || header.getUint32(0) !== 0x52494646
-                || header.getUint32(8) !== 0x7366626b) throw new Error("取得したSoundFontが不正です。");
+            const soundfont = validateSoundFont(await response.arrayBuffer());
             return { wasm, soundfont };
         } finally { clearTimeout(timeout); }
     })().catch(error => { synthAssets = undefined; throw error; });
@@ -100,6 +118,16 @@ class AccompanimentPlayer {
             this.node?.disconnect();
             throw error;
         }
+    }
+
+    setSoundFont(selection) {
+        this.node?.port.close();
+        this.node?.disconnect();
+        this.node = undefined;
+        this.ready = false;
+        this.loadedSong = null;
+        selectedSoundFont = selection;
+        synthAssets = undefined;
     }
 
     send(type, data = {}, transfer = []) {

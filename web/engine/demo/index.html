@@ -52,6 +52,7 @@
                     <button id="open-arranger" type="button">MIDIアレンジャー…</button>
                     <button id="open-midi-output" type="button">MIDI出力設定…</button>
                     <button id="open-instrument-defaults" type="button">既定音色の割り当て…</button>
+                    <button id="open-synth-settings" type="button">内蔵音源…</button>
                     <button id="open-app-preferences" type="button">環境設定…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button id="open-chord-inspector" type="button">コードインスペクター…</button>
@@ -645,6 +646,20 @@
             <p role="status"></p>
             <div class="dialog-actions">
                 <button name="closeDialog" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="synth-settings" aria-labelledby="synth-settings-title">
+        <form method="dialog">
+            <h2 id="synth-settings-title">内蔵音源</h2>
+            <label class="field">使用中のSoundFont <output></output></label>
+            <label class="field">GM用のSoundFont（.sf2、16MB以下） <input name="soundfont" type="file" accept=".sf2" required></label>
+            <p role="alert" data-error></p>
+            <div class="dialog-actions">
+                <button name="useDefault" type="button" class="secondary">TimGM6mbに戻す</button>
+                <button name="cancelSynth" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
         </form>

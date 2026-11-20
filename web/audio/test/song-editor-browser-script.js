@@ -2441,6 +2441,42 @@ AbM7 | G7 Cm7 |
             }
             report.appDiagnostics = true;
         }
+        {
+            const { dialog } = synthSettings;
+            const data = (await loadSynthAssets(() => {})).soundfont;
+            try {
+                document.querySelector("#open-synth-settings").click();
+                await synthSettings.select(new File(["this is not a SoundFont"], "invalid.sf2"));
+                check(dialog.open && !selectedSoundFont && synthSettings.error.textContent, "An invalid local SoundFont was accepted");
+                await synthSettings.select(new File([data], "Local Test GM.sf2"));
+                check(!dialog.open && selectedSoundFont?.name === "Local Test GM.sf2" && player.ready,
+                    "The local SoundFont did not initialize in the live AudioWorklet");
+                const database = await synthSettings.database();
+                const saved = await new Promise((resolve, reject) => {
+                    const request = database.transaction("files").objectStore("files").get("active");
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                check(saved?.name === selectedSoundFont.name && saved.soundfont.byteLength === data.byteLength, "The local SoundFont did not persist");
+                const part = { drum: false, volume: 1, pan: 0 };
+                const preview = { parts: [part], duration: .6, events: [
+                    { seconds: 0, part: 0, type: 0x90, a: 60, b: 90 },
+                    { seconds: .3, part: 0, type: 0x80, a: 60, b: 0 }
+                ] };
+                const rendered = await renderSongAudio(preview, [part], .5, () => {});
+                check(rendered.getChannelData(0).some(value => Math.abs(value) > .0001), "The selected local SoundFont produced no exported audio");
+                document.querySelector("#open-synth-settings").click();
+                await synthSettings.select(null);
+                check(!dialog.open && !selectedSoundFont && !player.ready, "Resetting the local SoundFont did not restore TimGM6mb");
+            } finally {
+                if (dialog.open) dialog.close();
+                if (selectedSoundFont) {
+                    player.setSoundFont(null);
+                    await synthSettings.store(null);
+                }
+            }
+            report.localSoundFont = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
