@@ -11,6 +11,7 @@ import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
 import org.jjazz.chordleadsheet.api.item.ExtChordSymbol;
+import org.jjazz.chordleadsheet.api.ChordLeadSheet;
 import org.jjazz.chordleadsheet.api.item.CLI_ChordSymbol;
 import org.jjazz.chordleadsheet.api.item.CLI_Section;
 import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
@@ -21,6 +22,7 @@ import org.jjazz.harmony.api.TimeSignature;
 import org.jjazz.harmony.api.Position;
 import org.jjazz.humanizer.api.Humanizer;
 import org.jjazz.importers.api.TextReader;
+import org.jjazz.importers.api.ImprovisorFileReader;
 import org.jjazz.phrase.api.NoteEvent;
 import org.jjazz.phrase.api.Phrase;
 import org.jjazz.phrase.api.Phrases;
@@ -90,11 +92,31 @@ public final class WasmMidiEngine
             return new String[] { ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage() };
         }
         if (parsed == null) return new String[0];
-        var sheet = parsed.leadSheet();
+        return encodeLeadSheet(parsed.title(), parsed.tempo(), parsed.leadSheet(), null);
+    }
+
+    @JSExport
+    public static String[] readImprovisorLeadSheet(String text, String sourceName)
+    {
+        WebServices.install();
+        try
+        {
+            var parsed = ImprovisorFileReader.readLeadSheet(text, sourceName, sourceName.replaceFirst("(?i)\\.ls$", ""));
+            String comments = parsed.composer() == null || parsed.composer().isBlank() ? null : "Composer: " + parsed.composer();
+            return encodeLeadSheet(parsed.title(), parsed.tempo(), parsed.leadSheet(), comments);
+        } catch (Exception ex)
+        {
+            return new String[] { ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage() };
+        }
+    }
+
+    private static String[] encodeLeadSheet(String title, int tempo, ChordLeadSheet sheet, String comments)
+    {
         var rows = new ArrayList<String>();
-        rows.add(parsed.title());
-        rows.add(Integer.toString(parsed.tempo()));
+        rows.add(title);
+        rows.add(Integer.toString(tempo));
         rows.add(Integer.toString(sheet.getSizeInBars()));
+        if (comments != null) rows.add("comments\t" + comments);
         for (var section : sheet.getItems(CLI_Section.class))
         {
             rows.add("section\t" + section.getPosition().getBar() + "\t" + section.getData().getTimeSignature().name()

@@ -20,6 +20,8 @@
                     <button id="overwrite-song-file" type="button" hidden>本家形式で上書き保存</button>
                     <button id="save-as-song-file" type="button" hidden>本家形式で名前を付けて保存…</button>
                     <button id="save-all-songs" type="button">すべての曲を本家形式で書き出す</button>
+                    <button id="batch-convert-songs" type="button">曲ファイルを一括変換…</button>
+                    <input id="batch-convert-input" type="file" accept=".sng,.mix,.jjazzweb,.txt,.ls" multiple hidden>
                     <button id="duplicate-song" type="button">曲のコピーを保存…</button>
                     <button id="linearize-song" type="button">演奏順に展開した曲を保存…</button>
                     <button id="save-song-template" type="button">新規曲のテンプレートにする</button>
@@ -70,7 +72,7 @@
             <div class="toolbar-group file-actions" aria-label="ファイルと編集">
                 <button id="new-project" class="tool-button" type="button" aria-label="新規作成" title="新規作成">＋</button>
                 <button id="open-project-button" class="tool-button" data-icon="open" type="button" aria-label="曲を開く" title="曲を開く"></button>
-                <input id="open-project" type="file" accept=".sng,.mix,.jjazzweb,.txt" aria-label="曲を開く (.sng / .mix / .jjazzweb / .txt)" multiple hidden>
+                <input id="open-project" type="file" accept=".sng,.mix,.jjazzweb,.txt,.ls" aria-label="曲を開く (.sng / .mix / .jjazzweb / .txt / .ls)" multiple hidden>
                 <button id="save-project" class="tool-button" type="button" aria-label="Web用に保存" title="Web用に保存">▣</button>
                 <button id="undo" class="tool-button" type="button" aria-label="元に戻す" title="元に戻す (Ctrl+Z)">↶</button>
                 <button id="redo" class="tool-button" type="button" aria-label="やり直す" title="やり直す (Ctrl+Y)">↷</button>

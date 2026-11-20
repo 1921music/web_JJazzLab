@@ -26,11 +26,12 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.IOException;
+import java.io.Reader;
+import java.io.StringReader;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
-import java.util.Scanner;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
@@ -58,7 +59,7 @@ import org.jjazz.utilities.api.ResUtil;
 public class ImprovisorFileReader
 {
 
-    private File file;
+    private final File file;
     private String style;
     private final ChordSymbol REPEAT_CHORD_SYMBOL = new ChordSymbol();                      // Used to represent the '/' or 'NC' symbol
     private static final HashMap<String, String> mapChordTypeConversion = new HashMap<>();  // Map special improvisor chordtypes to JJazz ChordTypes
@@ -74,6 +75,14 @@ public class ImprovisorFileReader
         this.file = f;
     }
 
+    private ImprovisorFileReader()
+    {
+        this.initMap();
+        this.file = null;
+    }
+
+    public record ParsedLeadSheet(String title, int tempo, String composer, ChordLeadSheet leadSheet) {}
+
     /**
      * Get the song from the current file.
      * <p>
@@ -84,12 +93,41 @@ public class ImprovisorFileReader
      */
     public Song readSong() throws IOException
     {
-        String title = ResUtil.getString(getClass(), "ImprovisorFileReader.NoTitle");
+        ParsedLeadSheet parsed;
+        try (var reader = new FileReader(file))
+        {
+            parsed = readLeadSheet(reader, file.getName(), ResUtil.getString(getClass(), "ImprovisorFileReader.NoTitle"));
+        }
+        Song song;
+        try
+        {
+            song = SongFactory.getDefault().createSong(parsed.title(), parsed.leadSheet());
+        } catch (UnsupportedEditException ex)
+        {
+            throw new IOException(ex);
+        }
+        song.setTempo(parsed.tempo());
+        if (parsed.composer() != null && !parsed.composer().isBlank())
+        {
+            song.setComments("Composer: " + parsed.composer());
+        }
+        return song;
+    }
+
+    /** Read the lead sheet from text without creating the song's rhythm arrangement. */
+    public static ParsedLeadSheet readLeadSheet(String text, String sourceName, String defaultTitle) throws IOException
+    {
+        return new ImprovisorFileReader().readLeadSheet(new StringReader(text), sourceName, defaultTitle);
+    }
+
+    private ParsedLeadSheet readLeadSheet(Reader input, String sourceName, String defaultTitle) throws IOException
+    {
+        String title = defaultTitle;
         String composer = null;
         int tempo = 120;
         TimeSignature ts = TimeSignature.FOUR_FOUR;
         ChordLeadSheet cls = null;
-        try (BufferedReader reader = new BufferedReader(new FileReader(file)))
+        try (BufferedReader reader = new BufferedReader(input))
         {
             int lineCount = 0;
             int barIndex = 0;
@@ -120,7 +158,7 @@ public class ImprovisorFileReader
                 // if (mTitle.matches())
                 if (mTitle.find())
                 {
-                    title = mTitle.group(1);
+                    if (!mTitle.group(1).isBlank()) title = mTitle.group(1).trim();
                 } else if (mComposer.find())
                 {
                     composer = mComposer.group(1);
@@ -128,7 +166,7 @@ public class ImprovisorFileReader
                 {
                     try
                     {
-                        int tmp = Integer.parseUnsignedInt(mTempo.group(1));
+                        int tmp = Integer.parseInt(mTempo.group(1));
                         if (tmp >= 20 && tmp <= 400)
                         {
                             tempo = tmp;
@@ -137,7 +175,7 @@ public class ImprovisorFileReader
                     {
                         LOGGER.log(Level.WARNING, "readSong() file={0}, line {1}, ex={2}", new Object[]
                         {
-                            file.getName(), lineCount,
+                            sourceName, lineCount,
                             ex.getMessage()
                         });
                     }
@@ -147,23 +185,23 @@ public class ImprovisorFileReader
                     int lower = 4;
                     try
                     {
-                        upper = Integer.parseUnsignedInt(mMeter.group(1));
+                        upper = Integer.parseInt(mMeter.group(1));
                     } catch (NumberFormatException ex)
                     {
                         LOGGER.log(Level.WARNING, "readSong() file={0}, line {1}, ex={2}", new Object[]
                         {
-                            file.getName(), lineCount,
+                            sourceName, lineCount,
                             ex.getMessage()
                         });
                     }
                     try
                     {
-                        lower = Integer.parseUnsignedInt(mMeter.group(2));
+                        lower = Integer.parseInt(mMeter.group(2));
                     } catch (NumberFormatException ex)
                     {
                         LOGGER.log(Level.WARNING, "readSong() file={0}, line {1}, ex={2}", new Object[]
                         {
-                            file.getName(), lineCount,
+                            sourceName, lineCount,
                             ex.getMessage()
                         });
                     }
@@ -201,7 +239,7 @@ public class ImprovisorFileReader
                         // Create an empty leadsheet, 1 bar size
                         cls = SongFactory.getDefault().createEmptyChordLeadSheet(String.valueOf(sectionIndex), ts, 1, null);
                     }
-                    barIndex = fillInChordLeadSheet(cls, ts, barIndex, line, file, lineCount);
+                    barIndex = fillInChordLeadSheet(cls, ts, barIndex, line, sourceName, lineCount);
                     // LOGGER.severe("importFromFile() chord line=" + line);
                 } else if (mStyle.find())
                 {
@@ -210,22 +248,11 @@ public class ImprovisorFileReader
             } // End while
         } // End try // End try
 
-        // Create the song object from the collected data
-        SongFactory sf = SongFactory.getDefault();
-        Song song = null;
-        try
+        if (cls == null || cls.getItems(CLI_ChordSymbol.class).isEmpty())
         {
-            song = sf.createSong(title, cls);  // Throw exception        
-        } catch (UnsupportedEditException ex)
-        {
-            throw new IOException(ex);
+            throw new IOException("No chords in " + sourceName);
         }
-        song.setTempo(tempo);
-        if (composer != null && composer.isEmpty())
-        {
-            song.setComments("Composer: " + composer);
-        }
-        return song;
+        return new ParsedLeadSheet(title, tempo, composer, cls);
     }
 
     /**
@@ -248,18 +275,16 @@ public class ImprovisorFileReader
      * @param cls
      * @param barIndex
      * @param chordLine
-     * @param f
+     * @param sourceName
      * @param lineIndex
      * @return The barIndex right after the end of the chordleadsheet.
      */
-    private int fillInChordLeadSheet(ChordLeadSheet cls, TimeSignature ts, int barIndex, String chordLine, File f, int lineIndex)
+    private int fillInChordLeadSheet(ChordLeadSheet cls, TimeSignature ts, int barIndex, String chordLine, String sourceName, int lineIndex)
     {
-        Scanner scanner = new Scanner(chordLine);       // white space delimiter by default
         List<ChordSymbol> currentBarCsBuffer = new ArrayList<>();
-        while (scanner.hasNext())
+        for (String token : chordLine.trim().split("\\s+"))
         {
             cls.setSizeInBars(barIndex + 1);     // Make sure chordleadsheet is big enough            
-            String token = scanner.next();
             char firstChar = token.charAt(0);
             if (firstChar >= 'A' && firstChar <= 'G')
             {
@@ -275,7 +300,7 @@ public class ImprovisorFileReader
                     LOGGER.log(Level.WARNING, "fillInChordLeadSheet() chord symbol not recognized: ''{0}'', file={1}, line {2}", new Object[]
                     {
                         token,
-                        f.getName(), lineIndex
+                        sourceName, lineIndex
                     });
                 } else
                 {

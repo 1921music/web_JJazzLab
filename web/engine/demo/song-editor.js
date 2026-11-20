@@ -381,32 +381,7 @@ class SongEditor {
         const request = {};
         this.fileRequest = request;
         try {
-            const web = files.find(file => /\.jjazzweb$/iu.test(file.name));
-            const text = files.find(file => /\.txt$/iu.test(file.name));
-            let filename, project, mix = [], style;
-            if (web && files.length === 1) {
-                const data = JSON.parse(await web.text());
-                if (data.version !== 1) throw new Error(t("Web曲ファイルの形式に対応していません。", "Unsupported Web song format."));
-                filename = web.name;
-                project = DesktopSongFiles.validateSong(data.song);
-                mix = data.mix ?? [];
-                style = data.style;
-            } else if (text && files.length === 1) {
-                if (text.size > 2 * 1024 * 1024) throw new Error(t("テキスト譜面の上限は2MBです。", "The text lead sheet is larger than 2 MB."));
-                filename = text.name;
-                project = await this.onReadTextSong(await text.text());
-            } else {
-                const songFile = files.find(file => /\.sng$/iu.test(file.name));
-                const mixFile = files.find(file => /\.mix$/iu.test(file.name));
-                if (!songFile || files.length > 2 || (files.length === 2 && !mixFile)
-                    || (mixFile && songFile.name.slice(0, -4).toLowerCase() !== mixFile.name.slice(0, -4).toLowerCase())) {
-                    throw new Error(t(".sng と同名の .mix、または .jjazzweb / .txt を1つ選択してください。",
-                        "Choose a .sng with an optional same-name .mix, or one .jjazzweb or .txt file."));
-                }
-                filename = songFile.name;
-                project = DesktopSongFiles.readSong(await songFile.text());
-                if (mixFile) mix = DesktopSongFiles.readMix(await mixFile.text());
-            }
+            const { filename, song: project, mix, style } = await this.readSongFiles(files);
             if (request !== this.fileRequest) return false;
             this.open(project, mix, style, true);
             this.notify(t(`${filename} を開きました。`, `Opened ${filename}.`));
@@ -415,6 +390,59 @@ class SongEditor {
             if (request === this.fileRequest) this.notify(error.message, true);
             return false;
         }
+    }
+
+    async readSongFiles(files) {
+        const [file] = files;
+        if (files.length === 1 && /\.jjazzweb$/iu.test(file.name)) {
+            const data = JSON.parse(await file.text());
+            if (data.version !== 1) throw new Error(t("Web曲ファイルの形式に対応していません。", "Unsupported Web song format."));
+            return { filename: file.name, song: DesktopSongFiles.validateSong(data.song), mix: data.mix ?? [], style: data.style };
+        }
+        if (files.length === 1 && /\.(txt|ls)$/iu.test(file.name)) {
+            if (file.size > 2 * 1024 * 1024) throw new Error(t("テキスト譜面の上限は2MBです。", "The text lead sheet is larger than 2 MB."));
+            const contents = await file.text();
+            const song = /\.ls$/iu.test(file.name) ? await this.onReadImprovisor(contents, file.name) : await this.onReadTextSong(contents);
+            return { filename: file.name, song, mix: [] };
+        }
+        const songFile = files.find(file => /\.sng$/iu.test(file.name));
+        const mixFile = files.find(file => /\.mix$/iu.test(file.name));
+        if (!songFile || files.length > 2 || (files.length === 2 && !mixFile)
+            || (mixFile && songFile.name.slice(0, -4).toLowerCase() !== mixFile.name.slice(0, -4).toLowerCase())) {
+            throw new Error(t(".sng と同名の .mix、または .jjazzweb / .txt / .ls を1つ選択してください。",
+                "Choose a .sng with an optional same-name .mix, or one .jjazzweb, .txt or .ls file."));
+        }
+        return { filename: songFile.name, song: DesktopSongFiles.readSong(await songFile.text()),
+            mix: mixFile ? DesktopSongFiles.readMix(await mixFile.text()) : [] };
+    }
+
+    async convertSongs(files) {
+        if (!files.length || this.convertingSongs) return;
+        this.convertingSongs = true;
+        const errors = [], converted = [];
+        const stem = file => (file.webkitRelativePath || file.name).replace(/\.[^.]+$/u, "").toLowerCase();
+        const mixes = new Map(files.filter(file => /\.mix$/iu.test(file.name)).map(file => [stem(file), file]));
+        const sources = files.filter(file => !/\.mix$/iu.test(file.name));
+        try {
+            for (const source of sources) {
+                try {
+                    const inputs = [source];
+                    if (/\.sng$/iu.test(source.name) && mixes.has(stem(source))) {
+                        inputs.push(mixes.get(stem(source)));
+                        mixes.delete(stem(source));
+                    }
+                    const data = await this.readSongFiles(inputs);
+                    const name = this.fileStem(source.name.replace(/\.[^.]+$/u, ""));
+                    const directory = `${String(converted.length + 1).padStart(2, "0")}-${name}`;
+                    converted.push(this.desktopFiles(data, name).map(([name, contents]) => [`${directory}/${name}`, contents]));
+                } catch (error) { errors.push(`${source.name} — ${error.message}`); }
+            }
+            for (const file of mixes.values()) errors.push(t(`${file.name} — 同名の .sng がありません。`, `${file.name} — no matching .sng.`));
+            if (converted.length) downloadSongFile("JJazzLab-converted-songs.zip", packageSongFiles(converted.flat()), "application/zip");
+            const summary = t(`${converted.length}曲を変換しました。`, `Converted ${converted.length} songs.`);
+            this.notify([summary, ...errors].join(" "), Boolean(errors.length));
+        } catch (error) { this.notify(error.message, true); }
+        finally { this.convertingSongs = false; }
     }
 
     newSong() {

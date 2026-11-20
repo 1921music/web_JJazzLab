@@ -230,15 +230,18 @@ const DesktopSongFiles = (() => {
         if (rows.length === 1) throw new Error(rows[0]);
         const [title, tempo, bars, ...items] = Array.from(rows);
         const sections = [], chords = [];
+        let comments;
         for (const row of items) {
             const [kind, bar, value, name, originalName] = row.split("\t");
             if (kind === "section") sections.push({ bar: Number(bar), name, meter: value });
-            else chords.push({ bar: Number(bar), name, originalName, beat: Number(value) });
+            else if (kind === "chord") chords.push({ bar: Number(bar), name, originalName, beat: Number(value) });
+            else if (kind === "comments") comments = row.slice("comments\t".length);
         }
         const parts = sections.map(({ name, meter }, section) => ({
             name, section, ...rhythmForMeter(meter), parameters: {}
         }));
-        return validateSong({ title, tempo: Number(tempo), bars: Number(bars), sections, chords, parts, userTracks: [] });
+        return validateSong({ title, tempo: Number(tempo), bars: Number(bars), sections, chords, parts, userTracks: [],
+            ...(comments ? { comments } : {}) });
     }
 
     function readMix(xml) {

@@ -2003,6 +2003,55 @@
             pianoRoll.close();
             report.pianoScoreAndDrumNames = true;
         }
+        {
+            const leadsheet = new File([`(title Practice Waltz)
+(composer Test Writer)
+(meter 3 4)
+(tempo 111)
+(section (style waltz))
+Cm7 G7 | Cm7 |
+(section (style waltz))
+AbM7 | G7 Cm7 |
+`], "practice.ls");
+            const project = (await editor.readSongFiles([leadsheet])).song;
+            check(project.title === "Practice Waltz" && project.tempo === 111 && project.bars === 4
+                && project.sections.length === 2 && project.sections.every(section => section.meter === "THREE_FOUR")
+                && project.chords.some(chord => chord.bar === 0 && chord.beat === 1.5 && chord.name === "G7")
+                && project.comments === "Composer: Test Writer", "The desktop Impro-Visor parser lost meter, sections or chord positions");
+            const titleBefore = editor.project.title, projectBefore = editor.project;
+            const anchorClick = HTMLAnchorElement.prototype.click;
+            let downloaded;
+            HTMLAnchorElement.prototype.click = function () {
+                if (this.download === "JJazzLab-converted-songs.zip") downloaded = fetch(this.href).then(reply => reply.arrayBuffer());
+                else anchorClick.call(this);
+            };
+            try {
+                const files = new DataTransfer();
+                for (const file of [leadsheet, new File([desktopFixture.song], "other.sng"), new File([desktopFixture.mix], "other.mix"),
+                    new File(["(title Broken)"], "broken.ls")]) files.items.add(file);
+                const chooser = document.querySelector("#batch-convert-input");
+                chooser.files = files.files;
+                await chooser.onchange();
+            } finally { HTMLAnchorElement.prototype.click = anchorClick; }
+            check(downloaded && editor.project === projectBefore && editor.project.title === titleBefore
+                && editor.status.textContent.includes("broken.ls"), "A failing input prevented conversion or the batch changed the open tab");
+            const parser = new DataView(await downloaded), decoder = new TextDecoder(), entries = new Map();
+            for (let offset = 0; parser.getUint32(offset, true) === 0x04034b50;) {
+                const length = parser.getUint32(offset + 18, true), nameLength = parser.getUint16(offset + 26, true);
+                const begin = offset + 30 + nameLength;
+                const name = decoder.decode(new Uint8Array(parser.buffer, offset + 30, nameLength));
+                entries.set(name, decoder.decode(new Uint8Array(parser.buffer, begin, length)));
+                offset = begin + length;
+            }
+            check(entries.size === 3 && DesktopSongFiles.readSong(entries.get("01-practice/practice.sng")).bars === 4
+                && DesktopSongFiles.readMix(entries.get("02-other/other.mix")).length > 1,
+            "The conversion ZIP did not preserve the two valid songs and the matching .mix");
+            check(await editor.loadFiles([leadsheet]), "The Impro-Visor file did not open through the normal import route");
+            await generate();
+            check(song.barTimes.length === 5 && song.events.some(event => event.type === 0x90 && event.b > 0),
+                "The imported 3/4 song did not generate playable accompaniment");
+            report.improvisorAndBatchImport = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

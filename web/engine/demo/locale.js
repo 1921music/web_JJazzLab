@@ -24,6 +24,7 @@ MIDIを取り込む…|Import MIDI…
 曲を閉じる|Close song
 開いている曲|Open songs
 すべての曲を本家形式で書き出す|Export all songs in JJazzLab format
+曲ファイルを一括変換…|Batch Convert Song Files…
 WAVを書き出す|Export WAV
 トラックをWAVとして保存|Save track as WAV
 MP3を書き出す|Export MP3

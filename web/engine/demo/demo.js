@@ -1132,6 +1132,13 @@ async function openSongFromFiles(pending) {
     if (await pending && !mixer.hidden) prepareMixer.click();
 }
 openProject.onchange = () => openSongFromFiles(editor.openFiles(openProject));
+const batchConvertInput = document.querySelector("#batch-convert-input");
+document.querySelector("#batch-convert-songs").onclick = () => batchConvertInput.click();
+batchConvertInput.onchange = async () => {
+    const files = Array.from(batchConvertInput.files);
+    batchConvertInput.value = "";
+    await editor.convertSongs(files);
+};
 const canDropSong = event => !event.defaultPrevented && event.dataTransfer.types.includes("Files")
     && !event.target.closest('#roll-scroll, input[type="file"]');
 workspace.addEventListener("dragover", event => {
@@ -1144,14 +1151,15 @@ workspace.addEventListener("drop", event => {
     event.preventDefault();
     if (!generating && !starting) void openSongFromFiles(editor.loadFiles(Array.from(event.dataTransfer.files)));
 });
-editor.onReadTextSong = async contents => {
-    const engine = await getEngine();
+async function readLeadSheet(rows) {
     await rhythmLibrary.ready;
-    return DesktopSongFiles.readTextSong(engine.exports.readTextLeadSheet(contents), meter => {
+    return DesktopSongFiles.readTextSong(rows, meter => {
         const styleName = meter === "FOUR_FOUR" ? "jjSwing" : meter === "THREE_FOUR" ? bundledJazzWaltz : bundledStyle;
         return editor.onDefaultRhythm(meter) ?? { styleId: styleName + "-ID", styleName };
     });
-};
+}
+editor.onReadTextSong = async contents => readLeadSheet((await getEngine()).exports.readTextLeadSheet(contents));
+editor.onReadImprovisor = async (contents, filename) => readLeadSheet((await getEngine()).exports.readImprovisorLeadSheet(contents, filename));
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
 editor.onTransposeChords = async (names, delta) => (await getEngine()).exports.transposeChordSymbols(names, delta);
 editor.onReadChordTools = async names => {
