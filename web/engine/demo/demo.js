@@ -1133,6 +1133,8 @@ async function openSongFromFiles(pending) {
 }
 openProject.onchange = () => openSongFromFiles(editor.openFiles(openProject));
 const batchConvertInput = document.querySelector("#batch-convert-input");
+const biabExtensions = ["sg", "mg"].flatMap(prefix => Array.from("123456789abcdefghijklmnu", suffix => `.${prefix}${suffix}`));
+for (const input of [openProject, batchConvertInput]) input.accept += "," + biabExtensions.join(",");
 document.querySelector("#batch-convert-songs").onclick = () => batchConvertInput.click();
 batchConvertInput.onchange = async () => {
     const files = Array.from(batchConvertInput.files);
@@ -1161,6 +1163,7 @@ async function readLeadSheet(rows) {
 }
 editor.onReadTextSong = async contents => readLeadSheet((await getEngine()).exports.readTextLeadSheet(contents));
 editor.onReadImprovisor = async (contents, filename) => readLeadSheet((await getEngine()).exports.readImprovisorLeadSheet(contents, filename));
+editor.onReadBiab = async (contents, filename) => readLeadSheet((await getEngine()).exports.readBiabLeadSheet(contents, filename));
 editor.onReadMusicXml = async file => {
     const [wasm, text] = await Promise.all([getEngine(), musicXmlFileText(file), rhythmLibrary.ready]);
     const canonical = new Map();

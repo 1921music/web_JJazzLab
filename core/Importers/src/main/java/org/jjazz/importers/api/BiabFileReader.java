@@ -26,6 +26,7 @@ import org.jjazz.importers.biab.SongBuilder;
 import org.jjazz.importers.biab.BiabChord;
 import org.jjazz.song.api.SongCreationException;
 import java.io.BufferedInputStream;
+import java.io.ByteArrayInputStream;
 import java.io.DataInputStream;
 import java.io.EOFException;
 import java.io.File;
@@ -137,19 +138,25 @@ public class BiabFileReader
      */
     public Song readFile() throws IOException, SongCreationException
     {
+        return readFile(null);
+    }
+
+    /** Read in-memory data using the configured file name for style hints and diagnostics. */
+    public Song readFile(byte[] data) throws IOException, SongCreationException
+    {
         if (byteIndex > 0)
         {
             throw new IllegalStateException("readFile() can be only called once for a given reader instance.");   //NOI18N
         }
         try
         {
-            readFileData(false);
+            readFileData(false, data);
         } catch (SongCreationException ex)
         {
             if (ex.getMessage().equals("RETRY"))
             {
                 LOGGER.info("readFile() caught RETRY special exception, retrying...");
-                readFileData(true);
+                readFileData(true, data);
             } else
             {
                 throw ex;
@@ -277,22 +284,24 @@ public class BiabFileReader
     /**
      *
      * @param useByteShift Use the optional byte offset after reading .STY see comments below for the "Melody and Style patch byte suite"
+     * @param data In-memory song data, or null to read from disk
      * @throws IOException
      * @throws SongCreationException
      */
-    private void readFileData(boolean useByteShift) throws IOException, SongCreationException
+    private void readFileData(boolean useByteShift, byte[] data) throws IOException, SongCreationException
     {
         LOGGER.fine("\n\n------------------------------------------------------");
         LOGGER.log(Level.FINE, "readFileData() -- useByteShift={0} reading file={1}", new Object[]
         {
-            useByteShift, file.getAbsolutePath()
+            useByteShift, file.getName()
         });
 
 
         // Buffer must be big enough to store the whole file.
         // With small buffer, in.skip(x) may stop at the end of buffer.
         // Set at 0x100000 = 1MB
-        try (DataInputStream in = new DataInputStream(new BufferedInputStream(new FileInputStream(file), 0X100000)))
+        try (DataInputStream in = new DataInputStream(data == null
+                ? new BufferedInputStream(new FileInputStream(file), 0x100000) : new ByteArrayInputStream(data)))
         {
             // BIAB file version
             version = readUByte(in);

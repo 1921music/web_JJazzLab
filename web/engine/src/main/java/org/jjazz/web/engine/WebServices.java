@@ -13,6 +13,10 @@ import org.jjazz.outputsynth.api.CakewalkInsFileReader;
 import org.jjazz.outputsynth.spi.OutputSynthManager.DefaultRhythmVoiceInstrumentProviderImpl;
 import org.jjazz.phrasetransform.DefaultPhraseTransformProvider;
 import org.jjazz.phrasetransform.spi.PhraseTransformProvider;
+import org.jjazz.rhythm.spi.RhythmProvider;
+import org.jjazz.rhythm.spi.StubRhythmProvider;
+import org.jjazz.rhythmdatabase.spi.SharedRdbInstanceProvider;
+import org.jjazz.rhythmstubs.RhythmStubProviderImpl;
 import org.jjazz.song.SongContextFactoryImpl;
 import org.jjazz.song.SongFactoryImpl;
 import org.jjazz.song.spi.SongContextFactory;
@@ -43,6 +47,9 @@ final class WebServices
         registry.register(MidiSynthManager.class, WebMidiSynthManager::new);
         registry.register(KeyMapProvider.class, StdKeyMapProvider::new);
         registry.register(PhraseTransformProvider.class, DefaultPhraseTransformProvider::new);
+        registry.register(StubRhythmProvider.class, RhythmStubProviderImpl::new);
+        registry.register(RhythmProvider.class, () -> registry.lookup(StubRhythmProvider.class));
+        registry.register(SharedRdbInstanceProvider.class, WebImportRhythmDatabase::new);
         installed = true;
     }
 }

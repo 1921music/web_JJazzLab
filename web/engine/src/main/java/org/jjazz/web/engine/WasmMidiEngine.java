@@ -23,6 +23,7 @@ import org.jjazz.harmony.api.Position;
 import org.jjazz.humanizer.api.Humanizer;
 import org.jjazz.importers.api.TextReader;
 import org.jjazz.importers.api.ImprovisorFileReader;
+import org.jjazz.importers.api.BiabFileReader;
 import org.jjazz.phrase.api.NoteEvent;
 import org.jjazz.phrase.api.Phrase;
 import org.jjazz.phrase.api.Phrases;
@@ -110,6 +111,28 @@ public final class WasmMidiEngine
         }
     }
 
+    @JSExport
+    public static String[] readBiabLeadSheet(byte[] data, String sourceName)
+    {
+        WebServices.install();
+        try
+        {
+            var reader = new BiabFileReader(new File(sourceName), null, false);
+            var song = reader.readFile(data);
+            var rows = new ArrayList<>(Arrays.asList(encodeLeadSheet(song.getName(), song.getTempo(), song.getChordLeadSheet(), song.getComments())));
+            for (var part : song.getSongStructure().getSongParts())
+            {
+                int bar = part.getParentSection().getPosition().getBar();
+                int marker = reader.mapClsBarMarker.getOrDefault(bar, 0);
+                rows.add("part\t" + bar + "\t" + marker + "\t" + part.getName());
+            }
+            return rows.toArray(String[]::new);
+        } catch (Exception ex)
+        {
+            return new String[] { ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage() };
+        }
+    }
+
     private static String[] encodeLeadSheet(String title, int tempo, ChordLeadSheet sheet, String comments)
     {
         var rows = new ArrayList<String>();
@@ -124,8 +147,10 @@ public final class WasmMidiEngine
         }
         for (var chord : sheet.getItems(CLI_ChordSymbol.class))
         {
+            var features = chord.getData().getRenderingInfo().getFeatures().stream().map(Enum::name).toList();
             rows.add("chord\t" + chord.getPosition().getBar() + "\t" + chord.getPosition().getBeat()
-                    + "\t" + chord.getData().getName() + "\t" + chord.getData().getOriginalName());
+                    + "\t" + chord.getData().getName() + "\t" + chord.getData().getOriginalName()
+                    + (features.isEmpty() ? "" : "\t" + String.join(",", features)));
         }
         return rows.toArray(String[]::new);
     }

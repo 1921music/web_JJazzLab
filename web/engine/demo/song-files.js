@@ -229,17 +229,20 @@ const DesktopSongFiles = (() => {
         if (!rows.length) throw new Error(t("読み込めるコード譜がありません。", "The text contains no readable lead sheet."));
         if (rows.length === 1) throw new Error(rows[0]);
         const [title, tempo, bars, ...items] = Array.from(rows);
-        const sections = [], chords = [];
+        const sections = [], chords = [], importedParts = [];
         let comments;
         for (const row of items) {
-            const [kind, bar, value, name, originalName] = row.split("\t");
+            const [kind, bar, value, name, originalName, features] = row.split("\t");
             if (kind === "section") sections.push({ bar: Number(bar), name, meter: value });
-            else if (kind === "chord") chords.push({ bar: Number(bar), name, originalName, beat: Number(value) });
+            else if (kind === "chord") chords.push({ bar: Number(bar), name, originalName, beat: Number(value), ...(features ? { features } : {}) });
+            else if (kind === "part") importedParts.push({ bar: Number(bar), marker: Number(value), name });
             else if (kind === "comments") comments = row.slice("comments\t".length);
         }
-        const parts = sections.map(({ name, meter }, section) => ({
-            name, section, ...rhythmForMeter(meter), parameters: {}
-        }));
+        const parts = (importedParts.length ? importedParts : sections).map(({ bar, name, marker }) => {
+            const section = sections.findIndex(candidate => candidate.bar === bar);
+            const variation = marker >= 1 && marker <= 4 ? `Main ${String.fromCharCode(64 + marker)}-1` : undefined;
+            return { name, section, ...rhythmForMeter(sections[section].meter), parameters: variation ? { rpVariationID: variation } : {} };
+        });
         return validateSong({ title, tempo: Number(tempo), bars: Number(bars), sections, chords, parts, userTracks: [],
             ...(comments ? { comments } : {}) });
     }

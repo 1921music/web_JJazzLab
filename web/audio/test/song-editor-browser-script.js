@@ -2085,6 +2085,34 @@ AbM7 | G7 Cm7 |
                 "The imported arrangement did not repeat the marked measures or switch to 3/4");
             report.musicXmlAndMxl = true;
         }
+        {
+            // The desktop reader's original fixed-width 0xbb format.
+            const data = new Uint8Array(0x285);
+            const title = new TextEncoder().encode("Test BIAB Waltz");
+            data.set([0xbb, title.length], 0);
+            data.set(title, 2);
+            data[0x3e] = 8;
+            data[0x40] = 108;
+            data[0x42 + 2] = 2;
+            [1, 8, 3, 1].forEach((root, bar) => {
+                data[0x82 + bar * 4] = 1;
+                data[0x182 + bar * 4] = root;
+            });
+            data[0x284] = 4;
+            const source = new File([data], "test.SGU");
+            const importer = await editor.readSongFiles([source]);
+            const project = importer.song;
+            check(project.title === "Test BIAB Waltz" && project.tempo === 108 && project.bars === 4
+                && project.sections.every(section => section.meter === "THREE_FOUR") && project.parts.length > project.sections.length
+                && project.chords.some(chord => chord.bar === 1 && chord.name.startsWith("G"))
+                && project.parts.some(part => part.parameters.rpVariationID === "Main B-1"),
+            "The desktop Band-in-a-Box importer lost the meter, repeat order, chord symbols or section markers");
+            check(await editor.loadFiles([source]), "The Band-in-a-Box file did not open");
+            await generate();
+            check(song.barTimes.length === 13 && song.events.some(event => event.type === 0x90 && event.b > 0),
+                "The imported three-chorus arrangement did not generate accompaniment");
+            report.bandInABox = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

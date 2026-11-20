@@ -408,12 +408,16 @@ class SongEditor {
         if (files.length === 1 && /\.(musicxml|mxl|xml)$/iu.test(file.name)) {
             return { filename: file.name, song: await this.onReadMusicXml(file), mix: [] };
         }
+        if (files.length === 1 && /\.(sg|mg)[1-9a-nu]$/iu.test(file.name)) {
+            if (file.size > 2 * 1024 * 1024) throw new Error(t("Band-in-a-Boxファイルの上限は2MBです。", "The Band-in-a-Box file is larger than 2 MB."));
+            return { filename: file.name, song: await this.onReadBiab(new Int8Array(await file.arrayBuffer()), file.name), mix: [] };
+        }
         const songFile = files.find(file => /\.sng$/iu.test(file.name));
         const mixFile = files.find(file => /\.mix$/iu.test(file.name));
         if (!songFile || files.length > 2 || (files.length === 2 && !mixFile)
             || (mixFile && songFile.name.slice(0, -4).toLowerCase() !== mixFile.name.slice(0, -4).toLowerCase())) {
-            throw new Error(t(".sng と同名の .mix、または .jjazzweb / .txt / .ls / MusicXML を1つ選択してください。",
-                "Choose a .sng with an optional same-name .mix, or one .jjazzweb, .txt, .ls or MusicXML file."));
+            throw new Error(t(".sng と同名の .mix、または対応する曲ファイルを1つ選択してください。",
+                "Choose a .sng with an optional same-name .mix, or one supported song file."));
         }
         return { filename: songFile.name, song: DesktopSongFiles.readSong(await songFile.text()),
             mix: mixFile ? DesktopSongFiles.readMix(await mixFile.text()) : [] };
