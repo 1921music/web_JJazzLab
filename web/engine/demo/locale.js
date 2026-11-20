@@ -10,6 +10,8 @@ MIDIを取り込む…|Import MIDI…
 選択区間のみ再生|Play selected song part
 小節メモを表示|Show bar annotations
 メモの行数|Annotation lines
+WAVを書き出す|Export WAV
+トラックをWAVとして保存|Save track as WAV
 小節の高さ|Bar height
 コード譜の表示設定|Lead sheet appearance
 セクションの色|Section color

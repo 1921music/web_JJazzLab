@@ -24,6 +24,7 @@
                     <button id="clear-song-template" type="button">標準テンプレートに戻す</button>
                     <button data-command="export-project" type="button">JJazzLab形式で書き出す…</button>
                     <button data-command="download" type="button">MIDI（GM）を書き出す</button>
+                    <button id="export-wave" type="button">WAVを書き出す</button>
                     <button id="open-song-print" type="button">印刷…</button>
                 </div></details>
                 <details><summary>編集</summary><div>
@@ -683,6 +684,7 @@
         <button type="button" data-action="remove-user">トラックを削除…</button>
         <button type="button" data-action="clone-rhythm">ユーザートラックに複製</button>
         <button type="button" data-action="export-rhythm-midi">このトラックをMIDIで書き出す</button>
+        <button type="button" data-action="export-track-wave">トラックをWAVとして保存</button>
     </div>
     <div id="roll-context" class="bar-context" role="group" aria-label="音符編集" hidden>
         <button data-action="select" type="button">選択</button>

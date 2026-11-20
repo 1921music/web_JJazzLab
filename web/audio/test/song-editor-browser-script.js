@@ -1274,6 +1274,37 @@
         const [, beatOnSwingGrid] = await editor.onQuantizeChordDrop(swingGrid, swingGrid.sections[0], 0, .34);
         check(Math.abs(beatOnSwingGrid - 1 / 3) < .0001, "Automatic chord quantization did not follow jjSwing's ternary division");
         report.chordDropQuantization = true;
+        await generate();
+        const downloads = [];
+        const realAnchorClick = HTMLAnchorElement.prototype.click;
+        HTMLAnchorElement.prototype.click = function () {
+            if (this.download.endsWith(".wav")) downloads.push({ name: this.download, data: fetch(this.href).then(reply => reply.arrayBuffer()) });
+            else realAnchorClick.call(this);
+        };
+        try {
+            const renderStatus = () => document.querySelector("#status").textContent;
+            await document.querySelector("#export-wave").onclick();
+            check(downloads.length === 1, `Whole-song WAV download was not created: ${renderStatus()}`);
+            const track = mixerParts.find(part => part.trackIndex !== undefined && song.events.some(event => song.parts[event.part]?.id === part.id
+                && event.type === 0x90 && event.b > 0));
+            check(Boolean(track), "The working song has no rendered track to export");
+            await exportWave(track.id);
+            check(downloads.length === 2 && downloads[1].name.includes(track.name), `Track WAV download was not created: ${renderStatus()}`);
+        } finally { HTMLAnchorElement.prototype.click = realAnchorClick; }
+        const [wave, trackWave] = await Promise.all(downloads.map(async file => new DataView(await file.data)));
+        for (const file of [wave, trackWave]) {
+            check(file.getUint32(0) === 0x52494646 && file.getUint32(8) === 0x57415645 && file.getUint32(24, true) === 44100
+                && file.getUint16(22, true) === 2 && file.getUint16(34, true) === 16 && file.getUint32(40, true) === file.byteLength - 44,
+                "The downloaded file does not have a valid stereo PCM WAV header");
+        }
+        const outputEnergy = file => {
+            let energy = 0;
+            for (let byte = 44; byte < file.byteLength; byte += 148) energy += file.getInt16(byte, true) ** 2;
+            return energy;
+        };
+        check(outputEnergy(wave) > 0 && outputEnergy(trackWave) > 0 && outputEnergy(wave) !== outputEnergy(trackWave),
+            "The full song and its isolated track did not render distinct audible WAV files");
+        report.wavExport = { songBytes: wave.byteLength, trackBytes: trackWave.byteLength, channels: 2, sampleRate: 44100 };
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

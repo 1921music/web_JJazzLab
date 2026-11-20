@@ -245,6 +245,7 @@ function updateButtons() {
 }
 
 function updateMenus() {
+    document.querySelector("#export-wave").disabled = generating || starting || exportingWave;
     for (const button of document.querySelectorAll("[data-command]")) {
         const action = document.getElementById(button.dataset.command);
         if (action === download) { button.disabled = generating || starting; continue; }
@@ -539,6 +540,8 @@ function openMixerContext(part, strip, x, y) {
     const exportMidi = mixerContext.querySelector('[data-action="export-rhythm-midi"]');
     exportMidi.hidden = part.source !== "rhythm";
     exportMidi.disabled = generating || starting || part.trackIndex === undefined;
+    const exportWaveTrack = mixerContext.querySelector('[data-action="export-track-wave"]');
+    exportWaveTrack.disabled = generating || starting || exportingWave || part.trackIndex === undefined;
     mixerContext.onclick = event => {
         const action = event.target.closest("button")?.dataset.action;
         mixerContext.hidden = true;
@@ -554,11 +557,31 @@ function openMixerContext(part, strip, x, y) {
         if (action === "rename-user" || action === "remove-user") pianoRoll.editTrack(action.split("-")[0], part.name);
         if (action === "clone-rhythm") void cloneRhythmTrack(part);
         if (action === "export-rhythm-midi") void exportRhythmTrack(part);
+        if (action === "export-track-wave") void exportWave(part.id);
     };
     mixerContext.onkeydown = event => {
         if (event.key === "Escape") { mixerContext.hidden = true; edit.focus(); }
     };
     openEditorPopup(mixerContext, x, y);
+}
+
+let exportingWave = false;
+async function exportWave(trackId) {
+    if (exportingWave || generating || starting || !form.reportValidity()) return;
+    exportingWave = true;
+    updateMenus();
+    try {
+        if ((!song || accompanimentDirty || tempoDirty) && !await generateAccompaniment()) return;
+        const track = trackId === undefined ? undefined : mixerParts.find(part => part.id === trackId);
+        if (trackId !== undefined && !track) throw new Error(t("トラックが見つかりません。", "The track is unavailable."));
+        const parts = track ? mixerParts.map(part => ({ ...part, mute: part !== track, solo: part === track })) : mixerParts;
+        const name = editor.project ? editor.fileStem() : "JJazzLab";
+        const suffix = track ? `-${track.name.replace(/[<>:"/\\|?*]/gu, "_")}` : "";
+        const wave = await renderSongWave(song, structuredClone(parts), Number(masterInput.value) / 100, showStatus);
+        downloadSongFile(`${name}${suffix}.wav`, wave, "audio/wav");
+        showStatus(t("WAVの書き出しが完了しました。", "WAV export complete."));
+    } catch (error) { showStatus(error.message, true); }
+    finally { exportingWave = false; updateMenus(); }
 }
 
 async function exportRhythmTrack(part) {
@@ -995,6 +1018,7 @@ folderIO.onOpen = () => { if (!mixer.hidden) prepareMixer.click(); };
 const recentSongs = new SongHistory(editor, () => { if (!mixer.hidden) prepareMixer.click(); });
 editor.onBeforeOpen = () => { void recentSongs.flush(); };
 document.querySelector("#duplicate-song").onclick = () => editor.save("duplicate");
+document.querySelector("#export-wave").onclick = () => exportWave();
 document.querySelector("#linearize-song").onclick = () => editor.save("linearize");
 document.querySelector("#save-song-template").onclick = () => editor.saveTemplate();
 document.querySelector("#clear-song-template").onclick = () => editor.clearTemplate();

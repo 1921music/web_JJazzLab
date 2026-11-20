@@ -1,6 +1,48 @@
 "use strict";
 
 const soundFontUrl = "https://raw.githubusercontent.com/craffel/pretty-midi/0df351ff2949ef80e788343e952fe15e473f0cde/pretty_midi/TimGM6mb.sf2";
+let synthAssets;
+
+function loadSynthAssets(onStatus) {
+    synthAssets ??= (async () => {
+        onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
+        const abort = new AbortController();
+        const timeout = setTimeout(() => abort.abort(), 60000);
+        try {
+            const [wasm, response] = await Promise.all([
+                decompress(embeddedSynth),
+                fetch(soundFontUrl, { credentials: "omit", signal: abort.signal }).catch(() => {
+                    throw new Error("SoundFontを取得できませんでした。ネット接続を確認して再生を押してください。");
+                })
+            ]);
+            if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
+            const soundfont = await response.arrayBuffer();
+            const header = new DataView(soundfont);
+            if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000 || header.getUint32(0) !== 0x52494646
+                || header.getUint32(8) !== 0x7366626b) throw new Error("取得したSoundFontが不正です。");
+            return { wasm, soundfont };
+        } finally { clearTimeout(timeout); }
+    })().catch(error => { synthAssets = undefined; throw error; });
+    return synthAssets;
+}
+
+function loadSynthWorklet(context) {
+    if (!context.audioWorklet) throw new Error("AudioWorkletに対応したPC版ChromeまたはEdgeで開いてください。");
+    // A data URL also works for standalone HTML documents opened from disk.
+    const source = new TextEncoder().encode(embeddedWorklet);
+    const url = "data:text/javascript;base64," + btoa(Array.from(source, byte => String.fromCharCode(byte)).join(""));
+    return context.audioWorklet.addModule(url).catch(error => { throw new Error(`音声処理モジュールを読み込めませんでした: ${error.message}`); });
+}
+
+function connectSynthOutput(context, node) {
+    const compressor = context.createDynamicsCompressor();
+    compressor.threshold.value = -3;
+    compressor.knee.value = 3;
+    compressor.ratio.value = 20;
+    node.connect(compressor);
+    compressor.connect(context.destination);
+    return compressor;
+}
 
 class AccompanimentPlayer {
     constructor(onPosition, onError) {
@@ -20,30 +62,12 @@ class AccompanimentPlayer {
     }
 
     async load(onStatus) {
-        onStatus("音源を準備しています。初回はSoundFontを約6MBダウンロードします…");
-        if (!this.context.audioWorklet) throw new Error("AudioWorkletに対応したPC版ChromeまたはEdgeで開いてください。");
-        const abort = new AbortController();
-        const timeout = setTimeout(() => abort.abort(), 60000);
         try {
-            const [wasm, response] = await Promise.all([
-                decompress(embeddedSynth),
-                fetch(soundFontUrl, { credentials: "omit", signal: abort.signal }).catch(() => {
-                    throw new Error("SoundFontを取得できませんでした。ネット接続を確認して再生を押してください。");
-                })
-            ]);
-            if (!response.ok) throw new Error(`SoundFontの取得に失敗しました (${response.status})。`);
-            const soundfont = await response.arrayBuffer();
-            if (soundfont.byteLength < 12 || soundfont.byteLength > 16000000 ||
-                new DataView(soundfont).getUint32(0) !== 0x52494646 || new DataView(soundfont).getUint32(8) !== 0x7366626b)
-                throw new Error("取得したSoundFontが不正です。");
+            const assets = await loadSynthAssets(onStatus);
             onStatus("SoundFontを読み込んでいます…");
             if (!this.workletLoaded) {
-                // Chrome rejects blob:null worklet module URLs from file://.
-                // A self-contained data URL has no local-file subresource fetch.
-                const source = new TextEncoder().encode(embeddedWorklet);
-                const url = "data:text/javascript;base64," + btoa(Array.from(source, byte => String.fromCharCode(byte)).join(""));
-                try { await this.context.audioWorklet.addModule(url); this.workletLoaded = true; }
-                catch (error) { throw new Error("音声処理モジュールを読み込めませんでした: " + error.message); }
+                await loadSynthWorklet(this.context);
+                this.workletLoaded = true;
             }
             this.node?.disconnect();
             this.node = new AudioWorkletNode(this.context, "soundfont-synth", { numberOfInputs: 0, numberOfOutputs: 1, outputChannelCount: [2] });
@@ -65,20 +89,15 @@ class AccompanimentPlayer {
                 this.onError("音源の処理に失敗しました。再生を押して再試行してください。");
             };
             // A single compressor catches peaks from combinations of loud parts.
-            if (!this.compressor) {
-                this.compressor = this.context.createDynamicsCompressor();
-                this.compressor.threshold.value = -3;
-                this.compressor.knee.value = 3;
-                this.compressor.ratio.value = 20;
-                this.compressor.connect(this.context.destination);
-            }
-            this.node.connect(this.compressor);
+            if (this.compressor) this.node.connect(this.compressor);
+            else this.compressor = connectSynthOutput(this.context, this.node);
+            const wasm = assets.wasm.slice(0), soundfont = assets.soundfont.slice(0);
             await this.send("init", { wasm, soundfont }, [wasm, soundfont]);
             this.loadedSong = null;
         } catch (error) {
             this.node?.disconnect();
             throw error;
-        } finally { clearTimeout(timeout); }
+        }
     }
 
     send(type, data = {}, transfer = []) {

@@ -100,6 +100,7 @@ def package(engine_dir, output):
     synth = encode_gzip((DEMO.parents[1] / "audio/target/synth.wasm").read_bytes())
     worklet = (DEMO / "synth-worklet.js").read_text(encoding="utf-8")
     player = (DEMO / "player.js").read_text(encoding="utf-8")
+    audio_export = (DEMO / "audio-export.js").read_text(encoding="utf-8")
     midi = (DEMO / "midi.js").read_text(encoding="utf-8")
     song_files = (DEMO / "song-files.js").read_text(encoding="utf-8")
     song_editor = (DEMO / "song-editor.js").read_text(encoding="utf-8")
@@ -129,7 +130,7 @@ def package(engine_dir, output):
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
                            ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
-        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, player, song_editor, song_print, song_folder, song_history, piano_roll, demo]))
+        "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, player, audio_export, song_editor, song_print, song_folder, song_history, piano_roll, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")
     output.parent.mkdir(parents=True, exist_ok=True)
     with NamedTemporaryFile(mode="w", encoding="utf-8", dir=output.parent, delete=False) as staged:

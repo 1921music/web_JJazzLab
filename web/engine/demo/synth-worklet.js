@@ -46,7 +46,7 @@ class MixerEffects {
 }
 
 class SoundFontProcessor extends AudioWorkletProcessor {
-    constructor() {
+    constructor(options) {
         super();
         this.playing = false;
         this.parts = [];
@@ -56,26 +56,37 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         this.effects = new MixerEffects(sampleRate);
         this.port.onmessage = ({ data }) => this.command(data);
         this.port.onmessageerror = () => this.port.postMessage({ type: "error", error: "音源データを受け取れませんでした。再生を押して再試行してください。" });
+        const offline = options?.processorOptions;
+        if (offline) {
+            this.loadSoundFont(offline.module, offline.soundfont);
+            this.command({ type: "song", song: offline.song, loop: { enabled: false, start: 0, end: offline.song.duration } });
+            this.command({ type: "mix", parts: offline.parts, master: offline.master });
+            this.command({ type: "play", click: false });
+        }
+    }
+
+    loadSoundFont(module, soundfont) {
+        const instance = new WebAssembly.Instance(module, {
+            wasi_snapshot_preview1: { proc_exit: () => { throw new Error("音源の処理が終了しました。"); } },
+            env: { emscripten_notify_memory_growth() {} }
+        });
+        this.api = instance.exports;
+        this.api._initialize?.();
+        const bytes = new Uint8Array(soundfont);
+        const pointer = this.api.malloc(bytes.length);
+        if (!pointer) throw new Error("音源用のメモリを確保できません。");
+        try {
+            new Uint8Array(this.api.memory.buffer, pointer, bytes.length).set(bytes);
+            if (!this.api.synth_load(pointer, bytes.length, sampleRate)) throw new Error("SoundFontを読み込めません。");
+        } finally { this.api.free(pointer); }
+        this.pcm = new Float32Array(this.api.memory.buffer);
     }
 
     async command(message) {
         const { id, type } = message;
         try {
             if (type === "init") {
-                const { instance } = await WebAssembly.instantiate(message.wasm, {
-                    wasi_snapshot_preview1: { proc_exit: () => { throw new Error("音源の処理が終了しました。"); } },
-                    env: { emscripten_notify_memory_growth() {} }
-                });
-                this.api = instance.exports;
-                this.api._initialize?.();
-                const bytes = new Uint8Array(message.soundfont);
-                const pointer = this.api.malloc(bytes.length);
-                if (!pointer) throw new Error("音源用のメモリを確保できません。");
-                try {
-                    new Uint8Array(this.api.memory.buffer, pointer, bytes.length).set(bytes);
-                    if (!this.api.synth_load(pointer, bytes.length, sampleRate)) throw new Error("SoundFontを読み込めません。");
-                } finally { this.api.free(pointer); }
-                this.pcm = new Float32Array(this.api.memory.buffer);
+                this.loadSoundFont(await WebAssembly.compile(message.wasm), message.soundfont);
             } else if (type === "song") {
                 this.playing = false;
                 this.paused = false;
