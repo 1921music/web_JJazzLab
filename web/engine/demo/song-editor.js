@@ -586,13 +586,25 @@ class SongEditor {
         }
     }
 
-    openContext(x, y, menu = this.contextMenu) {
+    openContext(x, y, menu = this.contextMenu, target = this.selectedChord ? "chord" : "bar") {
         this.contextMenu.hidden = this.partMenu.hidden = this.parameterMenu.hidden = true;
         if (menu === this.contextMenu) {
-            menu.querySelector('[data-action="chord"]').hidden = !this.selectedChord;
-            menu.querySelector('[data-action="paste"]').disabled = !this.barClipboard;
+            const labels = { bar: ["小節の操作", "Bar actions"], chord: ["コードの操作", "Chord actions"],
+                section: ["セクションの操作", "Section actions"], annotation: ["小節メモの操作", "Bar annotation actions"] };
+            menu.setAttribute("aria-label", t(...labels[target]));
+            for (const button of menu.querySelectorAll("[data-target]")) {
+                button.hidden = !button.dataset.target.split(" ").includes(target);
+            }
             const [first, last] = this.selectedRange();
+            menu.querySelector('[data-action="paste"]').disabled = !this.barClipboard || first + this.clipboardLength > this.project.bars
+                || this.barClipboard.some(chord => chord.beat >= this.beatsInBar(chord.bar + first));
+            menu.querySelector('[data-action="insert"]').disabled = this.project.bars >= 1024;
             menu.querySelector('[data-action="remove-bars"]').disabled = last - first + 1 >= this.project.bars;
+            menu.querySelector('[data-action="end"]').disabled = last === this.project.bars - 1;
+            menu.querySelector('[data-action="clear"]').disabled = !this.selectedChord
+                && !this.project.chords.some(chord => chord.bar >= first && chord.bar <= last);
+            const section = this.project.sections.findLast(item => item.bar <= this.selectedBar);
+            menu.querySelector('[data-action="section-break"]').setAttribute("aria-pressed", String(section?.clientProperties?.PropSectionStartOnNewLine === "true"));
             const restart = menu.querySelector('[data-action="restart"]');
             restart.disabled = this.selectedRange()[0] !== this.selectedRange()[1];
             restart.setAttribute("aria-pressed", String(this.project.loopRestartBar === this.selectedBar));
@@ -660,6 +672,21 @@ class SongEditor {
             case "practice": this.openPracticeSong(); break;
             case "edit": case "section": case "chord": case "annotation": this.openBarEditor(action); break;
             case "appearance": this.openScoreAppearance(); break;
+            case "section-break": {
+                const section = this.project.sections.findLast(item => item.bar <= this.selectedBar);
+                if (!section) break;
+                this.rememberEdit(this.captureEdit());
+                section.clientProperties ??= {};
+                if (section.clientProperties.PropSectionStartOnNewLine === "true") delete section.clientProperties.PropSectionStartOnNewLine;
+                else section.clientProperties.PropSectionStartOnNewLine = "true";
+                this.render();
+                break;
+            }
+            case "clear-annotation":
+                this.editArrangement(() => {
+                    this.project.annotations = (this.project.annotations ?? []).filter(note => note.bar !== this.selectedBar);
+                });
+                break;
             case "restart":
                 this.editArrangement(() => {
                     this.project.loopRestartBar = this.project.loopRestartBar === first ? undefined : first;
@@ -1903,6 +1930,11 @@ class SongEditor {
             if (start) band.textContent = section.name;
             if (start) {
                 band.ondblclick = event => { event.stopPropagation(); this.selectBar(bar); this.openBarEditor("section"); };
+                band.oncontextmenu = event => {
+                    event.stopPropagation(); event.preventDefault();
+                    this.selectBar(bar, false, true);
+                    this.openContext(event.clientX, event.clientY, this.contextMenu, "section");
+                };
                 band.draggable = true;
                 const sectionToDrag = sectionIndex;
                 band.ondragstart = event => event.dataTransfer.setData("application/x-jjazz-section", String(sectionToDrag));
@@ -1915,6 +1947,11 @@ class SongEditor {
                 if (showAnnotations) note.textContent = annotation.text;
                 note.title = annotation.text;
                 note.ondblclick = event => { event.stopPropagation(); this.selectBar(bar); this.openBarEditor("annotation"); };
+                note.oncontextmenu = event => {
+                    event.stopPropagation(); event.preventDefault();
+                    this.selectBar(bar, false, true);
+                    this.openContext(event.clientX, event.clientY, this.contextMenu, "annotation");
+                };
                 cell.append(note);
             }
             if (this.project.loopRestartBar === bar) {

@@ -211,6 +211,32 @@
         document.querySelector("#bar-editor-form").requestSubmit();
         check(editor.grid.querySelector(".bar-annotation")?.textContent === "Play softly",
             "The first annotation was not made visible");
+        {
+            const clickContext = element => element.dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+            const action = id => editor.contextMenu.querySelector(`[data-action="${id}"]`);
+            clickContext(editor.grid.children[0].querySelector(".bar-annotation"));
+            check(!action("annotation").hidden && !action("clear-annotation").hidden && action("remove-bars").hidden,
+                "The annotation menu offered bar actions or omitted annotation actions");
+            action("clear-annotation").click();
+            check(!editor.grid.children[0].querySelector(".bar-annotation"), "Deleting from the annotation menu did not remove the annotation");
+            editor.undoButton.click();
+            const later = editor.project.sections.find(section => section.bar > 0);
+            clickContext(editor.grid.children[later.bar].querySelector(".section-band"));
+            check(!action("section").hidden && !action("section-break").hidden && action("chord").hidden,
+                "The section menu showed unrelated chord actions");
+            action("section-break").click();
+            check(editor.grid.children[later.bar].style.gridColumnStart === "1", "The section context menu did not apply the line break");
+            editor.undoButton.click();
+            clickContext(editor.grid.children[0].querySelector(".chord-symbol"));
+            check(!action("chord").hidden && !action("appearance").hidden && action("section-break").hidden && action("insert").hidden,
+                "The chord menu showed unrelated bar actions");
+            editor.contextMenu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+            clickContext(editor.grid.children[0]);
+            check(!action("insert").hidden && !action("remove-bars").hidden && action("chord").hidden,
+                "The bar context did not restore bar-only actions");
+            editor.contextMenu.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+            report.contextTargets = true;
+        }
         const annotationLines = document.querySelector("#bar-annotation-lines");
         annotationLines.value = "3";
         annotationLines.dispatchEvent(new Event("change"));

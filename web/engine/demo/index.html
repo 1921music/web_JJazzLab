@@ -640,21 +640,23 @@
         </form>
     </dialog>
     <div id="bar-context" class="bar-context" role="group" aria-label="小節の操作" hidden>
-        <button type="button" data-action="edit">小節を編集 <kbd>Enter</kbd></button>
-        <button type="button" data-action="chord">コードを編集</button>
-        <button type="button" data-action="section">セクションを編集</button>
-        <button type="button" data-action="appearance">コード譜の表示設定</button>
-        <button type="button" data-action="annotation">小節メモを編集</button>
-        <button type="button" data-action="copy">コピー <kbd>Ctrl+C</kbd></button>
-        <button type="button" data-action="paste">貼り付け <kbd>Ctrl+V</kbd></button>
-        <button type="button" data-action="clear">コードを削除 <kbd>Del</kbd></button>
-        <button type="button" data-action="insert">小節を挿入</button>
-        <button type="button" data-action="remove-bars">選択小節を削除</button>
-        <button type="button" data-action="end">最終小節にする</button>
-        <button type="button" data-action="restart" aria-pressed="false">ループの折り返し位置にする</button>
-        <button type="button" data-action="practice">選択小節から練習曲を作成…</button>
-        <button type="button" data-action="play">ここから再生 <kbd>Ctrl+Space</kbd></button>
-        <button type="button" data-action="play-selection">選択範囲のみ再生 <kbd>Ctrl+Shift+Space</kbd></button>
+        <button type="button" data-action="edit" data-target="bar">小節を編集 <kbd>Enter</kbd></button>
+        <button type="button" data-action="chord" data-target="chord">コードを編集</button>
+        <button type="button" data-action="section" data-target="bar section">セクションを編集</button>
+        <button type="button" data-action="appearance" data-target="bar chord section">コード譜の表示設定</button>
+        <button type="button" data-action="section-break" data-target="section" aria-pressed="false">セクションの前で改行</button>
+        <button type="button" data-action="annotation" data-target="bar annotation">小節メモを編集</button>
+        <button type="button" data-action="clear-annotation" data-target="annotation">小節メモを削除</button>
+        <button type="button" data-action="copy" data-target="bar">コピー <kbd>Ctrl+C</kbd></button>
+        <button type="button" data-action="paste" data-target="bar">貼り付け <kbd>Ctrl+V</kbd></button>
+        <button type="button" data-action="clear" data-target="bar chord">コードを削除 <kbd>Del</kbd></button>
+        <button type="button" data-action="insert" data-target="bar">小節を挿入</button>
+        <button type="button" data-action="remove-bars" data-target="bar">選択小節を削除</button>
+        <button type="button" data-action="end" data-target="bar">最終小節にする</button>
+        <button type="button" data-action="restart" data-target="bar" aria-pressed="false">ループの折り返し位置にする</button>
+        <button type="button" data-action="practice" data-target="bar">選択小節から練習曲を作成…</button>
+        <button type="button" data-action="play" data-target="bar chord section">ここから再生 <kbd>Ctrl+Space</kbd></button>
+        <button type="button" data-action="play-selection" data-target="bar">選択範囲のみ再生 <kbd>Ctrl+Shift+Space</kbd></button>
     </div>
     <div id="part-context" class="bar-context" role="group" aria-label="曲構成の操作" hidden>
         <button type="button" data-action="edit">演奏区間を編集</button>
