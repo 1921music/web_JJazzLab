@@ -46,6 +46,7 @@
                 <details><summary>ツール</summary><div>
                     <button id="show-generation-controls" type="button">伴奏設定…</button>
                     <button id="show-rhythm-library" type="button">リズムライブラリ…</button>
+                    <button id="open-yjz-wizard" type="button">YamJJazzスタイルを作成…</button>
                     <button id="open-click-settings" type="button">クリック音の設定…</button>
                     <button id="open-midi-remote" type="button">MIDI遠隔操作…</button>
                     <button id="open-arranger" type="button">MIDIアレンジャー…</button>
@@ -507,6 +508,30 @@
                 <button id="rhythm-load-pack" type="button" class="secondary">公開スタイル集を読み込む</button>
                 <button id="cancel-rhythm-picker" type="button" class="secondary">キャンセル</button>
                 <button id="apply-rhythm-picker" type="submit">選択</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="yjz-wizard" aria-labelledby="yjz-wizard-title">
+        <form method="dialog">
+            <h2 id="yjz-wizard-title">YamJJazzスタイルを作成</h2>
+            <label class="field">元のYamahaスタイル <select name="baseStyle"></select></label>
+            <label class="field">またはスタイルファイルを選択 <input name="baseFile" type="file" accept=".sty,.sst,.prs,.bcs"></label>
+            <label class="field">書き出すスタイル名 <input name="title"></label>
+            <fieldset class="rhythm-picker-fields">
+                <legend>各バリエーションの数</legend>
+                <label class="field">Main A <input name="mainA" type="number" min="0" max="10" value="2" required></label>
+                <label class="field">Main B <input name="mainB" type="number" min="0" max="10" value="2" required></label>
+                <label class="field">Main C <input name="mainC" type="number" min="0" max="10" value="2" required></label>
+                <label class="field">Main D <input name="mainD" type="number" min="0" max="10" value="2" required></label>
+            </fieldset>
+            <label class="field">各バリエーションのフレーズ数 <input name="phrases" type="number" min="1" max="20" value="2" required></label>
+            <label><input name="includeIntros" type="checkbox" checked> イントロとエンディングを含める</label>
+            <label><input name="includeFills" type="checkbox" checked> フィルを含める</label>
+            <p role="status"></p>
+            <div class="dialog-actions">
+                <button name="closeWizard" type="button" class="secondary">閉じる</button>
+                <button type="submit">スタイルをZIPで書き出す</button>
             </div>
         </form>
     </dialog>

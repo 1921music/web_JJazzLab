@@ -2273,6 +2273,15 @@ const arranger = new Arranger({
 midiRemote.onRawMessage = bytes => arranger.receive(bytes);
 midiRemote.onDeviceChange = () => arranger.resetKeys();
 
+const yjzWizard = new YjzWizard({
+    choices: editor.onStyleChoices,
+    resolve: findSavedStyle,
+    readFile: readLocalStyle,
+    cleanName: name => editor.fileStem(name),
+    build: async (style, variationCounts, intros, fills, phrases) => (await getEngine()).exports.buildYjzStyle(
+        style.bytes, style.name, Int32Array.from(variationCounts), intros, fills, phrases)
+});
+
 document.querySelector("#new-project").click();
 bootingSong = false;
 void recentSongs.restore(songTabs.startup).then(() => songTabs.restore());

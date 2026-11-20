@@ -41,6 +41,7 @@ import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythm.api.RhythmParameter;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.jjazz.utilities.api.FloatRange;
+import org.jjazz.yamjjazz.rhythm.api.YjzFileBuilder;
 import org.teavm.jso.JSExport;
 
 /** JavaScript entry point for generating a General MIDI accompaniment. */
@@ -230,6 +231,25 @@ public final class WasmMidiEngine
             var midi = new ByteArrayOutputStream();
             partMetadata = MidiGeneration.generateExtended(style.file(), extension.file(), chords, tempo, variation, midi);
             return midi.toByteArray();
+        }
+    }
+
+    @JSExport
+    public static byte[] buildYjzStyle(byte[] data, String name, int[] counts, boolean introEndings, boolean fills, int phrases) throws Exception
+    {
+        if (counts.length != 4 || Arrays.stream(counts).anyMatch(value -> value < 0 || value > 10) || phrases < 1 || phrases > 20)
+        {
+            throw new IllegalArgumentException("Invalid variation or source phrase count");
+        }
+        WebServices.install();
+        try (var style = new RawStyleFile(data, name))
+        {
+            var rhythm = MidiGeneration.createYamahaRhythm(style.file(), null);
+            var sequence = new YjzFileBuilder(rhythm, counts[0], counts[1], counts[2], counts[3], introEndings, fills, phrases).buildSequence();
+            if (sequence.getTracks().length < 2) throw new IllegalArgumentException("Choose at least one variation present in the base style");
+            var output = new ByteArrayOutputStream();
+            MidiSystem.write(sequence, 1, output);
+            return output.toByteArray();
         }
     }
 

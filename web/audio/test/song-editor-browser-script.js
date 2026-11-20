@@ -2273,6 +2273,45 @@ AbM7 | G7 Cm7 |
             }
             report.arranger = true;
         }
+        {
+            const before = HTMLAnchorElement.prototype.click;
+            let output;
+            HTMLAnchorElement.prototype.click = function () {
+                if (this.download === "Practice rhythm.zip") output = fetch(this.href).then(response => response.arrayBuffer());
+                else before.call(this);
+            };
+            const form = yjzWizard.form;
+            try {
+                document.querySelector("#open-yjz-wizard").click();
+                form.elements.baseStyle.value = "8Beat.T160.STY-ID";
+                form.elements.title.value = "Practice rhythm";
+                form.elements.mainA.value = "3";
+                form.elements.mainB.value = "0";
+                form.elements.mainC.value = "0";
+                form.elements.mainD.value = "0";
+                form.elements.phrases.value = "2";
+                form.elements.includeIntros.checked = false;
+                form.elements.includeFills.checked = false;
+                await form.onsubmit(new Event("submit", { cancelable: true }));
+                check(output, `The wizard did not export a ZIP: ${yjzWizard.dialog.querySelector("[role=status]").textContent}`);
+                const zip = new MemoryStyleArchive(await output, { accept: name => /\.(sty|yjz)$/iu.test(name) });
+                const extension = zip.entries.find(entry => entry.name === "Practice rhythm.yjz");
+                const base = zip.entries.find(entry => entry.name === "Practice rhythm.sty");
+                check(base && extension && zip.entries.length === 2, "The wizard did not pair the renamed base and extended files");
+                const wasm = (await getEngine()).exports;
+                const args = [new Int8Array(await zip.read(base)), base.name, new Int8Array(await zip.read(extension)), extension.name];
+                const [, ...parameters] = Array.from(wasm.getRhythmParameters(...args));
+                check(parameters.find(row => row.startsWith("rpVariationID\t"))?.split("\t").includes("Main A-3"),
+                    "The desktop rhythm engine could not load the third generated variation");
+                const generated = wasm.generateExtendedMidi(...args, ["C", "G7"], 120, "Main A-3");
+                check(parseMidi(generated, 2, wasm.getPartMetadata()).events.some(event => event.type === 0x90 && event.b > 0),
+                    "The generated YJZ variation did not play");
+            } finally {
+                HTMLAnchorElement.prototype.click = before;
+                if (yjzWizard.dialog.open) yjzWizard.dialog.close();
+            }
+            report.yjzWizard = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

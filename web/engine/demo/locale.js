@@ -285,6 +285,16 @@ JJazzLab公開スタイル集|JJazzLab public style library
 リズムを選択|Select Rhythm
 リズムライブラリ…|Rhythm Library…
 リズムライブラリ|Rhythm Library
+YamJJazzスタイルを作成…|Create YamJJazz Style…
+YamJJazzスタイルを作成|Create YamJJazz Style
+元のYamahaスタイル|Original Yamaha style
+またはスタイルファイルを選択|Or choose a style file
+書き出すスタイル名|Exported style name
+各バリエーションの数|Number of sub-variations
+各バリエーションのフレーズ数|Source phrases per variation
+イントロとエンディングを含める|Include intros and endings
+フィルを含める|Include fills
+スタイルをZIPで書き出す|Export style as ZIP
 クリック音の設定…|Click Settings…
 クリック音の設定|Click Settings
 MIDI遠隔操作…|MIDI Remote Control…
