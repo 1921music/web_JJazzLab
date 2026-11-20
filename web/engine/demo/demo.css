@@ -476,6 +476,8 @@ dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display
 #inspector-piano span[data-note="chord"] { background: #599bb7; }
 #inspector-guitars:not([hidden]) { display: flex; gap: .4rem; flex-wrap: wrap; }
 #inspector-staff { max-width: 100%; }
+#arranger-monitor:not([hidden]) { display: flex; align-items: center; gap: .7rem; padding: .4rem .7rem; }
+#arranger-current-chord { font-weight: bold; }
 .bar-context {
     position: fixed;
     z-index: 5;

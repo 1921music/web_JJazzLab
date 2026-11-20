@@ -91,6 +91,7 @@ class MidiRemote {
             if (this.input) this.input.onmidimessage = null;
             this.input = next;
             this.controllers.clear();
+            this.onDeviceChange?.(next);
             if (next) next.onmidimessage = event => this.receive(event.data);
         }
         this.show(next ? t(`${next.name || next.id} から入力中。`, `Listening to ${next.name || next.id}.`)
@@ -98,6 +99,7 @@ class MidiRemote {
     }
 
     receive(bytes) {
+        if (this.onRawMessage?.(bytes)) return;
         const [status, number, value] = bytes;
         const channel = status & 15;
         const command = status & 0xf0;

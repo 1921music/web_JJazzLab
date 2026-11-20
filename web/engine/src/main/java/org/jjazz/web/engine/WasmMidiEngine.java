@@ -18,6 +18,7 @@ import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
 import org.jjazz.harmony.spi.ScaleManager;
 import org.jjazz.harmony.spi.ChordTypeDatabase;
 import org.jjazz.harmony.api.Note;
+import org.jjazz.harmony.api.ChordSymbolFinder;
 import org.jjazz.harmony.api.TimeSignature;
 import org.jjazz.harmony.api.Position;
 import org.jjazz.humanizer.api.Humanizer;
@@ -323,6 +324,17 @@ public final class WasmMidiEngine
         var types = new String[database.getSize()];
         for (int index = 0; index < types.length; index++) types[index] = database.getChordType(index).getName();
         return types;
+    }
+
+    @JSExport
+    public static String recognizeArrangerChord(int[] pitches, boolean lowestIsBass)
+    {
+        if (pitches.length < 3 || pitches.length > 4) return "";
+        ChordSymbolFinder.buildStaticData();
+        var finder = new ChordSymbolFinder(4);
+        var notes = Arrays.stream(pitches).sorted().mapToObj(Note::new).toList();
+        var chord = finder.getChordSymbol(notes, finder.find(notes), lowestIsBass);
+        return chord == null ? "" : chord.getName();
     }
 
     @JSExport

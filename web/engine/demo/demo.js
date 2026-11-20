@@ -250,6 +250,7 @@ function updateButtons() {
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
     document.querySelector("#open-song-print").disabled = !editor.project || generating || starting;
     document.querySelector("#open-midi-output").disabled = generating || starting || playing || paused;
+    document.querySelector("#open-arranger").disabled = !editor.project || generating || starting || playing || paused;
     document.querySelector("#open-recent-songs").disabled = generating || starting;
     songTabs.updateBusy();
     folderIO.update(generating || starting);
@@ -289,9 +290,11 @@ function showPlayStatus(message, error = false) {
 
 function updatePosition(position) {
     if (!song) return;
+    const wasRunning = playing || paused;
     playing = position.playing;
     paused = Boolean(position.paused);
     if (!playing && !paused) player.stopMidi();
+    if (wasRunning && !playing && !paused && !starting && !generating) arranger.finish();
     let bar = song.barTimes.findIndex(time => time > position.seconds);
     if (bar < 0) bar = song.barTimes.length - 1;
     const beat = song.beatTimes.findLast(beat => beat.seconds <= position.seconds + .00002);
@@ -1060,6 +1063,7 @@ function clearPlayback() {
 
 let bootingSong = true;
 const editor = new SongEditor((opened, useSavedStyles) => {
+    arranger.finish();
     pianoRoll.close();
     recentSongs.opened(Boolean(useSavedStyles && !bootingSong));
     songTabs.opened(useSavedStyles, bootingSong);
@@ -1841,6 +1845,7 @@ function selectVariation(saved, available) {
 }
 
 function liveSongKeys(project) {
+    project = arranger.snapshot(project);
     const structure = JSON.stringify([project.bars, project.loopRestartBar, rhythmEngine.value,
         project.sections.map(section => [section.bar, section.meter]),
         project.parts.map(part => [part.section, part.styleId, part.parameters.rpTempoID ?? "100"]),
@@ -1858,7 +1863,7 @@ function withBrowserPatches(track) {
     return equivalent ? { ...track, patch: equivalent.patch } : track;
 }
 
-function scheduleAccompanimentRefresh() {
+function scheduleAccompanimentRefresh(delay = 350) {
     if ((!playing && !paused) || generating || starting || !liveArrangement || editor.project !== activeProject
         || player.previewing || player.loadedSong !== song) return;
     const version = ++liveVersion;
@@ -1882,7 +1887,7 @@ function scheduleAccompanimentRefresh() {
                 accompanimentDirty = false;
                 return;
             }
-            const snapshot = structuredClone(project);
+            const snapshot = structuredClone(arranger.snapshot(project));
             const ready = liveEngine ??= instantiateEngine().catch(error => { liveEngine = undefined; throw error; });
             const [wasm, resolution] = await Promise.all([ready, resolveArrangement(snapshot, rhythmEngine.value === "jjswing")]);
             if (!active()) return;
@@ -1908,7 +1913,7 @@ function scheduleAccompanimentRefresh() {
         } catch {
             if (active()) showStatus("次回の再生から変更を反映します。");
         }
-    }, 350);
+    }, delay);
 }
 
 player.onRefreshApplied = version => {
@@ -2045,7 +2050,7 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
             const savedStyleMix = editor.unresolvedStyleMix ?? editor.mix;
             let inputMix = followSong && !unresolved ? savedStyleMix : editor.mix;
             style = styles.length === 1 ? styles[0] : { name: project.title };
-            const arrangement = { ...project, tempo: tempo || project.tempo, parts };
+            const arrangement = { ...arranger.snapshot(project), tempo: tempo || project.tempo, parts };
             const renderMidi = mix => engine.exports.generateSongMidiWithChordRendering(
                 ...DesktopSongFiles.multiStyleEngineArgs(arrangement, allStyles, sources, mix.map(withBrowserPatches)));
             if (factoryRhythm !== undefined && inputMix.length) {
@@ -2094,8 +2099,10 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
             editor.notify(notices.join(" "));
             editor.baseMix = editor.renderedMix = editor.mix = completeMix;
             editor.unresolvedStyleMix = unresolved ? savedStyleMix : undefined;
-            if (!followSong) editor.project.parts = arrangement.parts;
-            editor.project.tempo = arrangement.tempo;
+            if (!arranger.session) {
+                if (!followSong) editor.project.parts = arrangement.parts;
+                editor.project.tempo = arrangement.tempo;
+            }
             editor.styleParameters = new Map(styles.map(style => [style.id, style.parameters]));
             editor.render();
             const attached = new Map((followSong ? editor.attachedStyles : []).map(style => [style.id, style]));
@@ -2237,6 +2244,34 @@ const midiRemote = new MidiRemote([
     { id: "transpose-up", note: 31, japanese: "半音上げる", english: "Transpose up a semitone",
         run: () => { if (editor.project) void editor.transposeChords(1); } }
 ], () => player.initialize(showPlayStatus).catch(error => showPlayStatus(error.message, true)));
+
+let arrangerRange;
+const arranger = new Arranger({
+    editor,
+    recognize: async (pitches, lowestIsBass) => (await getEngine()).exports.recognizeArrangerChord(Int32Array.from(pitches), lowestIsBass),
+    hasInput: () => Boolean(midiRemote.input),
+    start: async range => {
+        arrangerRange = { selected: chosenRange, enabled: loopEnabled.checked, start: loopStart.value, end: loopEnd.value };
+        chosenRange = { from: range.from, to: range.to };
+        loopEnabled.checked = true;
+        accompanimentDirty = true;
+        await startPlayback(true);
+        if (!playing && !paused) arranger.finish();
+    },
+    stop: () => stopButton.click(),
+    changed: () => { accompanimentDirty = true; scheduleAccompanimentRefresh(15); },
+    restore: () => {
+        if (!arrangerRange) return;
+        chosenRange = arrangerRange.selected;
+        loopEnabled.checked = arrangerRange.enabled;
+        loopStart.value = arrangerRange.start;
+        loopEnd.value = arrangerRange.end;
+        arrangerRange = undefined;
+        accompanimentDirty = true;
+    }
+});
+midiRemote.onRawMessage = bytes => arranger.receive(bytes);
+midiRemote.onDeviceChange = () => arranger.resetKeys();
 
 document.querySelector("#new-project").click();
 bootingSong = false;

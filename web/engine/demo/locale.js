@@ -325,6 +325,13 @@ URLまたはファイルのパス|URL or file path
 音を多く／少なく|Dense/sparse phrases
 ガイドを消す|Clear the guide
 ガイドを生成|Generate the guide
+MIDIアレンジャー…|MIDI Arranger…
+MIDIアレンジャー|MIDI Arranger
+アレンジャーを終了|Exit Arranger
+繰り返す区間|Song part to loop
+コード認識の最高MIDIノート|Highest MIDI note for chord recognition
+最低音をベースにする|Use the lowest note as bass
+アレンジャーを開始|Start Arranger
 鍵盤|Keyboard
 ギター|Guitar
 表示方法|View

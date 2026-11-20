@@ -2225,6 +2225,54 @@ AbM7 | G7 Cm7 |
             check(improvisationGuide.cue.hidden && !editor.grid.querySelector(".improvisation-guide-cells"), "The guide could not be cleared");
             report.improvisationGuide = true;
         }
+        {
+            const requestDescriptor = Object.getOwnPropertyDescriptor(navigator, "requestMIDIAccess");
+            const keyboard = { id: "arranger-keys", name: "Arranger keys", state: "connected" };
+            Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async () => ({
+                inputs: new Map([[keyboard.id, keyboard]])
+            }) });
+            const saved = localStorage.getItem(arranger.preference);
+            const originalMode = loopEnabled.checked;
+            const originalAccess = midiRemote.access, originalInput = midiRemote.inputId;
+            try {
+                editor.newSong();
+                const written = DesktopSongFiles.writeSong(editor.project);
+                midiRemote.access = undefined;
+                midiRemote.inputId = null;
+                document.querySelector("#open-midi-remote").click();
+                await midiRemote.connectButton.onclick();
+                midiRemote.dialog.close();
+                document.querySelector("#open-arranger").click();
+                arranger.dialog.querySelector("form").requestSubmit();
+                for (let attempt = 0; !arranger.session?.ready && attempt < 200; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+                check(playing && arranger.session?.ready && loopEnabled.checked && arranger.indicator.textContent === "C",
+                    `The arranger loop did not start: ${playStatus.textContent}`);
+                const before = song;
+                for (const note of [45, 48, 52, 72]) keyboard.onmidimessage({ data: Uint8Array.from([0x90, note, 100]) });
+                for (let attempt = 0; song === before && attempt < 320; attempt++) await new Promise(resolve => setTimeout(resolve, 25));
+                check(playing && song !== before && arranger.indicator.textContent === "Am"
+                    && JSON.stringify(song.events) !== JSON.stringify(before.events),
+                `The split keyboard chord did not change the running accompaniment: ${status.textContent}`);
+                check(DesktopSongFiles.writeSong(editor.project) === written, "Arranger mode wrote the held chord into the original lead sheet");
+                check(await arranger.recognize([43, 48, 52], true) === "C/G", "The desktop recognizer did not preserve an inversion");
+                await player.stop();
+                check(!arranger.session && arranger.view.hidden && loopEnabled.checked === originalMode, "Stopping the arranger did not restore loop controls");
+            } finally {
+                await player.stop();
+                if (arranger.dialog.open) arranger.dialog.close();
+                if (midiRemote.dialog.open) midiRemote.dialog.close();
+                keyboard.onmidimessage = null;
+                midiRemote.input = undefined;
+                midiRemote.access = originalAccess;
+                midiRemote.inputId = originalInput;
+                arranger.finish();
+                if (saved === null) localStorage.removeItem(arranger.preference);
+                else localStorage.setItem(arranger.preference, saved);
+                if (requestDescriptor) Object.defineProperty(navigator, "requestMIDIAccess", requestDescriptor);
+                else delete navigator.requestMIDIAccess;
+            }
+            report.arranger = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
