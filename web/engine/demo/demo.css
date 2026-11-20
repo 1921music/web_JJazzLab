@@ -427,15 +427,16 @@ dialog {
 dialog::backdrop { background: #10131780; }
 dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display: grid; gap: .65rem; }
 #part-batch-fields { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .5rem; }
-#rhythm-picker { width: min(52rem, calc(100% - 2rem)); }
+#rhythm-picker, #rhythm-library { width: min(52rem, calc(100% - 2rem)); }
 .rhythm-picker-fields { display: flex; flex-wrap: wrap; gap: .5rem; align-items: end; }
 .rhythm-table-scroll { max-height: 42vh; overflow: auto; border: 1px solid #747a81; }
-#rhythm-table { width: 100%; border-collapse: collapse; text-align: start; }
-#rhythm-table th, #rhythm-table td { padding: .2rem .4rem; text-align: start; }
-#rhythm-table th { position: sticky; top: 0; background: var(--chrome); }
+.rhythm-table-scroll table { width: 100%; border-collapse: collapse; text-align: start; }
+.rhythm-table-scroll th, .rhythm-table-scroll td { padding: .2rem .4rem; text-align: start; }
+.rhythm-table-scroll th { position: sticky; top: 0; background: var(--chrome); }
 #rhythm-table tr[data-selected] td { background: #36608350; }
 #rhythm-table td:first-child button { width: 100%; text-align: start; }
 #rhythm-picker-status { margin: 0; min-height: 1.25em; }
+#rhythm-library-status { max-height: 9rem; overflow: auto; white-space: pre-wrap; }
 #track-overrides-status:empty, #track-override-list:empty { display: none; }
 #track-override-list { margin: 0; padding-inline-start: 1.4rem; }
 #drum-transform-chain > div { display: flex; align-items: center; gap: .3rem; }

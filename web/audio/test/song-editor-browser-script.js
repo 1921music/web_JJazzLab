@@ -1669,6 +1669,71 @@
             }
             report.rhythmPicker = true;
         }
+        {
+            const dialog = document.querySelector("#rhythm-library");
+            const rhythm = dialog.querySelector("#rhythm-default-style");
+            const meter = dialog.querySelector("#rhythm-default-meter");
+            const rows = dialog.querySelector("tbody");
+            const status = dialog.querySelector("#rhythm-library-status");
+            const files = dialog.querySelector("#rhythm-library-files");
+            const folder = dialog.querySelector("#rhythm-library-folder");
+            const libraryKey = "web-jjazzlab.default-rhythms";
+            const savedDefaults = localStorage.getItem(libraryKey);
+            const beat = new File([await decompress(embeddedDiscoHouse)], "Smoke beat.prs");
+            const waltz = new File([await decompress(embeddedJazzWaltz)], "Smoke waltz.sst");
+            const replacement = new File([await decompress(embeddedJazzWaltz)], "Smoke replacement.sst");
+            for (const file of [waltz, replacement]) Object.defineProperty(file, "webkitRelativePath", { value: "Styles/Test/" + file.name });
+            const select = (field, value) => { field.value = value; field.dispatchEvent(new Event("change")); };
+            const upload = async (input, styles) => {
+                const carrying = new DataTransfer();
+                styles.forEach(style => carrying.items.add(style));
+                input.files = carrying.files;
+                await input.onchange();
+                check(!status.hasAttribute("data-error"), status.textContent);
+            };
+            const id = name => name + "-ID";
+            const editedIds = [beat, waltz, replacement].map(file => id(file.name));
+            try {
+                await document.querySelector("#show-rhythm-library").onclick();
+                await upload(files, [beat]);
+                await upload(folder, [waltz]);
+                check(rows.textContent.includes(beat.name) && rows.textContent.includes(waltz.name)
+                    && rhythm.querySelector('option[value="Smoke beat.prs-ID"]'), "The two real styles did not reach the library");
+                select(rhythm, id(beat.name));
+                select(meter, "THREE_FOUR");
+                select(rhythm, id(waltz.name));
+                dialog.close();
+                editor.newSong();
+                check(editor.project.parts[0].styleId === id(beat.name), "The 4/4 preference did not initialize a new song");
+                await generate();
+                check(song.parts.length > 1 && editor.attachedStyles.some(style => style.id === id(beat.name)),
+                    "The new song could not play or attach its library rhythm");
+                const waltzScore = await editor.onReadTextSong("| 3/4 C | Dm7 | G7 | C |");
+                check(waltzScore.parts[0].styleId === id(waltz.name), "The 3/4 preference did not apply to a new waltz");
+                const database = await rhythmLibrary.database();
+                const saved = await new Promise((resolve, reject) => {
+                    const request = database.transaction("styles").objectStore("styles").get(id(beat.name));
+                    request.onsuccess = () => resolve(request.result);
+                    request.onerror = () => reject(request.error);
+                });
+                check(saved?.bytes instanceof Int8Array && saved.meter === "FOUR_FOUR", "Rhythm data was not saved in IndexedDB");
+                await document.querySelector("#show-rhythm-library").onclick();
+                await upload(folder, [replacement]);
+                check(rows.textContent.includes(beat.name) && !rows.textContent.includes(waltz.name) && rows.textContent.includes(replacement.name),
+                    "A rescan did not replace the folder entries independently of individual additions");
+                const beatRow = Array.from(rows.rows).find(row => row.cells[0].textContent === beat.name);
+                await beatRow.querySelector("button").onclick();
+                check(!rhythmLibrary.records.has(id(beat.name)) && !rows.textContent.includes(beat.name)
+                    && editor.attachedStyles.some(style => style.id === id(beat.name)), "Removal did not preserve the active song attachment");
+            } finally {
+                if (dialog.open) dialog.close();
+                await rhythmLibrary.update([], editedIds);
+                rhythmLibrary.defaults = JSON.parse(savedDefaults ?? "{}");
+                if (savedDefaults === null) localStorage.removeItem(libraryKey);
+                else localStorage.setItem(libraryKey, savedDefaults);
+            }
+            report.rhythmLibrary = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

@@ -429,9 +429,10 @@ class SongEditor {
                 return;
             }
         } catch (error) { templateError = error; }
+        const rhythm = this.onDefaultRhythm?.("FOUR_FOUR") ?? { styleId: "jjSwing-ID", styleName: "jjSwing" };
         this.open({ title, tempo: 120, bars: 4, sections: [{ name: "A", bar: 0, meter: "FOUR_FOUR" }],
             chords: ["C", "Am7", "Dm7", "G7"].map((name, bar) => ({ name, bar, beat: 0 })),
-            parts: [{ name: "A", section: 0, styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} }], userTracks: []
+            parts: [{ name: "A", section: 0, ...rhythm, parameters: {} }], userTracks: []
         }, []);
         if (templateError) {
             this.notify(t("テンプレートを読み込めなかったため、標準の曲を開きました。", "The template could not be loaded. Opened the default song."), true);

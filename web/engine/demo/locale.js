@@ -282,6 +282,11 @@ JJazzLab公開スタイル集|JJazzLab public style library
 すべて|All
 リズムを探す…|Browse rhythms…
 リズムを選択|Select Rhythm
+リズムライブラリ…|Rhythm Library…
+リズムライブラリ|Rhythm Library
+リズムを追加|Add rhythms
+フォルダーを読み込み・再スキャン|Scan or rescan a folder
+この拍子の既定のリズム|Default rhythm for this time signature
 検索|Search
 プロバイダー|Provider
 お気に入りのみ|Favorites only

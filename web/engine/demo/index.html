@@ -43,6 +43,7 @@
                 </div></details>
                 <details><summary>ツール</summary><div>
                     <button id="show-generation-controls" type="button">伴奏設定…</button>
+                    <button id="show-rhythm-library" type="button">リズムライブラリ…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
                     <button id="open-chord-display-key" type="button">コード表示の移調…</button>
@@ -448,6 +449,26 @@
                 <button id="cancel-rhythm-picker" type="button" class="secondary">キャンセル</button>
                 <button id="apply-rhythm-picker" type="submit">選択</button>
             </div>
+        </form>
+    </dialog>
+
+    <dialog id="rhythm-library" aria-labelledby="rhythm-library-title">
+        <form method="dialog">
+            <h2 id="rhythm-library-title">リズムライブラリ</h2>
+            <label class="field">リズムを追加 <input id="rhythm-library-files" type="file" accept=".sty,.sst,.prs,.bcs,.yjz" multiple></label>
+            <label class="field">フォルダーを読み込み・再スキャン <input id="rhythm-library-folder" type="file" webkitdirectory multiple></label>
+            <div class="rhythm-table-scroll">
+                <table>
+                    <thead><tr><th scope="col">リズム</th><th scope="col">拍子</th><th scope="col">削除</th></tr></thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+            <div class="rhythm-picker-fields">
+                <label class="field">拍子 <select id="rhythm-default-meter"></select></label>
+                <label class="field">この拍子の既定のリズム <select id="rhythm-default-style"></select></label>
+            </div>
+            <p id="rhythm-library-status" role="status"></p>
+            <div class="dialog-actions"><button id="close-rhythm-library" type="button" class="secondary">閉じる</button></div>
         </form>
     </dialog>
 

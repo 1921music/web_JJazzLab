@@ -18,6 +18,9 @@ const download = document.querySelector("#download");
 const bundledStyle = "8Beat.T160.STY";
 const bundledJazzWaltz = "JazzWaltzMed.S351.sst";
 const bundledStyles = new Map([[bundledStyle, embeddedStyle], [bundledJazzWaltz, embeddedJazzWaltz], ["DiscoHouse.S145.prs", embeddedDiscoHouse]]);
+const builtinRhythms = ["jjSwing", ...bundledStyles.keys()].map(name => ({
+    id: `${name}-ID`, name, meter: name === bundledJazzWaltz ? "THREE_FOUR" : "FOUR_FOUR"
+}));
 const stylePackUrl = "https://raw.githubusercontent.com/1921music/web_JJazzLab/923ed5dd8b6d426722bacdd951b268a049a6638a/web/engine/demo/assets/jjazzlab_user_styles.zip";
 const loadStylePackButton = document.querySelector("#load-style-pack");
 const stylePackStatus = document.querySelector("#style-pack-status");
@@ -1044,6 +1047,12 @@ const folderIO = new SongFolderIO(editor, async () => {
 folderIO.onOpen = () => { if (!mixer.hidden) prepareMixer.click(); };
 const recentSongs = new SongHistory(editor, () => { if (!mixer.hidden) prepareMixer.click(); });
 const songTabs = new SongTabs(editor, recentSongs, () => generating || starting || folderIO.saving, () => editor.newSong());
+const rhythmLibrary = new RhythmLibrary({ readFile: readLocalStyle, builtins: builtinRhythms,
+    describe: async style => { engine ??= await getEngine(); return describeStyle(style); } });
+editor.onDefaultRhythm = meter => {
+    const style = rhythmLibrary.defaultFor(meter);
+    return style && { styleId: style.id, styleName: style.name };
+};
 songTabs.afterActivate = () => { if (!mixer.hidden) prepareMixer.click(); };
 recentSongs.isUnsaved = () => songTabs.isDirty(songTabs.active);
 recentSongs.onReopenExisting = id => {
@@ -1082,9 +1091,10 @@ workspace.addEventListener("drop", event => {
 });
 editor.onReadTextSong = async contents => {
     const engine = await getEngine();
+    await rhythmLibrary.ready;
     return DesktopSongFiles.readTextSong(engine.exports.readTextLeadSheet(contents), meter => {
         const styleName = meter === "FOUR_FOUR" ? "jjSwing" : meter === "THREE_FOUR" ? bundledJazzWaltz : bundledStyle;
-        return { styleId: styleName + "-ID", styleName };
+        return editor.onDefaultRhythm(meter) ?? { styleId: styleName + "-ID", styleName };
     });
 };
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
@@ -1349,17 +1359,18 @@ editor.onStyleChoices = () => new Map([
     ["jjSwing-ID", "jjSwing"],
     ...[...bundledStyles.keys(), ...Object.keys(embeddedExtendedStyles)].map(name => [`${name}-ID`, name]),
     ...Array.from(styleInput.files, file => [`${file.name}-ID`, file.name]),
+    ...Array.from(rhythmLibrary.records.values(), style => [style.id, style.name]),
     ...editor.attachedStyles.map(style => [style.id, style.name]),
     ...(styleArchive?.entries.filter(entry => !styleIssue(entry)).map(entry => [`${entry.name}-ID`, entry.name]) ?? [])
 ]);
 editor.onRhythmCatalogue = choices => {
     const catalog = new Map([...choices, ...editor.onStyleChoices()]);
     const categories = new Map(styleArchive?.entries.map(entry => [`${entry.name}-ID`, entry.category]));
+    const meters = new Map([...builtinRhythms, ...rhythmLibrary.records.values()].map(entry => [entry.id, entry.meter]));
     return [...catalog].map(([id, name]) => ({
         id, name, category: categories.get(id),
         provider: id === "jjSwing-ID" ? "jjSwing" : /\.yjz-ID$/iu.test(id) ? "YamJJazz" : "Yamaha",
-        meter: id === "jjSwing-ID" || id === `${bundledStyle}-ID` || id === "DiscoHouse.S145.prs-ID" ? "FOUR_FOUR"
-            : id === `${bundledJazzWaltz}-ID` ? "THREE_FOUR" : undefined
+        meter: meters.get(id)
     })).sort((a, b) => a.name.localeCompare(b.name));
 };
 editor.hasRhythmPack = () => Boolean(styleArchive);
@@ -1670,6 +1681,9 @@ importMix.onchange = async () => {
 };
 
 async function defaultArrangementStyle(meter, replaced) {
+    await rhythmLibrary.ready;
+    const preferred = rhythmLibrary.defaultFor(meter);
+    if (preferred) return { ...(preferred.bytes ? preferred : await findSavedStyle(preferred.id)), replaced };
     const name = meter === "THREE_FOUR" ? bundledJazzWaltz : bundledStyle;
     return { ...await readBundledArrangementStyle(name), replaced };
 }
@@ -1706,6 +1720,9 @@ async function findSavedStyle(id) {
     if (file) return readLocalStyle(file, files);
     const attached = editor.attachedStyles.find(style => style.id === id);
     if (attached) return restoreAttachedStyle(attached);
+    await rhythmLibrary.ready;
+    const local = rhythmLibrary.records.get(id);
+    if (local) return local;
     const extension = Object.keys(embeddedExtendedStyles).find(name => name.toLowerCase() === wanted.toLowerCase());
     if (extension) return readBundledExtendedStyle(extension);
     const bundled = [...bundledStyles.keys()].find(name => name.toLowerCase() === wanted.toLowerCase());
