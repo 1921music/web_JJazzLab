@@ -46,6 +46,7 @@
                     <button id="show-rhythm-library" type="button">リズムライブラリ…</button>
                     <button id="open-click-settings" type="button">クリック音の設定…</button>
                     <button id="open-midi-remote" type="button">MIDI遠隔操作…</button>
+                    <button id="open-instrument-defaults" type="button">既定音色の割り当て…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
                     <button id="open-chord-display-key" type="button">コード表示の移調…</button>
@@ -516,6 +517,23 @@
             <div class="dialog-actions">
                 <button id="midi-remote-defaults" type="button" class="secondary">標準に戻す</button>
                 <button id="close-midi-remote" type="button" class="secondary">閉じる</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="instrument-defaults" aria-labelledby="instrument-defaults-title">
+        <form method="dialog">
+            <h2 id="instrument-defaults-title">既定音色の割り当て</h2>
+            <label class="field">音源 <output>TimGM6mb SoundFont</output></label>
+            <label class="field">元の音色 <select name="source" required></select></label>
+            <label class="field">音色を検索 <input name="filter" type="search"></label>
+            <label class="field">割り当て先 <select name="target" size="6"></select></label>
+            <p role="status"></p>
+            <div class="dialog-actions">
+                <button name="preview" type="button" class="secondary">試聴</button>
+                <button name="clear" type="button" class="secondary">解除</button>
+                <button name="closeDialog" type="button" class="secondary">閉じる</button>
+                <button type="submit">適用</button>
             </div>
         </form>
     </dialog>

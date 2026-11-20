@@ -293,6 +293,11 @@ MIDI入力に接続|Connect to MIDI Input
 遠隔操作を有効にする|Enable remote control
 操作|Action
 MIDI割り当て|MIDI binding
+既定音色の割り当て…|Default Instrument Mappings…
+既定音色の割り当て|Default Instrument Mappings
+音源|Sound source
+元の音色|Original instrument
+割り当て先|Mapped instrument
 強拍|Emphasized beats
 弱拍|Other beats
 打楽器|Percussion

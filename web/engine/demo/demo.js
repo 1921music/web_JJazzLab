@@ -214,7 +214,7 @@ const player = new AccompanimentPlayer(updatePosition, (message) => {
 let pendingAudition = Promise.resolve();
 let auditionRequest = 0;
 const clickSettings = new ClickSettings({
-    mix: () => mixerParts,
+    mix: () => instrumentDefaults.playbackMix(mixerParts),
     stopPreview: stopAudition,
     preview: async (settings, active) => {
         if (playing || paused || starting || generating) throw new Error(t("再生を停止してから試聴してください。", "Stop playback before previewing."));
@@ -344,7 +344,7 @@ function applyMix() {
             savedMix.set(id, { volume, pan, mute, solo, instrumentChoice, reverb, chorus, reverbEnabled, chorusEnabled });
         });
     }
-    player.mix(mixerParts, Number(masterInput.value) / 100);
+    player.mix(instrumentDefaults.playbackMix(mixerParts), Number(masterInput.value) / 100);
     updateRollSolo();
     recentSongs.schedule();
 }
@@ -383,6 +383,7 @@ function openChannelEditor(part) {
     const choices = mixerInstruments.filter(instrument => instrument.drum === part.drum)
         .map(instrument => part.usesDesktopSoundFont ? { ...instrument, ...instrument.desktop } : instrument);
     const current = part.instrumentChoice?.id ?? "";
+    const mappedDefault = instrumentDefaults.chosen({ ...part, instrumentChoice: undefined });
     document.querySelector("#channel-editor-title").textContent = `CH ${part.outputChannel + 1} · ${part.name}`;
     const search = document.querySelector("#channel-instrument-search");
     const preview = document.querySelector("#channel-preview");
@@ -392,7 +393,9 @@ function openChannelEditor(part) {
             const keywords = `${instrument.patch} ${instrument.program + 1}`.normalize("NFKC").toLowerCase();
             return selected === instrument.id || terms.every(term => keywords.includes(term));
         });
-        channelInstrument.replaceChildren(new Option(t(`${part.originalPatch}（元の音色）`, `${part.originalPatch} (original)`), ""),
+        const defaultLabel = mappedDefault ? t(`${mappedDefault.patch}（既定の割り当て）`, `${mappedDefault.patch} (default mapping)`)
+            : t(`${part.originalPatch}（元の音色）`, `${part.originalPatch} (original)`);
+        channelInstrument.replaceChildren(new Option(defaultLabel, ""),
             ...filtered.map(instrument => new Option(instrument.patch, instrument.id)));
         channelInstrument.value = selected;
     };
@@ -401,7 +404,7 @@ function openChannelEditor(part) {
     visibleInstruments(current);
     preview.disabled = playing || paused || starting || generating;
     preview.onclick = () => {
-        const program = choices.find(instrument => instrument.id === channelInstrument.value)?.program ?? part.program;
+        const program = choices.find(instrument => instrument.id === channelInstrument.value)?.program ?? mappedDefault?.program ?? part.program;
         const pitches = part.drum ? [36, 38, 42, 51] : [60, 64, 67, 72];
         const notes = pitches.map((pitch, index) => ({ pitch, position: index * .5, duration: .4, velocity: 90 }));
         queueAudition(notes, part.drum, program, 120, () => channelEditor.open);
@@ -476,7 +479,7 @@ function openChannelEditor(part) {
 }
 
 function updateChannelButton(part, button) {
-    const patch = part.instrumentChoice?.patch ?? part.originalPatch;
+    const patch = instrumentDefaults.chosen(part)?.patch ?? part.originalPatch;
     button.textContent = patch;
     button.title = t(`${patch} · チャンネル設定`, `${patch} · Channel settings`);
     button.setAttribute("aria-label", t(`${part.name}のチャンネル設定（${patch}）`, `Channel settings for ${part.name} (${patch})`));
@@ -601,7 +604,7 @@ async function exportAudio(format, trackId, allTracks = false) {
         if ((!song || accompanimentDirty || tempoDirty) && !await generateAccompaniment()) return;
         const renderedSong = song;
         const master = Number(masterInput.value) / 100;
-        const mix = structuredClone(mixerParts);
+        const mix = structuredClone(instrumentDefaults.playbackMix(mixerParts));
         const track = trackId === undefined ? undefined : mix.find(part => part.id === trackId);
         if (trackId !== undefined && !track) throw new Error(t("トラックが見つかりません。", "The track is unavailable."));
         const name = editor.project ? editor.fileStem() : "JJazzLab";
@@ -817,7 +820,7 @@ async function startPlayback(restart = false, stopAtEnd = false) {
         if (refresh && !await generateAccompaniment(true)) return;
         await audio;
         await pendingAudition;
-        await player.play(song, readLoop(), mixerParts, Number(masterInput.value) / 100, Boolean(editor.project), {
+        await player.play(song, readLoop(), instrumentDefaults.playbackMix(mixerParts), Number(masterInput.value) / 100, Boolean(editor.project), {
             resume: paused && !restart && !refresh,
             stopAtEnd,
             click: metronome.getAttribute("aria-pressed") === "true",
@@ -1216,7 +1219,8 @@ pianoRoll.onAudition = notes => {
     const saved = editor.mix.find(track => DesktopSongFiles.isUserMixTrack(track) && track.name === name);
     const defaultPatch = mixerInstruments.find(instrument =>
         instrument.drum === drum && (instrument.patch === saved?.patch || instrument.desktop.id === saved?.instrument));
-    const program = source?.instrumentChoice?.program ?? (source?.trackIndex !== undefined ? source.program : defaultPatch?.program) ?? 0;
+    const program = (source && instrumentDefaults.chosen(source)?.program)
+        ?? (source?.trackIndex !== undefined ? source.program : defaultPatch?.program) ?? 0;
     queueAudition(notes, drum, program, project.tempo, () =>
         name === pianoRoll.name && project === editor.project && custom === pianoRoll.custom);
 };
@@ -2136,6 +2140,21 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
         generating = false; updateButtons();
     }
 }
+const instrumentDefaults = new InstrumentDefaults({
+    instruments: () => mixerInstruments,
+    prepare: getEngine,
+    audition: (instrument, active) => {
+        const pitches = instrument.drum ? [36, 38, 42, 51] : [60, 64, 67, 72];
+        const notes = pitches.map((pitch, index) => ({ pitch, position: index * .5, duration: .4, velocity: 90 }));
+        queueAudition(notes, instrument.drum, instrument.program, 120, active);
+    },
+    stop: stopAudition,
+    update: () => {
+        renderMixer();
+        player.mix(instrumentDefaults.playbackMix(mixerParts), Number(masterInput.value) / 100);
+    }
+});
+
 const midiRemote = new MidiRemote([
     { id: "play", note: 24, japanese: "再生", english: "Play", run: () => playButton.click() },
     { id: "stop", note: 26, japanese: "停止", english: "Stop", run: () => stopButton.click() },

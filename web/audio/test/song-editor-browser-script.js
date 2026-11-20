@@ -1879,6 +1879,44 @@
             }
             report.midiRemote = true;
         }
+        {
+            await generate();
+            const dialog = document.querySelector("#instrument-defaults");
+            const form = dialog.querySelector("form");
+            const { source, target, filter, preview, clear } = form.elements;
+            const track = mixerParts.find(part => !part.drum && part.trackIndex !== undefined);
+            const before = editor.desktopMixXml();
+            const saved = localStorage.getItem(instrumentDefaults.key);
+            const originalMappings = new Map(instrumentDefaults.mappings);
+            const alternate = mixerInstruments.find(instrument => !instrument.drum && instrument.program !== track.program);
+            const mapping = `program:${track.program}`;
+            try {
+                await document.querySelector("#open-instrument-defaults").onclick();
+                source.value = mapping;
+                source.dispatchEvent(new Event("change"));
+                filter.value = alternate.patch;
+                filter.dispatchEvent(new Event("input"));
+                check(Array.from(target.options).some(option => option.value === alternate.id), "The output sound bank could not be searched");
+                target.value = alternate.id;
+                target.dispatchEvent(new Event("change"));
+                preview.click();
+                await pendingAudition;
+                check(player.previewing && player.loadedSong.events[0].a === alternate.program, "The default mapping audition used the wrong program");
+                form.requestSubmit();
+                check(JSON.parse(localStorage.getItem(instrumentDefaults.key))[mapping] === alternate.id
+                    && instrumentDefaults.chosen(track)?.program === alternate.program, "The mapping was not stored or selected");
+                check(editor.desktopMixXml() === before, "The browser mapping modified the desktop .mix");
+                clear.click();
+                check(!instrumentDefaults.mappings.has(mapping), "Clearing the mapping did not restore the stock instrument");
+            } finally {
+                if (dialog.open) dialog.close();
+                await pendingAudition;
+                instrumentDefaults.mappings = originalMappings;
+                if (saved === null) localStorage.removeItem(instrumentDefaults.key);
+                else localStorage.setItem(instrumentDefaults.key, saved);
+            }
+            report.instrumentDefaults = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
