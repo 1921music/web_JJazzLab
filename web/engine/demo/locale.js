@@ -307,6 +307,13 @@ SysExを許可して接続|Connect with SysEx permission
 MIDI出力遅延（ms）|MIDI output delay (ms)
 打楽器のキーマップ|Drum key mapping
 五線譜|Staff notation
+コードインスペクター…|Chord Inspector…
+コードインスペクター|Chord Inspector
+鍵盤|Keyboard
+ギター|Guitar
+表示方法|View
+構成音とスケールの鍵盤|Keyboard chord and scale tones
+構成音とスケールの五線譜|Chord and scale on the staff
 五線譜の表示オクターブ|Staff display octave
 打楽器名のキーマップ|Drum name map
 既定音色の割り当て…|Default Instrument Mappings…

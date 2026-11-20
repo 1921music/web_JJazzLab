@@ -458,6 +458,16 @@ dialog > form, #channel-effects, #bar-section-field, #part-mute-tracks { display
 .effect-control input[type="range"] { width: 100%; }
 .effect-control output { text-align: right; font-variant-numeric: tabular-nums; }
 .dialog-actions { display: flex; justify-content: end; gap: .45rem; }
+#chord-inspector { width: min(38rem, calc(100% - 2rem)); }
+#chord-inspector .dialog-actions { margin-top: .7rem; }
+#inspector-piano { position: relative; width: 100%; height: 7rem; background: #292826; }
+#inspector-piano span { position: absolute; top: 0; border: 1px solid #37312d; }
+.inspector-white-key { width: calc(100% / 14); height: 100%; background: #f7f2e8; color: #322e27; display: grid; align-items: end; text-align: center; font-size: .78rem; }
+.inspector-black-key { z-index: 1; width: calc(65% / 14); height: 62%; background: #292826; }
+#inspector-piano span[data-note="scale"] { background: #b8cfcb; }
+#inspector-piano span[data-note="chord"] { background: #599bb7; }
+#inspector-guitars:not([hidden]) { display: flex; gap: .4rem; flex-wrap: wrap; }
+#inspector-staff { max-width: 100%; }
 .bar-context {
     position: fixed;
     z-index: 5;

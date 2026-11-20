@@ -311,7 +311,8 @@ public final class WasmMidiEngine
         var manager = ScaleManager.getDefault();
         var scales = manager.getStandardScales();
         return manager.getMatchingScales(chord).stream()
-                .map(scale -> scales.indexOf(scale.getScale()) + "\t" + scale.getStartNote().getPitch() + "\t" + scale.getScale().getName())
+                .map(scale -> scales.indexOf(scale.getScale()) + "\t" + scale.getStartNote().getPitch() + "\t" + scale.getScale().getName()
+                        + "\t" + scale.getRelativePitches())
                 .toArray(String[]::new);
     }
 

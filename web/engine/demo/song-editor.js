@@ -723,6 +723,7 @@ class SongEditor {
             case "edit": case "section": case "chord": case "annotation": this.openBarEditor(action); break;
             case "appearance": this.openScoreAppearance(); break;
             case "chord-tools": this.openChordTools(); break;
+            case "inspect-chord": this.onInspectChord?.(this.chordsForTools()[0]); break;
             case "transpose-up": void this.transposeChords(1); break;
             case "transpose-down": void this.transposeChords(-1); break;
             case "section-break": {

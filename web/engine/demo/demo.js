@@ -259,6 +259,7 @@ function updateButtons() {
     structureToggle.disabled = !editor.project;
     document.querySelector("#add-user-track").disabled = !editor.project || generating || starting;
     document.querySelector("#open-song-memo").disabled = !editor.project || generating || starting;
+    document.querySelector("#open-chord-inspector").disabled = !editor.project || generating || starting;
     document.querySelector("#toggle-reader").disabled = !editor.project;
     document.querySelector("#create-practice-song").disabled = !editor.project || generating || starting;
     editor.updateUndo();
@@ -2187,6 +2188,27 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
         generating = false; updateButtons();
     }
 }
+const chordInspector = new ChordInspector({
+    describe: async name => {
+        const wasm = (await getEngine()).exports;
+        const [, tones, ...pitches] = Array.from(wasm.getChordPreview(name));
+        const scales = Array.from(wasm.getChordScales(name), row => {
+            const [id, , name, pitches] = row.split("\t");
+            return { id, name, pitches: JSON.parse(pitches) };
+        });
+        const note = (/\/([A-G][#b]?)$/u.exec(name) ?? /^([A-G][#b]?)/u.exec(name))?.[1];
+        const degrees = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+        const bass = note ? (degrees[note[0]] + (note[1] === "b" ? -1 : note[1] === "#" ? 1 : 0) + 12) % 12 : undefined;
+        return { tones, pitches: pitches.map(Number), bass, scales };
+    },
+    play: (name, active) => editor.onAuditionChords([name], active),
+    stop: stopAudition
+});
+editor.onInspectChord = chord => chordInspector.open(chord);
+document.querySelector("#open-chord-inspector").onclick = () => {
+    if (editor.project) return editor.onInspectChord(editor.selectedChord ?? editor.chordsForTools()[0] ?? editor.project.chords[0]);
+};
+
 const midiOutput = new MidiOutput(() => {
     player.stopMidi();
     if (player.ready) player.send("midi-disable").catch(error => showPlayStatus(error.message, true));

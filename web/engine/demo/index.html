@@ -51,6 +51,7 @@
                     <button id="open-midi-output" type="button">MIDI出力設定…</button>
                     <button id="open-instrument-defaults" type="button">既定音色の割り当て…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
+                    <button id="open-chord-inspector" type="button">コードインスペクター…</button>
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
                     <button id="open-chord-display-key" type="button">コード表示の移調…</button>
                     <button id="create-practice-song" type="button">選択小節から練習曲を作成…</button>
@@ -795,6 +796,26 @@
             <div class="dialog-actions"><button name="cancel" type="button" class="secondary">キャンセル</button><button type="submit">適用</button></div>
         </form>
     </dialog>
+    <dialog id="chord-inspector" aria-labelledby="chord-inspector-title">
+        <h2 id="chord-inspector-title">コードインスペクター</h2>
+        <div class="rhythm-picker-fields">
+            <div role="group" aria-label="表示方法" class="transport-buttons">
+                <button type="button" class="secondary" data-inspector-view="piano" aria-pressed="true">鍵盤</button>
+                <button type="button" class="secondary" data-inspector-view="guitar" aria-pressed="false">ギター</button>
+                <button type="button" class="secondary" data-inspector-view="staff" aria-pressed="false">五線譜</button>
+            </div>
+            <label class="field">スケール <select id="inspector-scale"></select></label>
+        </div>
+        <p role="status"></p>
+        <div id="inspector-piano" role="img" aria-label="構成音とスケールの鍵盤"></div>
+        <div id="inspector-guitars" hidden></div>
+        <canvas id="inspector-staff" width="350" height="126" role="img" aria-label="構成音とスケールの五線譜" hidden></canvas>
+        <div class="dialog-actions">
+            <button id="inspector-audition" class="secondary" type="button">コードを試聴</button>
+            <button id="close-chord-inspector" class="secondary" type="button">閉じる</button>
+        </div>
+    </dialog>
+
     <dialog id="chord-tools" aria-labelledby="chord-tools-title">
         <form method="dialog">
             <h2 id="chord-tools-title">コードタイプと試聴</h2>
@@ -823,6 +844,7 @@
         <button type="button" data-action="edit" data-target="bar">小節を編集 <kbd>Enter</kbd></button>
         <button type="button" data-action="chord" data-target="chord">コードを編集</button>
         <button type="button" data-action="chord-tools" data-chord-tools data-target="bar chord">コードタイプと試聴…</button>
+        <button type="button" data-action="inspect-chord" data-chord-tools data-target="bar chord">コードインスペクター…</button>
         <button type="button" data-action="transpose-up" data-chord-tools data-target="bar chord">半音上げる</button>
         <button type="button" data-action="transpose-down" data-chord-tools data-target="bar chord">半音下げる</button>
         <button type="button" data-action="section" data-target="bar section">セクションを編集</button>

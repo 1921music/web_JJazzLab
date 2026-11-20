@@ -2129,6 +2129,32 @@ AbM7 | G7 Cm7 |
             check(order(roundTrip) === order(dalSegno), "Saving as .sng lost the MusicXML navigation order");
             report.musicXmlNavigation = true;
         }
+        {
+            editor.newSong();
+            editor.editArrangement(() => { editor.project.chords[0].name = "C7/E"; });
+            await document.querySelector("#open-chord-inspector").onclick();
+            const dialog = chordInspector.dialog;
+            const piano = dialog.querySelector("#inspector-piano");
+            const scale = dialog.querySelector("#inspector-scale");
+            check(dialog.open && piano.querySelectorAll('[data-note="chord"]').length === 8 && scale.options.length > 1,
+                "The inspector did not display the native C7 tones and matching scales");
+            scale.selectedIndex = 1;
+            scale.dispatchEvent(new Event("change"));
+            check(piano.querySelector('[data-note="scale"]'), "Selecting a scale did not mark its additional keys");
+            dialog.querySelector('[data-inspector-view="guitar"]').click();
+            const diagrams = [...dialog.querySelectorAll("#inspector-guitars canvas")];
+            check(diagrams.length > 0 && diagrams.every(diagram => {
+                const frets = diagram.getAttribute("aria-label").split(" ");
+                const notes = frets.flatMap((fret, index) => fret === "×" ? [] : [guitarTuning[index] + Number(fret)]);
+                return notes.length > 3 && Math.min(...notes) % 12 === 4;
+            }), "The guitar fingerings did not preserve the slash bass");
+            dialog.querySelector('[data-inspector-view="staff"]').click();
+            const staff = dialog.querySelector("#inspector-staff");
+            check(!staff.hidden && staff.getContext("2d").getImageData(0, 0, 2, 2).data[3] === 255,
+                "The chord's staff view was not rendered");
+            dialog.close();
+            report.chordInspector = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
