@@ -21,6 +21,7 @@ public final class WasmMidiEngine
 {
     private static String[] partMetadata = new String[0];
     private static String[] songMix = new String[0];
+    private static Phrase[] rhythmPhrases = new Phrase[16];
     private static boolean importedMixApplied;
     private WasmMidiEngine()
     {
@@ -213,6 +214,7 @@ public final class WasmMidiEngine
         }
         partMetadata = result.metadata();
         songMix = result.mix();
+        rhythmPhrases = result.rhythmPhrases();
         importedMixApplied = result.importedMixApplied();
         return midi.toByteArray();
     }
@@ -221,6 +223,13 @@ public final class WasmMidiEngine
     public static String[] getSongMix()
     {
         return songMix.clone();
+    }
+
+    @JSExport
+    public static String getRhythmTrackPhrase(int channel)
+    {
+        var phrase = rhythmPhrases[channel];
+        return phrase == null ? "" : Phrase.saveAsString(phrase);
     }
 
     @JSExport

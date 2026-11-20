@@ -145,6 +145,8 @@
                         <h3 id="roll-title">ピアノロール</h3>
                         <label class="visually-hidden" for="roll-track">ユーザートラック</label>
                         <select id="roll-track"></select>
+                        <button id="roll-rename-track" type="button" class="secondary">トラック名を変更…</button>
+                        <button id="roll-remove-track" type="button" class="secondary">トラックを削除…</button>
                         <button id="roll-close" type="button" class="tool-button" aria-label="ピアノロールを閉じる" title="ピアノロールを閉じる">×</button>
                     </div>
                     <div class="roll-toolbar" aria-label="音符編集">
@@ -205,8 +207,11 @@
                 <button id="clear-solo" class="tool-button" type="button" aria-label="Solo解除" title="Solo解除">S</button>
                 <button id="panic" class="tool-button panel-toggle" type="button">Panic</button>
                 <button id="add-user-track" class="tool-button panel-toggle" type="button" aria-label="ユーザートラックを追加" title="ユーザートラックを追加">＋</button>
+                <select id="mixer-rhythm" aria-label="表示するリズム" hidden></select>
             </div>
-            <div id="mixer-empty" class="mixer-empty">曲を再生すると、各トラックを調整できます。</div>
+            <div id="mixer-empty" class="mixer-empty">
+                <button id="prepare-mixer" class="secondary" type="button">トラックを表示</button>
+            </div>
             <div id="mixer-parts"></div>
         </aside>
         <form id="midi-form">
@@ -388,6 +393,19 @@
             </div>
         </form>
     </dialog>
+    <dialog id="user-track-editor" aria-labelledby="user-track-editor-title">
+        <form id="user-track-form" method="dialog">
+            <h2 id="user-track-editor-title"></h2>
+            <label class="field" id="user-track-name-field">トラック名 <input id="user-track-name" required></label>
+            <label class="field" id="user-track-type-field">種別
+                <select id="user-track-type"><option value="melodic">メロディー</option><option value="drums">ドラム</option></select>
+            </label>
+            <div class="dialog-actions">
+                <button id="cancel-user-track" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
     <dialog id="channel-editor" aria-labelledby="channel-editor-title">
         <form id="channel-editor-form" method="dialog">
             <h2 id="channel-editor-title"></h2>
@@ -434,6 +452,10 @@
         <button type="button" data-action="mute">Mute</button>
         <button type="button" data-action="solo">Solo</button>
         <button type="button" data-action="reset">チャンネルを元に戻す</button>
+        <button type="button" data-action="edit-user">音符を編集</button>
+        <button type="button" data-action="rename-user">トラック名を変更…</button>
+        <button type="button" data-action="remove-user">トラックを削除…</button>
+        <button type="button" data-action="clone-rhythm">ユーザートラックに複製</button>
     </div>
     <div id="roll-context" class="bar-context" role="group" aria-label="音符編集" hidden>
         <button data-action="select" type="button">選択</button>

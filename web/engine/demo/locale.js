@@ -121,7 +121,16 @@ JJazzLab ユーザーガイド|JJazzLab User Guide
 Solo解除|Clear solo
 .mixを書き出す|Export .mix
 ミックスを読み込む…|Import mix…
-曲を再生すると、各トラックを調整できます。|Play the song to open the channel controls.
+トラックを表示|Show tracks
+表示するリズム|Rhythm to display
+トラック名|Track name
+トラック名を変更…|Rename track…
+トラックを削除…|Delete track…
+種別|Type
+メロディー|Melodic
+ドラム|Drums
+音符を編集|Edit notes
+ユーザートラックに複製|Clone as user track
 コード進行|Chord progression
 1小節に1コード。空白、改行、カンマ、または | で区切ります。|One chord per bar. Separate chords with a space, newline, comma, or a vertical bar.
 リズムエンジン|Rhythm engine

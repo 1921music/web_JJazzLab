@@ -163,6 +163,9 @@ const generateButton = document.querySelector("#generate");
 const workspace = document.querySelector("#workspace");
 const mixer = document.querySelector("#mixer");
 const toggleMixer = document.querySelector("#toggle-mixer");
+const mixerRhythm = document.querySelector("#mixer-rhythm");
+const prepareMixer = document.querySelector("#prepare-mixer");
+let selectedMixerRhythm = "";
 const quickMode = document.querySelector("#quick-mode");
 const generationControls = document.querySelector("#generation-controls");
 const muteAll = document.querySelector("#mute-all");
@@ -269,11 +272,13 @@ function readLoop() {
 function applyMix() {
     if (activeProject === editor.project && editor.baseMix) {
         const limit = value => Math.max(0, Math.min(127, Math.round(value)));
-        editor.mix = editor.baseMix.map(track => {
-            const part = mixerParts.find(part => part.channel === track.channel);
+        editor.mix = editor.mix.map(track => {
+            const base = editor.baseMix.find(item => item.rhythmId === track.rhythmId && item.name === track.name);
+            if (!base) return track;
+            const part = mixerParts.find(part => part.channel === base.channel);
             if (!part) return track;
             const instrument = part.instrumentChoice;
-            return { ...track, volume: limit(track.volume * part.volume), pan: limit(track.pan + part.pan * 64), mute: part.mute,
+            return { ...base, volume: limit(base.volume * part.volume), pan: limit(base.pan + part.pan * 64), mute: part.mute,
                 ...(instrument ? { patch: instrument.patch, instrument: instrument.id, instrumentEnabled: true } : {}),
                 reverb: part.reverb, chorus: part.chorus, reverbEnabled: part.reverbEnabled, chorusEnabled: part.chorusEnabled };
         });
@@ -293,8 +298,9 @@ function updateMixerButtons() {
     clearSolo.disabled = !mixerParts.some(part => part.solo);
     document.querySelector("#reset-mixer").disabled = !mixerParts.length;
     saveMix.disabled = !editor.renderedMix || !editor.nativeMix.length || activeProject !== editor.project || !song;
-    document.querySelector("#import-mix-button").disabled = !editor.project || generating || starting || !editor.baseMix?.length
-        || activeProject !== editor.project || editor.unresolvedStyleMix !== undefined;
+    document.querySelector("#import-mix-button").disabled = !editor.project || generating || starting
+        || editor.unresolvedStyleMix !== undefined;
+    prepareMixer.disabled = generating || starting;
     document.querySelector("#panic").disabled = !mixerParts.length;
 }
 
@@ -397,7 +403,8 @@ function initialMixerParts(song, mix) {
     const tracks = [...song.parts, ...(mix ?? []).filter(track => !activeChannels.has(track.channel)).map(track => ({
         id: `silent:${track.rhythmId}:${track.name}`, name: track.name, channel: track.channel,
         source: /^Sp(?:Drums)?UserChannelRhythmID$/u.test(track.rhythmId) ? "user" : "rhythm",
-        drum: /#_#Drums#_#|\bkit\b/iu.test(track.instrument + " " + track.patch)
+        drum: /#_#Drums#_#|\bkit\b/iu.test(track.instrument + " " + track.patch),
+        styleId: /^Sp(?:Drums)?UserChannelRhythmID$/u.test(track.rhythmId) ? undefined : track.rhythmId
     }))];
     return tracks.map((part, index) => {
         const track = mix?.find(track => track.channel === part.channel);
@@ -428,17 +435,59 @@ function mixerTrackIcon(part) {
 
 function openMixerContext(part, strip, x, y) {
     const edit = strip.querySelector(".channel-edit");
+    for (const action of ["edit-user", "rename-user", "remove-user"]) {
+        mixerContext.querySelector(`[data-action="${action}"]`).hidden = part.source !== "user";
+    }
+    const clone = mixerContext.querySelector('[data-action="clone-rhythm"]');
+    clone.hidden = !editor.project || part.source !== "rhythm";
+    clone.disabled = generating || starting || editor.unresolvedStyleMix !== undefined;
     mixerContext.onclick = event => {
         const action = event.target.closest("button")?.dataset.action;
         mixerContext.hidden = true;
         if (action === "settings") edit.click();
         if (action === "mute" || action === "solo") strip.querySelector(`[data-mix="${action}"]`).click();
         if (action === "reset") { Object.assign(part, part.original); renderMixer(); applyMix(); }
+        if (action === "edit-user") pianoRoll.open(part.name);
+        if (action === "rename-user" || action === "remove-user") pianoRoll.editTrack(action.split("-")[0], part.name);
+        if (action === "clone-rhythm") void cloneRhythmTrack(part);
     };
     mixerContext.onkeydown = event => {
         if (event.key === "Escape") { mixerContext.hidden = true; edit.focus(); }
     };
     openEditorPopup(mixerContext, x, y);
+}
+
+async function cloneRhythmTrack(part) {
+    const key = editor.baseMix?.find(track => track.channel === part.channel);
+    if (!key || generating || starting) return;
+    if (accompanimentDirty && !await generateAccompaniment()) return;
+    const source = editor.mix.find(track => track.rhythmId === key.rhythmId && track.name === key.name);
+    if (!source || editor.unresolvedStyleMix !== undefined) return;
+    const tracks = editor.project.userTracks;
+    const used = new Set(editor.mix.map(track => track.sourceChannel ?? track.channel));
+    const channel = Array.from({ length: 16 }, (_, index) => index).find(index => !used.has(index));
+    if (channel === undefined) {
+        editor.notify(t("空いているMIDIチャンネルがありません。", "No MIDI channel is available."), true);
+        return;
+    }
+    const serialized = engine.exports.getRhythmTrackPhrase(source.channel);
+    if (!serialized) {
+        editor.notify(t("複製できる音符がありません。", "There are no notes to clone."), true);
+        return;
+    }
+    const original = UserPhrase.read(serialized);
+    let suffix = 1;
+    while (tracks.some(track => track.name === `${part.name}-${suffix}`)) suffix++;
+    const name = `${part.name}-${suffix}`;
+    const rhythmId = part.drum ? "SpDrumsUserChannelRhythmID" : "SpUserChannelRhythmID";
+    const phrase = UserPhrase.write({ ...original, drum: part.drum });
+    if (!editor.editArrangement(() => {
+        tracks.push({ name, phrase });
+        editor.mix = editor.mix.map(track => track === source ? { ...track, mute: true } : track);
+        editor.mix.push({ ...source, name, rhythmId, channel, sourceChannel: channel, mute: false });
+    }, [name], source)) return;
+    pianoRoll.open(name);
+    await generateAccompaniment();
 }
 
 function renderMixer() {
@@ -448,8 +497,16 @@ function renderMixer() {
     updateMixerButtons();
     const notes = Map.groupBy(song?.events.filter(event => event.type === 0x90 && event.b) ?? [], event => event.part);
     const styleIds = new Set(mixerParts.map(part => part.styleId).filter(Boolean));
+    const all = new Option(t("すべてのリズム", "All rhythms"), "");
+    mixerRhythm.replaceChildren(all, ...Array.from(styleIds, id => {
+        const name = editor.project?.parts.find(part => part.styleId === id)?.styleName ?? id.replace(/-ID$/u, "");
+        return new Option(name, id);
+    }));
+    mixerRhythm.hidden = styleIds.size < 2;
+    mixerRhythm.value = styleIds.has(selectedMixerRhythm) ? selectedMixerRhythm : "";
     const orderedParts = mixerParts.map((part, index) => ({ part, index })).sort((a, b) => a.part.channel - b.part.channel);
     for (const { part, index } of orderedParts) {
+        if (mixerRhythm.value && part.source !== "user" && part.styleId !== mixerRhythm.value) continue;
         const strip = document.createElement("div"); strip.className = "strip";
         strip.dataset.partIndex = index;
         strip.dataset.voice = part.source === "user" ? "user" : part.drum ? "drums" : "rhythm";
@@ -651,7 +708,15 @@ toggleMixer.addEventListener("click", () => {
     mixer.hidden = !mixer.hidden;
     workspace.classList.toggle("mixer-closed", mixer.hidden);
     toggleMixer.setAttribute("aria-pressed", String(!mixer.hidden));
+    if (!mixer.hidden && !song && editor.project) prepareMixer.click();
 });
+mixerRhythm.onchange = () => {
+    selectedMixerRhythm = mixerRhythm.value;
+    renderMixer();
+};
+prepareMixer.onclick = () => {
+    if (!song && form.reportValidity()) void generateAccompaniment();
+};
 
 function decompress(encoded) {
     const bytes = Uint8Array.from(atob(encoded), (character) => character.charCodeAt(0));
@@ -750,6 +815,7 @@ function clearPlayback() {
 
 const editor = new SongEditor((opened, useSavedStyles) => {
     pianoRoll.close();
+    selectedMixerRhythm = "";
     chosenRange = null;
     activeProject = undefined;
     usesDesktopSoundFont = !opened.mix.length || opened.mix.some(track => track.instrument?.startsWith("FluidSynth#:#"));
@@ -781,6 +847,12 @@ const editor = new SongEditor((opened, useSavedStyles) => {
     if (!chosenRange) showStatus("選択した小節は曲構成の演奏順に含まれていません。");
     else startPlayback(true, stopAtEnd);
 });
+const openProject = document.querySelector("#open-project");
+openProject.onchange = async () => {
+    const previous = editor.project;
+    await editor.openFiles(openProject);
+    if (editor.project !== previous && !mixer.hidden) prepareMixer.click();
+};
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
 const pianoRoll = new PianoRoll(editor, range => {
     chosenRange = range;
@@ -790,6 +862,9 @@ const pianoRoll = new PianoRoll(editor, range => {
     }
     startPlayback(true);
 });
+pianoRoll.onTracksChanged = () => {
+    if (song && !playing && !paused) void generateAccompaniment();
+};
 const reader = document.querySelector("#easy-reader");
 const toggleReader = document.querySelector("#toggle-reader");
 const readerLocation = document.querySelector("#reader-location");
@@ -1030,19 +1105,20 @@ document.querySelector("#import-mix-button").onclick = () => importMix.click();
 importMix.onchange = async () => {
     const file = importMix.files[0];
     importMix.value = "";
-        if (!file || !editor.project || activeProject !== editor.project || generating || starting
-                || editor.unresolvedStyleMix !== undefined) return;
+    if (!file || !editor.project || generating || starting || editor.unresolvedStyleMix !== undefined) return;
     const project = editor.project;
     try {
-        const key = track => `${track.rhythmId}\t${track.name}`;
-        const incoming = new Map(DesktopSongFiles.readMix(await file.text()).map(track => [key(track), track]));
-        if (editor.project !== project || activeProject !== project || generating || starting) return;
+        const incoming = DesktopSongFiles.readMix(await file.text());
+        if (editor.project !== project || generating || starting) return;
+        if ((!song || accompanimentDirty || activeProject !== project) && !await generateAccompaniment()) return;
+        if (editor.unresolvedStyleMix !== undefined) {
+            throw new Error(t("曲が参照するスタイルを読み込んでから、ミックスを適用してください。",
+                "Load the styles referenced by the song before applying its mix."));
+        }
         const previous = editor.mix;
-        if (!previous.some(track => incoming.has(key(track)))) throw new Error(t("この曲と共通のトラックがありません。", "The mix shares no tracks with this song."));
-        editor.mix = previous.map(track => {
-            const matching = incoming.get(key(track));
-            return matching ? { ...track, ...matching, channel: track.channel, sourceChannel: track.sourceChannel ?? track.channel } : track;
-        });
+        const merged = DesktopSongFiles.mergeInstrumentMixes(previous, incoming);
+        if (!merged) throw new Error(t("この曲と共通のトラックがありません。", "The mix shares no tracks with this song."));
+        editor.mix = merged;
         if (!await generateAccompaniment()) {
             editor.mix = previous;
             return;

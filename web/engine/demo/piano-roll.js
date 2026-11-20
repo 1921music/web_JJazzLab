@@ -161,6 +161,8 @@ class PianoRoll {
         };
         document.querySelector("#roll-play").onclick = () => this.play();
         document.querySelector("#roll-close").onclick = () => this.close();
+        document.querySelector("#roll-rename-track").onclick = () => this.editTrack("rename", this.name);
+        document.querySelector("#roll-remove-track").onclick = () => this.editTrack("remove", this.name);
         this.defaultVelocity = 90;
     }
 
@@ -169,7 +171,7 @@ class PianoRoll {
         const target = this.savedTrack;
         try {
             const mix = this.editor.unresolvedStyleMix ?? this.editor.mix;
-            const userTrack = mix.find(track => /^Sp(?:Drums)?UserChannelRhythmID$/u.test(track.rhythmId) && track.name === target.name);
+            const userTrack = mix.find(track => DesktopSongFiles.isUserMixTrack(track) && track.name === target.name);
             const channel = userTrack?.sourceChannel ?? userTrack?.channel ?? this.phrase.channel;
             const bytes = new Int8Array(await file.arrayBuffer());
             const engine = await getEngine();
@@ -194,14 +196,72 @@ class PianoRoll {
     }
 
     addTrack() {
-        if (!this.editor.project) return;
-        const tracks = this.editor.project.userTracks;
+        this.editTrack("add");
+    }
+
+    editTrack(action, currentName) {
+        const project = this.editor.project;
+        if (!project) return;
+        const tracks = project.userTracks;
+        const track = tracks.find(track => track.name === currentName);
+        if (action !== "add" && !track) return;
+        const dialog = document.querySelector("#user-track-editor");
+        const form = document.querySelector("#user-track-form");
+        const name = document.querySelector("#user-track-name");
+        const type = document.querySelector("#user-track-type");
+        const removing = action === "remove";
+        const adding = action === "add";
+        const title = adding ? t("ユーザートラックを追加", "Add user track")
+            : removing ? t(`「${currentName}」を削除しますか？`, `Delete “${currentName}”?`)
+                : t("トラック名を変更", "Rename track");
+        localizedText(document.querySelector("#user-track-editor-title"), title, title);
+        localizedText(form.querySelector('[type="submit"]'), removing ? "削除" : "適用", removing ? "Delete" : "Apply");
+        document.querySelector("#user-track-name-field").hidden = name.disabled = removing;
+        document.querySelector("#user-track-type-field").hidden = type.disabled = !adding;
+        document.querySelector("#cancel-user-track").onclick = () => dialog.close();
         let sequence = 1;
-        while (tracks.some(track => track.name === "User" + sequence)) sequence++;
-        const name = "User" + sequence;
-        this.editor.editArrangement(() => tracks.push({ name, phrase: "[0]" }));
-        this.open(name);
-        this.setTool("draw");
+        if (adding) while (tracks.some(track => track.name === "User" + sequence)) sequence++;
+        name.value = currentName ?? "User" + sequence;
+        name.setCustomValidity("");
+        name.oninput = () => name.setCustomValidity("");
+        type.value = "melodic";
+        form.onsubmit = event => {
+            event.preventDefault();
+            if (this.editor.project !== project || project.userTracks !== tracks) return dialog.close();
+            const next = name.value.trim();
+            if (!removing && (!next || /[\t\r\n]/u.test(next) || tracks.some(item => item !== track && item.name === next))) {
+                name.setCustomValidity(t("使われていない有効なトラック名を入力してください。", "Enter a valid, unused track name."));
+                name.reportValidity();
+                return;
+            }
+            if (adding && Math.max(this.editor.mix.filter(item => !DesktopSongFiles.isUserMixTrack(item)).length,
+                (this.editor.unresolvedStyleMix ?? []).filter(item => !DesktopSongFiles.isUserMixTrack(item)).length) + tracks.length >= 16) {
+                this.editor.notify(t("空いているMIDIチャンネルがありません。", "No MIDI channel is available."), true);
+                return dialog.close();
+            }
+            dialog.close();
+            if (action === "rename" && next === currentName) return;
+            const wasOpen = !this.panel.hidden && this.name === currentName;
+            if (!this.editor.editArrangement(() => {
+                if (adding) {
+                    tracks.push({ name: next, phrase: UserPhrase.write({ drum: type.value === "drums", channel: 0, notes: [] }) });
+                    return;
+                }
+                if (removing) tracks.splice(tracks.indexOf(track), 1);
+                else track.name = next;
+                for (const key of ["mix", "unresolvedStyleMix"]) {
+                    this.editor[key] = this.editor[key]?.flatMap(item => {
+                        if (!DesktopSongFiles.isUserMixTrack(item) || item.name !== currentName) return [item];
+                        return removing ? [] : [{ ...item, name: next }];
+                    });
+                }
+            }, [currentName, next])) return;
+            if (adding || (!removing && wasOpen)) this.open(next);
+            if (adding) this.setTool("draw");
+            this.onTracksChanged?.();
+        };
+        dialog.showModal();
+        if (!removing) name.select();
     }
 
     open(name) {

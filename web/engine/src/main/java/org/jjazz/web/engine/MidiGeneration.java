@@ -12,6 +12,7 @@ import org.jjazz.midimix.MidiMixManagerImpl;
 import org.jjazz.jjswing.api.JJSwingRhythm;
 import org.jjazz.jjswing.api.RP_BassStyle;
 import org.jjazz.jjswing.api.RP_DrumsStyle;
+import org.jjazz.phrase.api.Phrase;
 import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.jjazz.midimix.spi.MidiMixManager;
@@ -24,7 +25,7 @@ import org.jjazz.yamjjazz.rhythm.YamJJazzRhythmImpl;
 
 final class MidiGeneration
 {
-    record Result(String[] metadata, String[] mix, boolean importedMixApplied) {}
+    record Result(String[] metadata, String[] mix, Phrase[] rhythmPhrases, boolean importedMixApplied) {}
 
     private MidiGeneration()
     {
@@ -138,6 +139,21 @@ final class MidiGeneration
         boolean importedMixApplied = editableMix && mixInput.length > 0 && SongMix.apply(mix, mixInput);
         var builder = new SongSequenceBuilder(SongContextFactory.getDefault().of(song, mix));
         var result = builder.buildAll(true);
+        var rhythmPhrases = new Phrase[16];
+        if (editableMix)
+        {
+            for (var entry : result.mapRvPhrase.entrySet())
+            {
+                if (!(entry.getKey() instanceof UserRhythmVoice))
+                {
+                    int channel = mix.getChannel(entry.getKey());
+                    if (channel >= 0)
+                    {
+                        rhythmPhrases[channel] = entry.getValue();
+                    }
+                }
+            }
+        }
         builder.makeSequenceExportable(result, editableMix);
         WebJJSwing.adaptDrumNotes(result);
         MidiSystem.write(result.sequence, 1, output);
@@ -158,6 +174,6 @@ final class MidiGeneration
                 partMetadata[entry.getValue()] = kind + "\t" + voice.getName();
             }
         }
-        return new Result(partMetadata, editableMix ? SongMix.snapshot(mix) : new String[0], importedMixApplied);
+        return new Result(partMetadata, editableMix ? SongMix.snapshot(mix) : new String[0], rhythmPhrases, importedMixApplied);
     }
 }

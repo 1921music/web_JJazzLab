@@ -197,6 +197,41 @@ const DesktopSongFiles = (() => {
         });
     }
 
+    const userRhythmIds = new Set(["SpUserChannelRhythmID", "SpDrumsUserChannelRhythmID"]);
+    const isUserMixTrack = track => userRhythmIds.has(track.rhythmId);
+    const rhythmVoiceTypes = new Map([
+        ["Rhythm", "drums"], ["Drums", "drums"], ["SubRhythm", "percussion"], ["Percussion", "percussion"],
+        ["Bass", "bass"], ["Chord1", "chord1"], ["Chord2", "chord2"], ["Pad", "pad"],
+        ["Phrase1", "phrase1"], ["Phrase2", "phrase2"]
+    ]);
+
+    function mergeInstrumentMixes(destination, source) {
+        // MidiMix v5 stores voice names. YamJJazz and jjSwing use the AccType names;
+        // the rhythm stubs use Drums and Bass.
+        const available = [...destination].sort((a, b) => a.channel - b.channel);
+        const matched = new Map();
+        for (const incoming of [...source].sort((a, b) => a.channel - b.channel)) {
+            const user = isUserMixTrack(incoming);
+            const type = rhythmVoiceTypes.get(incoming.name);
+            let index = available.findIndex(track => user
+                ? isUserMixTrack(track) && track.name === incoming.name
+                : track.rhythmId === incoming.rhythmId && track.name === incoming.name);
+            if (index < 0 && !user && type) {
+                index = available.findIndex(track => !isUserMixTrack(track) && rhythmVoiceTypes.get(track.name) === type);
+            }
+            if (index >= 0) {
+                const [track] = available.splice(index, 1);
+                matched.set(track, incoming);
+            }
+        }
+        if (!matched.size) return null;
+        return destination.map(track => {
+            const incoming = matched.get(track);
+            return incoming ? { ...incoming, rhythmId: track.rhythmId, name: track.name, channel: track.channel,
+                sourceChannel: track.sourceChannel ?? track.channel } : track;
+        });
+    }
+
     const mixValues = ["patch", "instrumentEnabled", "volume", "pan", "transpose", "velocityShift", "reverb", "chorus",
         "volumeEnabled", "panEnabled", "reverbEnabled", "chorusEnabled"];
     const playableParameters = new Set(["rpVariationID", "rpIntensityID", "RpFillID", "RpSysMuteID", "rpSysMarkerID",
@@ -354,5 +389,6 @@ const DesktopSongFiles = (() => {
             + `<spInsMixes>\n${settings.join("\n")}\n</spInsMixes><spKeys>\n${keys.join("\n")}\n</spKeys></MidiMix>\n`;
     }
 
-    return { readSong, readMix, writeSong, writeMix, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters, sourceStyleId, overrideStyleIds, barBeats };
+    return { readSong, readMix, writeSong, writeMix, isUserMixTrack, mergeInstrumentMixes, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters,
+        sourceStyleId, overrideStyleIds, barBeats };
 })();

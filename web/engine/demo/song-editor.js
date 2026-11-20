@@ -133,7 +133,6 @@ class SongEditor {
             chords: ["C", "Am7", "Dm7", "G7"].map((name, bar) => ({ name, bar, beat: 0 })),
             parts: [{ name: "A", section: 0, styleId: "jjSwing-ID", styleName: "jjSwing", parameters: {} }], userTracks: []
         }, []);
-        document.querySelector("#open-project").onchange = event => this.openFiles(event.target);
         document.querySelector("#open-project-button").onclick = () => document.querySelector("#open-project").click();
         document.querySelector("#add-bar").onclick = () => this.editArrangement(() => {
             if (this.project.bars >= 1024) throw new Error("譜面の上限は1024小節です。");
@@ -192,19 +191,27 @@ class SongEditor {
         return Array.isArray(this.style) ? this.style : this.style ? [this.style] : [];
     }
 
-    editArrangement(action) {
+    editArrangement(action, mixNames = [], rhythmMixKey) {
         try {
-            const before = this.captureEdit();
+            const before = this.captureEdit(mixNames, rhythmMixKey);
             action();
             this.rememberEdit(before);
             this.changed(); this.render();
+            return true;
         }
-        catch (error) { this.notify(error.message, true); }
+        catch (error) { this.notify(error.message, true); return false; }
     }
 
-    captureEdit() {
+    capturesMixTrack(track, mixNames, rhythmMixKey) {
+        return DesktopSongFiles.isUserMixTrack(track) ? mixNames.includes(track.name)
+            : Boolean(rhythmMixKey && track.rhythmId === rhythmMixKey.rhythmId && track.name === rhythmMixKey.name);
+    }
+
+    captureEdit(mixNames = [], rhythmMixKey) {
         const { bars, sections, chords, parts, annotations, comments, clientProperties, loopRestartBar, userTracks } = this.project;
-        return structuredClone({ bars, sections, chords, parts, annotations, comments, clientProperties, loopRestartBar, userTracks });
+        const includes = track => this.capturesMixTrack(track, mixNames, rhythmMixKey);
+        return structuredClone({ bars, sections, chords, parts, annotations, comments, clientProperties, loopRestartBar, userTracks,
+            mixNames, rhythmMixKey, mixEntries: this.mix.filter(includes), savedMixEntries: this.unresolvedStyleMix?.filter(includes) });
     }
 
     setSheetProperty(key, value) {
@@ -227,8 +234,16 @@ class SongEditor {
 
     restoreEdit(from, into) {
         if (!this.project || !from.length) return;
-        into.push(this.captureEdit());
-        Object.assign(this.project, from.pop());
+        const { mixNames, rhythmMixKey, mixEntries, savedMixEntries, ...draft } = from.pop();
+        into.push(this.captureEdit(mixNames, rhythmMixKey));
+        if (mixNames.length || rhythmMixKey) {
+            const keep = track => !this.capturesMixTrack(track, mixNames, rhythmMixKey);
+            this.mix = [...this.mix.filter(keep), ...mixEntries];
+            if (this.unresolvedStyleMix) {
+                this.unresolvedStyleMix = [...this.unresolvedStyleMix.filter(keep), ...(savedMixEntries ?? mixEntries)];
+            }
+        }
+        Object.assign(this.project, draft);
         this.selectedPart = null;
         this.updateUndo();
         this.changed();

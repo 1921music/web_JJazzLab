@@ -356,6 +356,8 @@
             report.midiPhraseImport = true;
         }
         document.querySelector("#add-user-track").click();
+        document.querySelector("#user-track-form").requestSubmit();
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
         check(pianoRoll.name === "User2" && pianoRoll.tool === "draw" && editor.project.userTracks.length === 2,
             "The Mix Console add action did not open a new user track in Draw mode");
         const newNote = { pitch: 64, position: 1.25, duration: .5, velocity: 98 };
@@ -374,6 +376,48 @@
             "Desktop song export did not retain the newly added note");
         report.editedMix = { instrument: editedBass.patch, reverb: editedBass.reverb, chorus: editedBass.chorus, chorusEnabled: editedBass.chorusEnabled };
         report.importedBars = song.barTimes.length - 1;
+
+        const findMixTrack = name => editor.mix.find(track => track.name === name);
+        const trackDialog = document.querySelector("#user-track-form");
+        const trackName = document.querySelector("#user-track-name");
+        document.querySelector("#add-user-track").click();
+        trackName.value = "Hand Drums";
+        document.querySelector("#user-track-type").value = "drums";
+        trackDialog.requestSubmit();
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(pianoRoll.name === "Hand Drums" && pianoRoll.phrase.drum
+            && findMixTrack("Hand Drums")?.rhythmId === "SpDrumsUserChannelRhythmID", "The named drums track was not created");
+        const drumNote = { position: 0, pitch: 42, velocity: 96, duration: .25 };
+        pianoRoll.commit([drumNote], [drumNote]);
+        document.querySelector("#roll-rename-track").click();
+        trackName.value = "Practice Hi-Hat";
+        trackDialog.requestSubmit();
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(!findMixTrack("Hand Drums") && findMixTrack("Practice Hi-Hat")?.rhythmId === "SpDrumsUserChannelRhythmID"
+            && pianoRoll.phrase.notes[0].pitch === 42, "Renaming lost the drum phrase or its mix");
+        document.querySelector("#roll-remove-track").click();
+        trackDialog.requestSubmit();
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(!findMixTrack("Practice Hi-Hat") && pianoRoll.panel.hidden, "Deleting a track did not close its editor or remove its mix");
+        editor.undoButton.click();
+        await generate();
+        check(findMixTrack("Practice Hi-Hat")?.rhythmId === "SpDrumsUserChannelRhythmID"
+            && editor.project.userTracks.some(track => track.name === "Practice Hi-Hat"), "Undo did not restore the track and its mix");
+        const rhythmBass = mixerParts.find(part => part.name === "Bass");
+        const rhythmPhrase = UserPhrase.read(engine.exports.getRhythmTrackPhrase(rhythmBass.channel));
+        await cloneRhythmTrack(rhythmBass);
+        const cloned = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project)).userTracks.find(track => track.name === "Bass-1");
+        const clonedMix = DesktopSongFiles.readMix(editor.desktopMixXml());
+        check(cloned && rhythmPhrase.notes.length > 0 && cloned.phrase === UserPhrase.write(rhythmPhrase)
+            && clonedMix.find(track => track.name === "Bass-1")?.patch === "Cello"
+            && clonedMix.find(track => track.name === "Bass")?.mute, "The cloned track lost its phrase or mixer settings");
+        editor.undoButton.click();
+        await generate();
+        check(!findMixTrack("Bass-1") && !findMixTrack("Bass").mute, "Undo did not restore the original accompaniment");
+        editor.redoButton.click();
+        await generate();
+        check(findMixTrack("Bass-1")?.patch === "Cello" && findMixTrack("Bass").mute, "Redo did not restore clone settings");
+        report.userTrackManagement = true;
 
         const converted = DesktopSongFiles.readSong(desktopFixture.song);
         const variationExamples = ["Intro C-1", "Main B-1", "Main D-4", "Ending B-1"];
@@ -546,6 +590,44 @@
             open.files = pair.files;
             await editor.openFiles(open);
             check(rhythmEngine.value === "song", `${fixture.name} did not default to its saved styles`);
+            if (!report.standaloneMix) {
+                check(!song && !playing && !document.querySelector("#import-mix-button").disabled,
+                    "Standalone mix import required prior playback or generation");
+                const incoming = DesktopSongFiles.readMix(desktopFixture.mix).map(track =>
+                    track.name === "Bass" ? { ...track, reverb: 91 } : track);
+                const selection = new DataTransfer();
+                selection.items.add(new File([DesktopSongFiles.writeMix(incoming)], "cross-rhythm.mix"));
+                importMix.files = selection.files;
+                await importMix.onchange();
+                const destination = DesktopSongFiles.readMix(fixture.mix).find(track => track.name === "Bass");
+                const merged = DesktopSongFiles.readMix(editor.desktopMixXml());
+                check(!playing && engine.exports.wasImportedMixApplied()
+                    && incoming.find(track => track.name === "Bass").rhythmId !== destination.rhythmId
+                    && merged.some(track => track.name === "Bass" && track.rhythmId === destination.rhythmId
+                        && track.channel === destination.channel && track.reverb === 91)
+                    && merged.every(track => DesktopSongFiles.readMix(fixture.mix).some(original =>
+                        original.name === track.name && original.rhythmId === track.rhythmId && original.channel === track.channel)),
+                    "Standalone import failed to map the bass by voice type or changed destination track assignments");
+                report.standaloneMix = true;
+                const originalPair = new DataTransfer();
+                originalPair.items.add(new File([fixture.song], `${fixture.name}.sng`));
+                originalPair.items.add(new File([fixture.mix], `${fixture.name}.mix`));
+                open.files = originalPair.files;
+                await open.onchange();
+                while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+                check(song && !playing && mixerParts.length, "The Mix Console did not open when loading a song before playback");
+                const visible = () => [...document.querySelectorAll("#mixer-parts .strip")]
+                    .map(strip => mixerParts[Number(strip.dataset.partIndex)]);
+                check(!mixerRhythm.hidden && mixerRhythm.options.length > 2, "The mixer did not offer both song rhythms");
+                mixerRhythm.value = mixerRhythm.options[1].value;
+                mixerRhythm.dispatchEvent(new Event("change"));
+                check(visible().length < mixerParts.length && visible().every(part =>
+                    part.source === "user" || part.styleId === mixerRhythm.value), "Filtering changed the wrong mixer tracks");
+                mixerRhythm.value = "";
+                mixerRhythm.dispatchEvent(new Event("change"));
+                check(visible().length === mixerParts.length, "The Mix Console could not restore all tracks");
+                report.prePlaybackMixer = true;
+            }
             await generate();
             check(engine.exports.wasImportedMixApplied(), `${fixture.name} lost its original mix`);
             check(arrangement.title === editor.project.title && originalIds.join() === editor.project.parts.map(part => part.styleId).join(),
