@@ -2212,7 +2212,7 @@ document.querySelector("#open-chord-inspector").onclick = () => {
 const midiOutput = new MidiOutput(() => {
     player.stopMidi();
     if (player.ready) player.send("midi-disable").catch(error => showPlayStatus(error.message, true));
-});
+}, async bytes => Array.from((await getEngine()).exports.readMidiInstrumentDefinitions(bytes)));
 player.onMidiStop = () => midiOutput.silence();
 player.onMidi = (messages, context) => {
     try { midiOutput.emit(messages, context); }

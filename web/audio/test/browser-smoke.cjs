@@ -47,6 +47,8 @@ const songFixture = audioExport || process.env.JJAZZ_SMOKE_SUITE === "song-edito
     legacySongs: ["PhaseDance - 2020-spVersion1.sng", "Soul - 2022 - spVersion2.sng"]
         .map(name => fs.readFileSync(path.join(songFiles, name), "utf8")),
     legacyMix: process.env.JJAZZ_LEGACY_MIX_FIXTURE ? fs.readFileSync(process.env.JJAZZ_LEGACY_MIX_FIXTURE, "utf8") : null,
+    instrumentDefinition: fs.readFileSync(path.resolve(__dirname,
+        "../../../plugins/FluidSynthEmbeddedSynth/src/main/resources/org/jjazz/fluidsynthembeddedsynth/api/resources/JJazzLabSoundFont_FluidSynth.ins"), "base64"),
     africa: process.env.JJAZZ_AFRICA_FIXTURE ? fs.readFileSync(process.env.JJAZZ_AFRICA_FIXTURE, "utf8") : null,
     styles: repertoire || multiStyle ? fs.readFileSync(path.resolve(__dirname, "../../engine/demo/assets/jjazzlab_user_styles.zip"), "base64") : null,
     multiStyle: multiStyle ? ["ANightinTunisia-Eb-Theme", "Django-Fm-Theme", "PetiteFleur-Dm-Theme2-Tango"].map(name => ({ name,

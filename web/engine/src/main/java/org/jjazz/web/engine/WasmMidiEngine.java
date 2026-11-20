@@ -3,6 +3,7 @@ package org.jjazz.web.engine;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
+import java.io.IOException;
 import java.text.ParseException;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -25,6 +26,7 @@ import org.jjazz.humanizer.api.Humanizer;
 import org.jjazz.importers.api.TextReader;
 import org.jjazz.importers.api.ImprovisorFileReader;
 import org.jjazz.importers.api.BiabFileReader;
+import org.jjazz.outputsynth.api.CakewalkInsFileReader;
 import org.jjazz.phrase.api.NoteEvent;
 import org.jjazz.phrase.api.Phrase;
 import org.jjazz.phrase.api.Phrases;
@@ -80,6 +82,44 @@ public final class WasmMidiEngine
     {
         if (mp3Encoder != null) mp3Encoder.close();
         mp3Encoder = null;
+    }
+
+    @JSExport
+    public static String[] readMidiInstrumentDefinitions(byte[] bytes) throws IOException
+    {
+        WebServices.install();
+        var synths = new CakewalkInsFileReader().readSynthsFromStream(new ByteArrayInputStream(bytes), null);
+        var rows = new ArrayList<String>();
+        for (var synth : synths)
+        {
+            for (var bank : synth.getBanks())
+            {
+                for (var instrument : bank.getInstruments())
+                {
+                    var address = instrument.getMidiAddress();
+                    if (!address.isFullyDefined())
+                    {
+                        continue;
+                    }
+                    int msb = switch (address.getBankSelectMethod())
+                    {
+                        case MSB_LSB, MSB_ONLY -> address.getBankMSB();
+                        default -> -1;
+                    };
+                    int lsb = switch (address.getBankSelectMethod())
+                    {
+                        case MSB_LSB, LSB_ONLY -> address.getBankLSB();
+                        default -> -1;
+                    };
+                    var substitute = instrument.getSubstitute();
+                    int program = address.getProgramChange();
+                    int source = instrument.isDrumKit() ? program + 128 : substitute == null ? program : substitute.getMidiAddress().getProgramChange();
+                    String name = (synth.getName() + " / " + bank.getName() + " / " + instrument.getPatchName()).replace('\t', ' ');
+                    rows.add(source + "\t" + msb + "\t" + lsb + "\t" + program + "\t" + name);
+                }
+            }
+        }
+        return rows.toArray(String[]::new);
     }
 
     @JSExport

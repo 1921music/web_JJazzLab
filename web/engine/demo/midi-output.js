@@ -7,9 +7,15 @@ const midiOutputModes = {
     xg: [0xf0, 0x43, 0x10, 0x4c, 0x00, 0x00, 0x7e, 0x00, 0xf7]
 };
 
+function formatMidiPatch([key, msb, lsb, target]) {
+    const source = (key >= 128 ? "D" : "") + key % 128;
+    return `${source}=${msb < 0 ? "-" : msb},${lsb < 0 ? "-" : lsb},${target}`;
+}
+
 class MidiOutput {
-    constructor(onDisconnect) {
+    constructor(onDisconnect, readDefinitions) {
         this.onDisconnect = onDisconnect;
+        this.readDefinitions = readDefinitions;
         this.key = "jjazzlab.midiOutput";
         this.defaults = { gmDrums: true, sendSetup: true, monitor: true, thru: false, mode: "", delay: 0, drumMap: [], patchMap: [] };
         this.settings = { device: "", ...this.defaults, profiles: {} };
@@ -26,14 +32,14 @@ class MidiOutput {
         this.dialog = document.querySelector("#midi-output");
         this.form = this.dialog.querySelector("form");
         this.status = this.dialog.querySelector("[role=status]");
-        const { device, gmDrums, sendSetup, monitor, thru, mode, delay, drumMap, patchMap, connect, connectSysex, testOutput, closeDialog } = this.form.elements;
+        const { device, gmDrums, sendSetup, monitor, thru, mode, delay, drumMap, patchMap, definitionFile, definitionPatch,
+            addDefinitionPatch, connect, connectSysex, testOutput, closeDialog } = this.form.elements;
         const range = { minimum: 0, maximum: 127 };
         const showProfile = profile => {
             for (const field of [gmDrums, sendSetup, monitor, thru]) field.checked = Boolean(profile[field.name]);
             for (const field of [mode, delay]) field.value = profile[field.name];
             drumMap.value = profile.drumMap.map(([source, target]) => `${source}=${target}`).join("\n");
-            patchMap.value = profile.patchMap.map(([key, msb, lsb, target]) =>
-                `${key >= 128 ? "D" : ""}${key % 128}=${msb},${lsb},${target}`).join("\n");
+            patchMap.value = profile.patchMap.map(formatMidiPatch).join("\n");
         };
         document.querySelector("#open-midi-output").onclick = () => {
             showProfile(this.settings);
@@ -45,6 +51,15 @@ class MidiOutput {
         connectSysex.onclick = () => this.connect(true);
         device.onchange = () => showProfile({ ...this.defaults, ...this.settings.profiles?.[device.value] });
         testOutput.onclick = () => this.test(device.value);
+        definitionFile.onchange = () => this.importDefinition(definitionFile.files[0]);
+        addDefinitionPatch.onclick = () => {
+            const patch = this.definitionPatches?.[Number(definitionPatch.value)];
+            if (!patch) return;
+            const [key] = patch;
+            const source = `${key >= 128 ? "D" : ""}${key % 128}`;
+            const existing = new RegExp(`^\\s*${source}\\s*=`, "iu");
+            patchMap.value = [...patchMap.value.split(/\r?\n/u).filter(row => row.trim() && !existing.test(row)), formatMidiPatch(patch)].join("\n");
+        };
         closeDialog.onclick = () => this.dialog.close();
         this.form.onsubmit = event => {
             event.preventDefault();
@@ -61,8 +76,8 @@ class MidiOutput {
             }
             const patches = new Map();
             for (const row of patchMap.value.split(/\r?\n/u).filter(line => line.trim())) {
-                const match = /^(D?)(\d{1,3})\s*=\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})$/iu.exec(row.trim());
-                const values = match?.slice(2).map(Number);
+                const match = /^(D?)(\d{1,3})\s*=\s*(\d{1,3}|-)\s*,\s*(\d{1,3}|-)\s*,\s*(\d{1,3})$/iu.exec(row.trim());
+                const values = match?.slice(2).map(value => value === "-" ? -1 : Number(value));
                 const key = values?.[0] + (match?.[1] ? 128 : 0);
                 if (!values?.every(value => value <= 127) || patches.has(key)) {
                     this.show(t("音色は「33=0,1,35」またはドラムの「D0=0,0,8」の形式で、番号0～127を使い重複なく指定してください。",
@@ -90,6 +105,25 @@ class MidiOutput {
     show(message, error = false) {
         this.status.textContent = message;
         this.status.toggleAttribute("data-error", error);
+    }
+
+    async importDefinition(file) {
+        if (!file) return;
+        const { definitionFile, definitionPatch, addDefinitionPatch } = this.form.elements;
+        definitionFile.disabled = true;
+        try {
+            if (file.size > 4000000) throw new Error(t("定義ファイルは4MB以下を選んでください。", "Choose an instrument definition of up to 4 MB."));
+            const rows = await this.readDefinitions(new Int8Array(await file.arrayBuffer()));
+            if (!rows.length) throw new Error(t("音色定義を読み込めませんでした。", "No instrument definitions could be read."));
+            this.definitionPatches = rows.map(row => row.split("\t").map((value, index) => index < 4 ? Number(value) : value));
+            const options = document.createDocumentFragment();
+            this.definitionPatches.forEach((patch, index) => options.append(new Option(patch[4], index)));
+            definitionPatch.replaceChildren(options);
+            definitionPatch.hidden = false;
+            addDefinitionPatch.hidden = false;
+            this.show(t(`${this.definitionPatches.length}件の音色を読み込みました。`, `Loaded ${this.definitionPatches.length} patches.`));
+        } catch (error) { this.show(error.message, true); }
+        finally { definitionFile.disabled = false; definitionFile.value = ""; }
     }
 
     async connect(sysex) {

@@ -265,8 +265,8 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         const mapping = this.midiPatchMap?.get(program + (part.drum ? 128 : 0));
         const selectedBank = mapping ?? bank;
         if (selectedBank) {
-            this.queueMidi(channel, 0xb0, 0, selectedBank[0]);
-            this.queueMidi(channel, 0xb0, 32, selectedBank[1]);
+            if (selectedBank[0] >= 0) this.queueMidi(channel, 0xb0, 0, selectedBank[0]);
+            if (selectedBank[1] >= 0) this.queueMidi(channel, 0xb0, 32, selectedBank[1]);
         }
         this.queueMidi(channel, 0xc0, mapping?.[2] ?? program, 0);
     }

@@ -649,6 +649,11 @@
             <label class="field">MIDI出力遅延（ms） <input name="delay" type="number" min="0" max="250" step="1" required></label>
             <label class="field">打楽器のキーマップ <textarea name="drumMap" rows="4" placeholder="36=35"></textarea></label>
             <label class="field">音色の割り当て（元のPG=MSB,LSB,先のPG） <textarea name="patchMap" rows="3" placeholder="33=0,1,35"></textarea></label>
+            <label class="field">外部音源の定義ファイル（.ins） <input name="definitionFile" type="file" accept=".ins"></label>
+            <div class="rhythm-picker-fields">
+                <select name="definitionPatch" aria-label="定義ファイルの音色" hidden></select>
+                <button name="addDefinitionPatch" type="button" class="secondary" hidden>選んだ音色を追加</button>
+            </div>
             <p role="status"></p>
             <div class="dialog-actions">
                 <button name="closeDialog" type="button" class="secondary">キャンセル</button>

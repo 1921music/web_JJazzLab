@@ -362,6 +362,9 @@ JJazzLab に寄付|Donate to JJazzLab
 出力を試聴|Test Output
 MIDI入力をこの出力に送る（MIDI Thru）|Send MIDI input to this output (MIDI Thru)
 音色の割り当て（元のPG=MSB,LSB,先のPG）|Patch mappings (source PC=MSB,LSB,target PC)
+外部音源の定義ファイル（.ins）|External synthesizer definition (.ins)
+定義ファイルの音色|Instrument definition patch
+選んだ音色を追加|Add Selected Patch
 MIDI出力遅延（ms）|MIDI output delay (ms)
 打楽器のキーマップ|Drum key mapping
 五線譜|Staff notation

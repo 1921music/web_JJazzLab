@@ -1949,6 +1949,13 @@
                 fields.device.value = output.id;
                 fields.mode.value = "xg";
                 fields.drumMap.value = `${drum.a}=${drumTarget}`;
+                const definition = Uint8Array.from(atob(desktopFixture.instrumentDefinition), character => character.charCodeAt(0));
+                await midiOutput.importDefinition(new File([definition], "JJazzLabSoundFont_FluidSynth.ins"));
+                const brush = Array.from(fields.definitionPatch.options).find(option => option.text.endsWith("/ Brush Kit"));
+                check(brush, "The native instrument reader did not list the bundled definition's Brush Kit");
+                fields.definitionPatch.value = brush.value;
+                fields.addDefinitionPatch.click();
+                check(fields.patchMap.value === "D40=127,0,40", "The instrument definition lost the drum bank or program");
                 fields.patchMap.value = "33=0,1,35\nD0=0,0,8";
                 fields.delay.value = "5";
                 fields.sendSetup.checked = false;
