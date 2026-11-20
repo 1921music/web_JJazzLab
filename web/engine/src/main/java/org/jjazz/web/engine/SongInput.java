@@ -2,11 +2,22 @@ package org.jjazz.web.engine;
 
 import java.text.ParseException;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.EnumMap;
+import java.util.EnumSet;
 import java.util.IdentityHashMap;
+import org.jjazz.chordleadsheet.api.item.AltDataFilter;
+import org.jjazz.chordleadsheet.api.item.AltExtChordSymbol;
+import org.jjazz.chordleadsheet.api.item.ChordRenderingInfo;
+import org.jjazz.chordleadsheet.api.item.ChordRenderingInfo.Feature;
+import org.jjazz.chordleadsheet.api.item.ExtChordSymbol;
+import org.jjazz.chordleadsheet.api.item.VoidAltExtChordSymbol;
 import org.jjazz.chordleadsheet.spi.item.CLI_Factory;
+import org.jjazz.harmony.api.Note;
 import org.jjazz.harmony.api.Position;
+import org.jjazz.harmony.api.StandardScaleInstance;
 import org.jjazz.harmony.api.TimeSignature;
+import org.jjazz.harmony.spi.ScaleManager;
 import org.jjazz.phrase.api.Phrase;
 import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythm.api.RhythmParameter;
@@ -24,7 +35,7 @@ record SongInput(String title, int tempo, int bars,
                  String[] sectionNames, int[] sectionBars, String[] sectionMeters,
                  String[] chords, int[] chordBars, float[] chordBeats,
                  String[] partNames, int[] partSections, String[] partParameters,
-                 String[] userTrackNames, String[] userPhrases)
+                 String[] userTrackNames, String[] userPhrases, String[] chordRendering)
 {
     Song createSong(Rhythm[] sources, int[] partSources) throws Exception
     {
@@ -32,6 +43,7 @@ record SongInput(String title, int tempo, int bars,
                 || partNames.length == 0 || partNames.length != partSections.length || partNames.length != partParameters.length
                 || partNames.length != partSources.length
                 || chords.length != chordBars.length || chords.length != chordBeats.length
+                || chordRendering.length != 0 && chordRendering.length != chords.length
                 || userTrackNames.length != userPhrases.length)
         {
             throw new IllegalArgumentException("Invalid song input columns");
@@ -46,7 +58,8 @@ record SongInput(String title, int tempo, int bars,
         }
         for (int i = 0; i < chords.length; i++)
         {
-            leadSheet.addItem(chordFactory.createChordSymbol(chords[i], new Position(chordBars[i], chordBeats[i])));
+            var chord = chordRendering.length == 0 ? ExtChordSymbol.get(chords[i]) : parseChord(chords[i], chordRendering[i]);
+            leadSheet.addItem(chordFactory.createChordSymbol(chord, new Position(chordBars[i], chordBeats[i])));
         }
 
         var structure = new SongStructureImpl(leadSheet);
@@ -104,6 +117,46 @@ record SongInput(String title, int tempo, int bars,
             song.setUserPhrase(userTrackNames[i], Phrase.loadAsString(userPhrases[i]));
         }
         return song;
+    }
+
+    static ExtChordSymbol parseChord(String name, String value) throws ParseException
+    {
+        var lines = value.split("\n", -1);
+        var rendering = parseRendering(lines[0]);
+        if (lines.length == 1) return ExtChordSymbol.get(name, rendering, null, null);
+        if (lines.length < 4) throw new IllegalArgumentException("Invalid alternate chord columns");
+        var alternate = lines[1].equals("NC") ? VoidAltExtChordSymbol.getInstance()
+                : AltExtChordSymbol.get(lines[1], parseRendering(lines[2]));
+        var filter = lines[3].isEmpty() ? new AltDataFilter(Arrays.asList(lines).subList(4, lines.length))
+                : new AltDataFilter(AltDataFilter.Random.valueOf(lines[3]));
+        return ExtChordSymbol.get(name, rendering, alternate, filter);
+    }
+
+    private static ChordRenderingInfo parseRendering(String value)
+    {
+        var columns = value.split("\t", -1);
+        if (columns.length != 3)
+        {
+            throw new IllegalArgumentException("Invalid chord rendering columns");
+        }
+        var features = EnumSet.noneOf(Feature.class);
+        if (!columns[0].isEmpty())
+        {
+            for (String feature : columns[0].split(","))
+            {
+                features.add(Feature.valueOf(feature.trim()));
+            }
+        }
+        StandardScaleInstance scale = null;
+        if (!columns[1].isEmpty() && !columns[2].isEmpty())
+        {
+            var scales = ScaleManager.getDefault().getStandardScales();
+            int index = Integer.parseInt(columns[1]);
+            // The desktop serialization proxy falls back to the major scale for an unknown index.
+            var standardScale = scales.get(index >= 0 && index < scales.size() ? index : 0);
+            scale = new StandardScaleInstance(standardScale, new Note(Integer.parseInt(columns[2])));
+        }
+        return new ChordRenderingInfo(features, scale);
     }
 
     private static <T> void setParameter(SongStructureImpl structure, SongPart part, RhythmParameter<T> parameter, String savedValue)

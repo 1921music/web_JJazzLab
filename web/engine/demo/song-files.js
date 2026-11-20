@@ -57,6 +57,14 @@ const DesktopSongFiles = (() => {
         return result;
     }
 
+    function readRendering(chord) {
+        const rendering = child(resolve(child(chord, "spRenderingInfo")), "ChordRenderingInfoSP");
+        const features = resolve(child(rendering, "enum-set"))?.textContent.trim() ?? "";
+        const scale = resolve(child(rendering, "StdScaleInstance"));
+        return { ...(features ? { features } : {}),
+            ...(scale ? { scale: { index: attr(scale, "spStdScaleIndex"), pitch: attr(scale, "spStartNotePitch") } } : {}) };
+    }
+
     function readSong(xml) {
         const root = parse(xml, "Song", "4");
         const leadSheet = resolve(child(root, "spChordLeadSheet"));
@@ -79,14 +87,19 @@ const DesktopSongFiles = (() => {
             const position = attr(resolve(child(item, "spPos")), "spPos");
             const match = /^\[(?:(\d+):)?(\d+(?:[.,]\d+)?)\]$/u.exec(position);
             if (!match) throw new Error("コードの拍位置を読み込めません。");
-            const rendering = child(resolve(child(chord, "spRenderingInfo")), "ChordRenderingInfoSP");
-            const features = resolve(child(rendering, "enum-set"))?.textContent.trim() ?? "";
-            const scale = resolve(child(rendering, "StdScaleInstance"));
             const originalName = attr(chord, "spOriginalName");
             const name = attr(chord, "resolves-to") === "NCExtChordSymbolSP" ? "NC" : attr(chord, "spName") || originalName;
+            const alternateNode = resolve(child(chord, "spAltChordSymbol"));
+            const filter = resolve(child(chord, "spAltFilter"));
+            const alternateName = attr(alternateNode, "resolves-to") === "VoidAltExtChordSymbolSP" ? "NC" : attr(alternateNode, "spName");
+            const alternate = alternateName && filter ? {
+                name: alternateName, ...readRendering(alternateNode),
+                random: content(filter, "spRandom").trim(),
+                markers: [...(resolve(child(filter, "spValues"))?.children ?? [])].map(value => resolve(value).textContent)
+            } : undefined;
             return { name, bar: Number(match[1] ?? 0), beat: Number(match[2].replace(",", ".")),
                 ...(originalName && originalName !== attr(chord, "spName") ? { originalName } : {}),
-                ...(features ? { features } : {}), ...(scale ? { scale: { index: attr(scale, "spStdScaleIndex"), pitch: attr(scale, "spStartNotePitch") } } : {}) };
+                ...readRendering(chord), ...(alternate ? { alternate } : {}) };
         });
         const parts = Array.from(child(structure, "spSpts")?.children ?? []).map(part => {
             const section = sectionNodes.indexOf(resolve(child(part, "spParentSection")));
@@ -202,14 +215,37 @@ const DesktopSongFiles = (() => {
             }
         }
         const columns = engineArgs(song, bytes, "", mix);
+        const encodeRendering = chord => [chord.features, chord.scale?.index, chord.scale?.pitch].join("\t");
+        const rendering = song.chords.map(chord => {
+            const alt = chord.alternate;
+            return alt ? [encodeRendering(chord), alt.name, encodeRendering(alt), alt.random, ...alt.markers].join("\n") : encodeRendering(chord);
+        });
         return [bytes, styles.map(style => style.id === "jjSwing-ID" ? "" : style.baseName ?? style.name), lengths,
-            styles.map(style => style.extension ? style.name : ""), extensions, Int32Array.from(sources), ...columns.slice(2)];
+            styles.map(style => style.extension ? style.name : ""), extensions, Int32Array.from(sources), ...columns.slice(2), rendering];
     }
 
     const escape = value => String(value ?? "").replace(/[&<>"\r\n\t]/gu, char => ({
         "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "\r": "&#13;", "\n": "&#10;", "\t": "&#9;"
     })[char]);
     const xmlText = (tag, value) => `<${tag}>${escape(value)}</${tag}>`;
+
+    function writeRendering(chord) {
+        const scale = chord.scale
+            ? `<StdScaleInstance resolves-to="StdScaleInstanceSP" spVERSION="2" spStdScaleIndex="${escape(chord.scale.index)}" spStartNotePitch="${escape(chord.scale.pitch)}"/>`
+            : "<null/>";
+        return '<spRenderingInfo resolves-to="ChordRenderingInfoSP" serialization="custom"><ChordRenderingInfoSP><int>3</int>'
+            + `<enum-set enum-type="Feature">${escape(chord.features)}</enum-set>${scale}</ChordRenderingInfoSP></spRenderingInfo>`;
+    }
+
+    function writeAlternate(alternate) {
+        if (!alternate) return "";
+        const chord = alternate.name === "NC"
+            ? '<spAltChordSymbol class="VoidAltExtChordSymbol" resolves-to="VoidAltExtChordSymbolSP" spName="VoidAltExtChordSymbol"/>'
+            : `<spAltChordSymbol resolves-to="AltExtChordSymbolSP" spVERSION="2" spName="${escape(alternate.name)}">${writeRendering(alternate)}</spAltChordSymbol>`;
+        const condition = alternate.random ? xmlText("spRandom", alternate.random)
+            : `<spValues>${alternate.markers.map(marker => xmlText("string", marker)).join("")}</spValues>`;
+        return chord + `<spAltFilter resolves-to="AltDataFilterSP"><spVERSION>2</spVERSION>${condition}</spAltFilter>`;
+    }
 
     function writeSong(song) {
         const sections = song.sections.map(section => ({ bar: section.bar, beat: -1, xml:
@@ -218,13 +254,9 @@ const DesktopSongFiles = (() => {
         const chords = song.chords.map(chord => {
             const start = chord.name === "NC" ? '<spChord class="NCExtChordSymbol" resolves-to="NCExtChordSymbolSP" spVERSION="2" spName="NCExtChordSymbol">'
                 : `<spChord resolves-to="ExtChordSymbolSP" spName="${escape(chord.name)}" spOriginalName="${escape(chord.originalName ?? chord.name)}"><spVERSION>3</spVERSION>`;
-            const scale = chord.scale
-                ? `<StdScaleInstance resolves-to="StdScaleInstanceSP" spVERSION="2" spStdScaleIndex="${escape(chord.scale.index)}" spStartNotePitch="${escape(chord.scale.pitch)}"/>`
-                : "<null/>";
             return { bar: chord.bar, beat: chord.beat, xml:
                 '<CLI__ChordSymbolImpl resolves-to="CLI_ChordSymbolSP"><spVERSION>3</spVERSION>' + start
-                + '<spRenderingInfo resolves-to="ChordRenderingInfoSP" serialization="custom"><ChordRenderingInfoSP><int>3</int>'
-                + `<enum-set enum-type="Feature">${escape(chord.features)}</enum-set>${scale}</ChordRenderingInfoSP></spRenderingInfo></spChord>`
+                + writeRendering(chord) + writeAlternate(chord.alternate) + '</spChord>'
                 + `<spPos resolves-to="PositionSP" spVERSION="2" spPos="[${chord.bar}:${chord.beat}]"/>`
                 + '<spClientProperties><owner class="CLI_ChordSymbolImpl" reference="../.."/></spClientProperties></CLI__ChordSymbolImpl>' };
         });

@@ -1,9 +1,13 @@
 package org.jjazz.web.engine;
 
 import java.io.ByteArrayOutputStream;
-import java.util.Arrays;
-import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import java.io.File;
+import java.text.ParseException;
+import java.util.Arrays;
+import org.jjazz.chordleadsheet.api.item.ExtChordSymbol;
+import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
+import org.jjazz.harmony.spi.ScaleManager;
+import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.teavm.jso.JSExport;
 
 /** JavaScript entry point for generating a General MIDI accompaniment. */
@@ -106,6 +110,34 @@ public final class WasmMidiEngine
                                                        String[] partNames, int[] partSections, String[] partParameters,
                                                        String[] userTrackNames, String[] userPhrases, String[] mix) throws Exception
     {
+        return generateSongMidiWithChordRendering(styleBytes, styleNames, styleLengths, extensionNames, extensionLengths,
+                partSources, title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats,
+                partNames, partSections, partParameters, userTrackNames, userPhrases, mix, new String[0]);
+    }
+
+    /** Standard scales compatible with a chord, in desktop serialization order. */
+    @JSExport
+    public static String[] getChordScales(String name) throws ParseException
+    {
+        var chord = ExtChordSymbol.get(name);
+        if (chord instanceof NCExtChordSymbol) return new String[0];
+        var manager = ScaleManager.getDefault();
+        var scales = manager.getStandardScales();
+        return manager.getMatchingScales(chord).stream()
+                .map(scale -> scales.indexOf(scale.getScale()) + "\t" + scale.getStartNote().getPitch() + "\t" + scale.getScale().getName())
+                .toArray(String[]::new);
+    }
+
+    /** Render the same chord interpretation and scale as the desktop song. */
+    @JSExport
+    public static byte[] generateSongMidiWithChordRendering(byte[] styleBytes, String[] styleNames, int[] styleLengths,
+                                                       String[] extensionNames, int[] extensionLengths, int[] partSources,
+                                                       String title, int tempo, int bars, String[] sectionNames, int[] sectionBars,
+                                                       String[] sectionMeters, String[] chords, int[] chordBars, float[] chordBeats,
+                                                       String[] partNames, int[] partSections, String[] partParameters,
+                                                       String[] userTrackNames, String[] userPhrases, String[] mix,
+                                                       String[] chordRendering) throws Exception
+    {
         partMetadata = new String[0];
         songMix = new String[0];
         importedMixApplied = false;
@@ -115,7 +147,7 @@ public final class WasmMidiEngine
             throw new IllegalArgumentException("Invalid song style columns");
         }
         var song = new SongInput(title, tempo, bars, sectionNames, sectionBars, sectionMeters, chords, chordBars, chordBeats,
-                partNames, partSections, partParameters, userTrackNames, userPhrases);
+                partNames, partSections, partParameters, userTrackNames, userPhrases, chordRendering);
         var midi = new ByteArrayOutputStream();
         var staged = new RawStyleFile[styleNames.length * 2];
         var files = new File[styleNames.length];

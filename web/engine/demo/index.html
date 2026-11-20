@@ -280,6 +280,36 @@
             <h2 id="bar-editor-title"></h2>
             <label id="bar-chords-field" class="field">コード <input id="edit-bar-chords" type="text" spellcheck="false" aria-describedby="bar-editor-help"></label>
             <p id="bar-editor-help" class="hint">複数コードは「Cmaj7 3:G7」のように、コードの前に拍位置を指定します。</p>
+            <fieldset id="chord-interpretation" hidden>
+                <legend>コードの発音</legend>
+                <label class="field">アクセント
+                    <select id="chord-accent"><option value="">既定</option><option value="ACCENT">通常</option><option value="ACCENT_STRONGER">強調</option></select>
+                </label>
+                <label class="field">長さ
+                    <select id="chord-duration"><option value="">既定</option><option value="HOLD">Hold</option><option value="SHOT">Shot</option></select>
+                </label>
+                <label class="field">クラッシュシンバル
+                    <select id="chord-crash"><option value="">既定</option><option value="CRASH">鳴らす</option><option value="NO_CRASH">抑える</option></select>
+                </label>
+                <label><input type="checkbox" value="EXTENDED_HOLD_SHOT"> Hold／Shotを他の楽器にも適用</label>
+                <label><input type="checkbox" value="PEDAL_BASS"> ペダルベース</label>
+                <label><input type="checkbox" value="NO_ANTICIPATION"> 先取りしない</label>
+                <label class="field">スケール <select id="chord-scale"></select></label>
+                <label class="field">代替コード
+                    <input id="chord-alternate" type="text" spellcheck="false" placeholder="G7 / NC">
+                </label>
+                <label class="field">代替コードを使う条件
+                    <select id="chord-alternate-condition">
+                        <option value="">区間のマーカー</option>
+                        <option value="RANDOM_RARE">ランダム（30%）</option>
+                        <option value="RANDOM">ランダム（50%）</option>
+                        <option value="RANDOM_OFTEN">ランダム（70%）</option>
+                    </select>
+                </label>
+                <label class="field" id="chord-alternate-marker-field">マーカー
+                    <select id="chord-alternate-markers" multiple size="4"></select>
+                </label>
+            </fieldset>
             <div id="bar-section-field" hidden>
                 <label class="field">セクション名 <input id="edit-section-name" type="text"></label>
                 <label class="field">拍子 <select id="edit-section-meter"></select></label>

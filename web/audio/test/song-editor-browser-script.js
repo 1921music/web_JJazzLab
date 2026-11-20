@@ -82,6 +82,25 @@
         check(song.barTimes.length === 11, "AABA with 3-bar A and 1-bar B must produce ten bars");
         check(editor.project.chords[1].beat === 2, "Editing the arrangement lost the second chord");
         check(editor.renderedMix.length > 0, "New song does not have a writable mix");
+        editor.grid.firstElementChild.querySelector(".chord-symbol").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
+        editor.contextMenu.querySelector('[data-action="chord"]').click();
+        check(editor.barDialog.open && !document.querySelector("#chord-interpretation").hidden, "Chord interpretation editor did not open");
+        const scale = document.querySelector("#chord-scale");
+        for (let attempt = 0; scale.options.length < 2 && attempt < 50; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        check(scale.options.length > 1, "JJazzLab scales were not available for the current chord");
+        scale.selectedIndex = 1;
+        document.querySelector("#chord-duration").value = "SHOT";
+        document.querySelector("#chord-alternate").value = "NC";
+        document.querySelector("#chord-alternate-condition").value = "RANDOM_OFTEN";
+        document.querySelector("#bar-editor-form").requestSubmit();
+        const interpreted = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project)).chords[0];
+        check(interpreted.features === "ACCENT,SHOT" && interpreted.scale?.pitch && interpreted.alternate?.name === "NC"
+            && interpreted.alternate?.random === "RANDOM_OFTEN", "Chord interpretation or alternative did not round-trip");
+        await generate();
+        editor.undoButton.click();
+        await generate();
         document.querySelector("#song-parts > li:nth-child(2) .part-controls button:last-child").click();
         document.querySelector("#lead-sheet > div:nth-child(2)").click();
         check(loopStart.value === "5" && loopEnd.value === "6", "Sheet selection did not use the second A");

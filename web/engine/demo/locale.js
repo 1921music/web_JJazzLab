@@ -4,6 +4,26 @@ const labels = new Map(`
 メインメニュー|Main menu
 ファイル|File
 編集|Edit
+コードの発音|Chord interpretation
+アクセント|Accent
+既定|Default
+通常|Normal
+強調|Stronger
+クラッシュシンバル|Crash cymbal
+鳴らす|Play
+抑える|Suppress
+Hold／Shotを他の楽器にも適用|Extend Hold/Shot to more instruments
+ペダルベース|Pedal bass
+先取りしない|Disable anticipation
+スケール|Scale
+長さ|Duration
+代替コード|Alternate chord
+代替コードを使う条件|Use alternate chord when
+区間のマーカー|Song part marker
+マーカー|Marker
+ランダム（30%）|Random (30%)
+ランダム（50%）|Random (50%)
+ランダム（70%）|Random (70%)
 ツール|Tools
 ウィンドウ|Window
 ヘルプ|Help

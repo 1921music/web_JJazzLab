@@ -387,6 +387,9 @@ footer pre { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 20rem; 
 }
 #bar-editor::backdrop, #channel-editor::backdrop, #part-editor::backdrop { background: #10131780; }
 #bar-editor-form, #channel-editor-form, #channel-effects, #part-editor-form, #bar-section-field { display: grid; gap: .65rem; }
+#chord-interpretation:not([hidden]) { display: grid; gap: .5rem; }
+#chord-alternate-marker-field[hidden] { display: none; }
+#bar-editor { max-height: calc(100dvh - 2rem); overflow-y: auto; }
 .effect-control { display: grid; grid-template-columns: 1fr 5ch auto; gap: .3rem .55rem; align-items: center; }
 .effect-control > span { grid-column: 1 / -1; }
 .effect-control input[type="range"] { width: 100%; }

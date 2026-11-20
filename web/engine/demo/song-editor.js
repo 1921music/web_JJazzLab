@@ -1,5 +1,7 @@
 "use strict";
 
+const partMarkers = ["theme", "solo", "theme2", "theme3", "theme4", "solo2", "solo3", "solo4"];
+
 function downloadSongFile(name, data, type) {
     const url = URL.createObjectURL(new Blob([data], { type }));
     const link = document.createElement("a");
@@ -437,11 +439,35 @@ class SongEditor {
         document.querySelector("#bar-editor-help").hidden = this.editingSection || this.editingAnnotation || Boolean(this.editingChord);
         document.querySelector("#bar-section-field").hidden = !this.editingSection;
         document.querySelector("#bar-annotation-field").hidden = !this.editingAnnotation;
+        const interpretation = document.querySelector("#chord-interpretation");
+        interpretation.hidden = !this.editingChord;
         this.annotationField.value = this.project.annotations?.find(note => note.bar === bar)?.text ?? "";
         this.barError.textContent = "";
         this.chordField.value = initialChord ?? this.project.chords.filter(chord => chord.bar === bar).sort((a, b) => a.beat - b.beat)
             .map(chord => chord.beat ? `${Number((chord.beat + 1).toFixed(6))}:${chord.name}` : chord.name).join(" ");
-        if (this.editingChord) this.chordField.value = this.editingChord.name;
+        if (this.editingChord) {
+            this.chordField.value = this.editingChord.name;
+            const features = (this.editingChord.features ?? "").split(",").map(value => value.trim());
+            for (const field of interpretation.querySelectorAll("#chord-accent, #chord-duration, #chord-crash")) {
+                field.value = [...field.options].find(option => features.includes(option.value))?.value ?? "";
+            }
+            for (const field of interpretation.querySelectorAll('input[type="checkbox"]')) field.checked = features.includes(field.value);
+            const alternate = this.editingChord.alternate;
+            document.querySelector("#chord-alternate").value = alternate?.name ?? "";
+            const condition = document.querySelector("#chord-alternate-condition");
+            condition.value = alternate?.random ?? "";
+            const markers = document.querySelector("#chord-alternate-markers");
+            const selectedMarkers = alternate?.markers ?? ["solo"];
+            markers.replaceChildren(...[...new Set([...partMarkers, ...selectedMarkers])]
+                .map(marker => new Option(marker, marker, false, selectedMarkers.includes(marker))));
+            condition.onchange = () => { document.querySelector("#chord-alternate-marker-field").hidden = Boolean(condition.value); };
+            condition.onchange();
+            this.updateChordScales(this.editingChord.scale);
+            this.chordField.oninput = () => {
+                const selected = document.querySelector("#chord-scale").selectedOptions[0];
+                this.updateChordScales(selected?.value ? { index: selected.value } : undefined);
+            };
+        } else this.chordField.oninput = null;
         const sections = this.project.sections;
         let suffix = 1;
         while (sections.some(section => section.name === `S${suffix}`)) suffix++;
@@ -452,6 +478,40 @@ class SongEditor {
         field.focus();
         if (initialChord === undefined) field.select();
         else field.setSelectionRange(field.value.length, field.value.length);
+    }
+
+    async updateChordScales(preferred) {
+        const select = document.querySelector("#chord-scale");
+        const name = this.chordField.value.trim().replaceAll("♭", "b").replaceAll("♯", "#");
+        const chord = this.editingChord;
+        const request = {};
+        this.scaleRequest = request;
+        let original;
+        if (preferred?.pitch !== undefined) {
+            original = new Option(t(`保存済みのスケール（${preferred.index}）`, `Saved scale (${preferred.index})`), preferred.index);
+            original.dataset.pitch = preferred.pitch;
+        }
+        select.replaceChildren(new Option(t("既定", "Default"), ""), ...(original ? [original] : []));
+        if (original) select.value = original.value;
+        try {
+            const rows = await this.onChordScales(name);
+            if (this.scaleRequest !== request || this.editingChord !== chord || !this.barDialog.open) return;
+            for (const row of rows) {
+                const [index, pitch, label] = row.split("\t");
+                const option = new Option(label.replaceAll("_", " "), index);
+                option.dataset.pitch = pitch;
+                if (original?.value === index) {
+                    option.dataset.pitch = original.dataset.pitch;
+                    original.replaceWith(option);
+                    select.value = index;
+                } else select.append(option);
+            }
+            if (preferred && [...select.options].some(option => option.value === String(preferred.index))) {
+                select.value = preferred.index;
+            }
+        } catch {
+            // Keep the imported scale available if the engine or chord is unavailable.
+        }
     }
 
     commitBarEdit() {
@@ -467,9 +527,25 @@ class SongEditor {
                 const parsed = this.parseBarChords(bar, this.chordField.value);
                 if (parsed.length !== 1 || parsed[0].beat !== 0) throw new Error(t("コードを1つ入力してください。", "Enter one chord symbol."));
                 const name = parsed[0].name;
-                if (name !== this.editingChord.name) {
-                    this.project.chords = this.project.chords.map(chord => chord === this.editingChord ? { ...chord, name, originalName: name } : chord);
+                const fields = document.querySelector("#chord-interpretation");
+                const accent = fields.querySelector("#chord-accent").value;
+                const duration = fields.querySelector("#chord-duration").value;
+                const features = [accent || (duration ? "ACCENT" : ""), duration, fields.querySelector("#chord-crash").value,
+                    ...[...fields.querySelectorAll("input:checked")].map(field => field.value)].filter(Boolean).join(",");
+                const scaleChoice = fields.querySelector("#chord-scale").selectedOptions[0];
+                const scale = scaleChoice?.value ? { index: scaleChoice.value, pitch: scaleChoice.dataset.pitch } : undefined;
+                const alternateName = fields.querySelector("#chord-alternate").value.trim().replaceAll("♭", "b").replaceAll("♯", "#");
+                let alternate;
+                if (alternateName) {
+                    if (/\s|:/u.test(alternateName)) throw new Error(t("代替コードを1つ入力してください。", "Enter one alternate chord symbol."));
+                    const random = fields.querySelector("#chord-alternate-condition").value;
+                    const markers = random ? [] : [...fields.querySelector("#chord-alternate-markers").selectedOptions].map(option => option.value);
+                    if (!random && !markers.length) throw new Error(t("マーカーを選択してください。", "Select a marker."));
+                    const previous = this.editingChord.alternate;
+                    alternate = { ...(previous?.name === alternateName ? previous : {}), name: alternateName, random, markers };
                 }
+                this.project.chords = this.project.chords.map(chord => chord === this.editingChord
+                    ? { ...chord, name, originalName: name === chord.name ? chord.originalName : name, features, scale, alternate } : chord);
             }
             else {
                 const newChords = this.parseBarChords(bar, this.chordField.value);
@@ -685,7 +761,8 @@ class SongEditor {
             ["DrumsStyleId", "ドラムの奏法", "auto", swing ? Array.from(document.querySelector("#swing-drums").options, option => option.value) : []],
             ["rpIntensityID", "強弱", "0"],
             ["RpFillID", "フィル", "", ["", "always", "random", "random_rare", "break", "fade_out"]],
-            ["rpTempoID", "テンポ比", "100"]
+            ["rpTempoID", "テンポ比", "100"],
+            ["rpSysMarkerID", "マーカー", "theme", partMarkers]
         ];
         for (const [key, label, fallback, options] of rows) {
             if (!visibleRows.has(key)) continue;
@@ -895,7 +972,7 @@ class SongEditor {
         if (this.selectedChord && !chords.includes(this.selectedChord)) this.selectedChord = null;
         const ranges = this.partRanges();
         const showSwingRows = parts.some(part => DesktopSongFiles.sourceStyleId(part.styleId) === "jjSwing-ID");
-        const visibleRows = new Set(["rpVariationID", "rpIntensityID", "RpFillID", "rpTempoID"]);
+        const visibleRows = new Set(["rpVariationID", "rpIntensityID", "RpFillID", "rpTempoID", "rpSysMarkerID"]);
         if (showSwingRows) { visibleRows.add("BassStyleId"); visibleRows.add("DrumsStyleId"); }
         this.parts.replaceChildren(...parts.map((part, index) => this.renderPart(part, ranges[index], colors, visibleRows)));
         this.markSelection();

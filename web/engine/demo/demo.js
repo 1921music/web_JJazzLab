@@ -36,7 +36,7 @@ const knownStyleIssues = new Map([
 ]);
 const styleIssue = entry => knownStyleIssues.get(`${entry.name}:${entry.crc}`);
 
-let engine;
+let engine, engineLoad;
 let downloadUrl;
 
 function showStylePackStatus(message, error = false) {
@@ -645,6 +645,14 @@ async function loadEngine() {
     }
 }
 
+function getEngine() {
+    engineLoad ??= loadEngine().catch(error => {
+        engineLoad = undefined;
+        throw error;
+    });
+    return engineLoad;
+}
+
 function clearDownload() {
     if (downloadUrl) {
         URL.revokeObjectURL(downloadUrl);
@@ -740,6 +748,7 @@ const editor = new SongEditor((opened) => {
     if (!chosenRange) showStatus("選択した小節は曲構成の演奏順に含まれていません。");
     else startPlayback(true);
 });
+editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
 const pianoRoll = new PianoRoll(editor, range => {
     chosenRange = range;
     if (song && range.to < song.barTimes.length) {
@@ -1040,7 +1049,7 @@ async function generateAccompaniment(fromPlay = false) {
         clearPlayback();
         if (!engine) {
             try {
-                engine = await loadEngine();
+                engine = await getEngine();
             } catch {
                 throw new Error("Wasmを読み込めませんでした。WasmGCとgzip展開に対応したブラウザで開いてください。");
             }
@@ -1057,7 +1066,7 @@ async function generateAccompaniment(fromPlay = false) {
                 const equivalent = mixerInstruments.find(instrument => instrument.desktop.id === track.instrument);
                 return equivalent ? { ...track, patch: equivalent.patch } : track;
             });
-            midi = engine.exports.generateSongMidiWithStylePairs(...DesktopSongFiles.multiStyleEngineArgs(arrangement, styles, sources, playbackMix));
+            midi = engine.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(arrangement, styles, sources, playbackMix));
             const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
             const applied = engine.exports.wasImportedMixApplied();
             const original = new Map(editor.mix.map(track => [`${track.rhythmId}\t${track.name}`, track]));
