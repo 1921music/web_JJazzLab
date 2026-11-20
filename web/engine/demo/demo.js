@@ -220,6 +220,7 @@ function updateButtons() {
     nextPart.disabled = generating || starting || !editor.project || !editor.partRanges().some(range => range.from > playbackBar);
     previousPart.disabled ||= quickMode.getAttribute("aria-pressed") === "true";
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
+    document.querySelector("#open-song-print").disabled = !editor.project || generating || starting;
     for (const id of ["duplicate-song", "linearize-song", "save-song-template", "clear-song-template"]) {
         document.getElementById(id).disabled = !editor.project || starting || generating;
     }
@@ -968,6 +969,7 @@ const editor = new SongEditor((opened, useSavedStyles) => {
     else startPlayback(true, stopAtEnd);
 });
 const openProject = document.querySelector("#open-project");
+new SongPrintView(editor);
 document.querySelector("#duplicate-song").onclick = () => editor.save("duplicate");
 document.querySelector("#linearize-song").onclick = () => editor.save("linearize");
 document.querySelector("#save-song-template").onclick = () => editor.saveTemplate();

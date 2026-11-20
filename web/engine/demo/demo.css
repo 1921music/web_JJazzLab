@@ -287,6 +287,29 @@ button:disabled { opacity: .5; cursor: default; }
 .compact-view .rp-row:not(.compact-rp) { display: none; }
 #structure-compact-rows { display: grid; gap: .65rem; }
 #structure-compact-rows fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; }
+#song-print { width: min(64rem, calc(100% - 2rem)); }
+.print-controls, .print-options { display: grid; gap: .65rem; }
+.print-options { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+#song-print-sheet-options { display: grid; grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr)); gap: .6rem; align-items: end; }
+#song-print-preview { background: #fff; color: #191919; padding: 1rem; }
+#song-print-preview h2 { margin: 0 0 .7em; }
+.print-score-row { display: grid; grid-template-columns: repeat(var(--print-columns), minmax(0, 1fr)); break-inside: avoid; }
+.print-measure { min-height: var(--print-bar-height); padding: .16em .3em; border: 1px solid #727272; }
+.print-measure small { display: block; font-size: .68em; }
+.print-measure p { margin: .2em 0; font-size: .78em; white-space: pre-wrap; overflow-wrap: anywhere; }
+.print-chords { position: relative; min-height: 1.15em; margin: .12em 0; overflow: hidden; }
+.print-chords span { position: absolute; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; overflow: hidden; }
+.print-structure { width: 100%; border-collapse: collapse; table-layout: auto; }
+.print-structure :is(th, td) { border-bottom: 1px solid #727272; padding: .26em .45em; text-align: start; }
+.print-structure tr { break-inside: avoid; }
+@media print {
+    body:has(#song-print[open]) > :not(#song-print), #song-print .print-controls { display: none !important; }
+    body:has(#song-print[open]) { display: block; margin: 0; background: #fff; }
+    #song-print[open] { position: static; inset: auto; width: auto; max-width: none; max-height: none; overflow: visible; margin: 0; padding: 0; border: none; }
+    #song-print[open] > form { display: block; }
+    #song-print-preview { padding: 0; }
+    .print-structure thead { display: table-header-group; }
+}
 .part-controls { display: flex; justify-content: space-between; gap: .08rem; margin-top: auto; padding: .12rem; }
 .part-controls button { flex: 1; padding: .01rem .12rem; border-color: transparent; font-size: .78rem; }
 #user-track-summary { padding: 0 .65rem .42rem; }

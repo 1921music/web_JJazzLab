@@ -922,6 +922,30 @@
                     && DesktopSongFiles.barBeats(roundTrip).join() === sourceBars.join()
                     && roundTrip.parts.every((part, index) => part.section === index && part.styleId === originalProject.parts[index].styleId),
                     "The unfolded .sng did not retain the original order, rhythms or meters");
+                const printPreview = document.querySelector("#song-print-preview");
+                const printDialog = document.querySelector("#song-print");
+                document.querySelector("#open-song-print").click();
+                check(printDialog.open && printPreview.querySelectorAll(".print-measure").length === originalProject.bars,
+                    "The print dialog did not preview the original lead sheet");
+                const unfold = document.querySelector("#song-print-unfold");
+                unfold.checked = true;
+                unfold.dispatchEvent(new Event("change", { bubbles: true }));
+                check(printPreview.querySelectorAll(".print-measure").length === sourceBars.length, "Printing did not unfold the score");
+                const printMode = document.querySelector("#song-print-mode");
+                printMode.value = "structure";
+                printMode.dispatchEvent(new Event("change", { bubbles: true }));
+                check(printPreview.querySelectorAll("tbody tr").length === originalProject.parts.length
+                    && document.querySelector("#song-print-orientation").value === "landscape",
+                    "The print preview did not show the arrangement in landscape");
+                const systemPrint = window.print;
+                let printCalled = false;
+                try {
+                    window.print = () => { printCalled = true; };
+                    document.querySelector("#song-print-form").requestSubmit();
+                } finally { window.print = systemPrint; }
+                check(printCalled && editor.project === originalProject, "Printing changed the open song or did not invoke the browser");
+                printDialog.close();
+                report.songPrintPreview = true;
                 document.querySelector("#save-song-template").click();
                 document.querySelector("#new-project").click();
                 check(editor.project.title !== originalProject.title && editor.project.parts.length === originalProject.parts.length

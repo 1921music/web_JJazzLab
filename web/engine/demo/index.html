@@ -20,6 +20,7 @@
                     <button id="clear-song-template" type="button">標準テンプレートに戻す</button>
                     <button data-command="export-project" type="button">JJazzLab形式で書き出す…</button>
                     <button data-command="download" type="button">MIDI（GM）を書き出す</button>
+                    <button id="open-song-print" type="button">印刷…</button>
                 </div></details>
                 <details><summary>編集</summary><div>
                     <button data-command="undo" type="button">元に戻す</button>
@@ -420,6 +421,34 @@
                 <button id="close-track-overrides" type="button" class="secondary">閉じる</button>
                 <button type="submit">適用</button>
             </div>
+        </form>
+    </dialog>
+
+    <dialog id="song-print" aria-labelledby="song-print-title">
+        <form id="song-print-form" method="dialog">
+            <div class="print-controls">
+                <h2 id="song-print-title">印刷プレビュー</h2>
+                <div class="print-options">
+                    <label class="field">印刷する内容 <select id="song-print-mode"><option value="sheet">コード譜</option><option value="structure">曲構成</option></select></label>
+                    <label class="field">用紙 <select id="song-print-paper"><option>A4</option><option value="letter">Letter</option></select></label>
+                    <label class="field">向き <select id="song-print-orientation"><option value="portrait">縦</option><option value="landscape">横</option></select></label>
+                </div>
+                <fieldset id="song-print-sheet-options">
+                    <legend>譜面の設定</legend>
+                    <label class="field">1行の小節数 <select id="song-print-columns">
+                        <option>3</option><option selected>4</option><option>5</option><option>6</option><option>7</option><option>8</option>
+                    </select></label>
+                    <label class="field">小節の高さ <input id="song-print-bar-height" type="range" min="70" max="150" value="100"></label>
+                    <label class="check"><input id="song-print-unfold" type="checkbox"> 演奏順に展開</label>
+                    <label class="check"><input id="song-print-simplify" type="checkbox"> コード譜を簡略化</label>
+                </fieldset>
+                <p id="song-print-error" role="status" hidden></p>
+                <div class="dialog-actions">
+                    <button id="cancel-song-print" type="button" class="secondary">閉じる</button>
+                    <button type="submit">印刷</button>
+                </div>
+            </div>
+            <div id="song-print-preview"></div>
         </form>
     </dialog>
 

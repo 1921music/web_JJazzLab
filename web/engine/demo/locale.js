@@ -150,6 +150,19 @@ Solo解除|Clear solo
 リズム切り替えを解除|Remove rhythm change
 表示項目…|Visible parameters…
 コンパクト表示の項目|Parameters shown in compact view
+印刷…|Print…
+印刷|Print
+印刷プレビュー|Print preview
+印刷する内容|Print content
+用紙|Paper
+向き|Orientation
+縦|Portrait
+横|Landscape
+譜面の設定|Lead sheet settings
+1行の小節数|Bars per row
+小節の高さ|Bar height
+演奏順に展開|Unfold in playback order
+コード譜を簡略化|Simplify the lead sheet
 全音符を表示|Fit all notes
 選択を反転|Invert selection
 音符を試聴|Audition notes
