@@ -4,6 +4,7 @@ import java.io.File;
 import java.io.IOException;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
+import javax.swing.Icon;
 import org.jjazz.midimix.api.MidiMix;
 
 public final class EnginePlatformMethods
@@ -32,5 +33,10 @@ public final class EnginePlatformMethods
     public static void showProgressDialogAndRun(Runnable work, String caption)
     {
         work.run();
+    }
+
+    public static Icon loadIcon(Class<?> resourceOwner, String path)
+    {
+        return null; // Phrase generation does not display desktop icons.
     }
 }

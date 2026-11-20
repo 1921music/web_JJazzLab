@@ -11,6 +11,22 @@ const DesktopSongFiles = (() => {
         return /^(?:Yamaha|YamJJazz)RhythmProviderID___(.+)___\d+\/\d+$/u.exec(id)?.[1] ?? id;
     }
 
+    function overrideStyleIds(parts) {
+        const ids = new Set();
+        for (const part of parts) {
+            const saved = part.parameters.RP_SYS_OverrideTracksID;
+            if (!saved) continue;
+            const modern = saved.includes(">>");
+            for (const track of saved.split(modern ? /\s*&&\s*/u : "&")) {
+                const columns = track.split(modern ? /\s*>>\s*/u : ">");
+                if (columns[1] && (columns.length === 3 || (modern && columns.length === 4))) {
+                    ids.add(sourceStyleId(columns[1]));
+                }
+            }
+        }
+        return ids;
+    }
+
     function barBeats(song) {
         return song.parts.flatMap(part => {
             const section = song.sections[part.section];
@@ -184,7 +200,7 @@ const DesktopSongFiles = (() => {
     const mixValues = ["patch", "instrumentEnabled", "volume", "pan", "transpose", "velocityShift", "reverb", "chorus",
         "volumeEnabled", "panEnabled", "reverbEnabled", "chorusEnabled"];
     const playableParameters = new Set(["rpVariationID", "rpIntensityID", "RpFillID", "RpSysMuteID", "rpSysMarkerID",
-        "rpTempoID", "BassStyleId", "DrumsStyleId", "RP_SYS_CustomPhraseId"]);
+        "rpTempoID", "BassStyleId", "DrumsStyleId", "RP_SYS_CustomPhraseId", "RP_SYS_DrumsTransformId", "RP_SYS_OverrideTracksID"]);
 
     function decodeEngineMix(rows) {
         return Array.from(rows, row => {
@@ -338,5 +354,5 @@ const DesktopSongFiles = (() => {
             + `<spInsMixes>\n${settings.join("\n")}\n</spInsMixes><spKeys>\n${keys.join("\n")}\n</spKeys></MidiMix>\n`;
     }
 
-    return { readSong, readMix, writeSong, writeMix, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters, sourceStyleId, barBeats };
+    return { readSong, readMix, writeSong, writeMix, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters, sourceStyleId, overrideStyleIds, barBeats };
 })();

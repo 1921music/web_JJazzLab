@@ -19,8 +19,13 @@ import org.jjazz.harmony.api.StandardScaleInstance;
 import org.jjazz.harmony.api.TimeSignature;
 import org.jjazz.harmony.spi.ScaleManager;
 import org.jjazz.phrase.api.Phrase;
+import org.jjazz.rhythm.api.AdaptedRhythm;
+import org.jjazz.rhythm.api.MusicGenerationException;
 import org.jjazz.rhythm.api.Rhythm;
 import org.jjazz.rhythm.api.RhythmParameter;
+import org.jjazz.rhythmdatabase.api.UnavailableRhythmException;
+import org.jjazz.rhythmparametersimpl.api.RP_SYS_OverrideTracks;
+import org.jjazz.rhythmparametersimpl.api.RP_SYS_OverrideTracksValue;
 import org.jjazz.song.api.Song;
 import org.jjazz.song.spi.SongFactory;
 import org.jjazz.songstructure.SongStructureImpl;
@@ -71,20 +76,8 @@ record SongInput(String title, int tempo, int bars,
             var section = leadSheet.getSection(sectionBars[partSections[i]]);
             var meter = section.getData().getTimeSignature();
             var rhythm = sources[partSources[i]];
-            var rhythms = adapted.computeIfAbsent(rhythm, source -> new EnumMap<>(TimeSignature.class));
-            rhythms.putIfAbsent(rhythm.getTimeSignature(), rhythm);
-            var partRhythm = rhythms.get(meter);
-            if (partRhythm == null)
-            {
-                if (!(rhythm instanceof YamJJazzRhythm yamaha))
-                {
-                    throw new IllegalArgumentException("The selected rhythm cannot be adapted to " + meter);
-                }
-                var provider = yamaha.isExtendedRhythm() ? YamJJazzRhythmProvider.RP_ID : YamahaRhythmProvider.RP_ID;
-                partRhythm = new YamJJazzAdaptedRhythmImpl(provider, yamaha, meter);
-                partRhythm.loadResources();
-                rhythms.put(meter, partRhythm);
-            }
+            var partRhythm = adapt(rhythm, meter, adapted);
+            if (partRhythm == null) throw new IllegalArgumentException("The selected rhythm cannot be adapted to " + meter);
             var part = structure.createSongPart(partRhythm, partNames[i], startBar, section, false);
             parts.add(part);
             startBar += part.getNbBars();
@@ -103,7 +96,18 @@ record SongInput(String title, int tempo, int bars,
                 {
                     if (parameter.getId().equals(id))
                     {
-                        setParameter(structure, parts.get(i), parameter, value);
+                        if (parameter instanceof RP_SYS_OverrideTracks override)
+                        {
+                            if (!value.isBlank())
+                            {
+                                var restored = RP_SYS_OverrideTracksValue.loadFromString(override.getBaseRhythm(), value,
+                                        destId -> resolveOverrideRhythm(destId, sources, adapted));
+                                structure.setRhythmParameterValue(parts.get(i), override, restored);
+                            }
+                        } else
+                        {
+                            setParameter(structure, parts.get(i), parameter, value);
+                        }
                         break;
                     }
                 }
@@ -117,6 +121,44 @@ record SongInput(String title, int tempo, int bars,
             song.setUserPhrase(userTrackNames[i], Phrase.loadAsString(userPhrases[i]));
         }
         return song;
+    }
+
+    private static Rhythm adapt(Rhythm rhythm, TimeSignature meter,
+            IdentityHashMap<Rhythm, EnumMap<TimeSignature, Rhythm>> adapted) throws MusicGenerationException
+    {
+        if (rhythm.getTimeSignature() == meter) return rhythm;
+        if (!(rhythm instanceof YamJJazzRhythm yamaha)) return null;
+        var rhythms = adapted.computeIfAbsent(rhythm, source -> new EnumMap<>(TimeSignature.class));
+        var result = rhythms.get(meter);
+        if (result == null)
+        {
+            var provider = yamaha.isExtendedRhythm() ? YamJJazzRhythmProvider.RP_ID : YamahaRhythmProvider.RP_ID;
+            result = new YamJJazzAdaptedRhythmImpl(provider, yamaha, meter);
+            result.loadResources();
+            rhythms.put(meter, result);
+        }
+        return result;
+    }
+
+    private static Rhythm resolveOverrideRhythm(String id, Rhythm[] sources,
+            IdentityHashMap<Rhythm, EnumMap<TimeSignature, Rhythm>> adapted) throws UnavailableRhythmException
+    {
+        var fields = id.split(AdaptedRhythm.RHYTHM_ID_DELIMITER);
+        var sourceId = fields.length == 3 ? fields[1] : id;
+        for (var source : sources)
+        {
+            if (!source.getUniqueId().equalsIgnoreCase(sourceId)) continue;
+            if (fields.length != 3) return source;
+            try
+            {
+                var result = adapt(source, TimeSignature.parse(fields[2]), adapted);
+                if (result != null && result.getUniqueId().equalsIgnoreCase(id)) return result;
+            } catch (ParseException | MusicGenerationException | IllegalArgumentException ex)
+            {
+                throw new UnavailableRhythmException("Unable to adapt override rhythm " + id + ": " + ex.getMessage());
+            }
+        }
+        throw new UnavailableRhythmException("No rhythm found for override id=" + id);
     }
 
     static ExtChordSymbol parseChord(String name, String value) throws ParseException

@@ -67,7 +67,9 @@ final class MidiGeneration
             rhythms[index] = file == null ? WebJJSwing.rhythm() : createYamahaRhythm(file, extensions[index]);
             rhythms[index].loadResources();
         }
-        return render(Arrays.asList(rhythms), input.createSong(rhythms, partSources), mix, output);
+        var song = input.createSong(rhythms, partSources);
+        var accompanimentRhythms = Arrays.stream(partSources).distinct().mapToObj(index -> rhythms[index]).toList();
+        return render(accompanimentRhythms, song, mix, output);
     }
 
     static YamJJazzRhythmImpl createYamahaRhythm(File style, File extension) throws Exception

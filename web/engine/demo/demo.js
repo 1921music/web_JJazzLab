@@ -1076,9 +1076,13 @@ async function readArrangementStyle(project, requestedSwing, meter) {
 }
 
 async function readSavedStyle(id, meter) {
-    if (id === "jjSwing-ID" && meter === "FOUR_FOUR") return { name: "jjSwing", id, bytes: new Int8Array() };
+    const style = id === "jjSwing-ID" && meter !== "FOUR_FOUR" ? undefined : await findSavedStyle(id);
+    return style ?? defaultArrangementStyle(meter, id.replace(/-ID$/u, ""));
+}
+
+async function findSavedStyle(id) {
+    if (id === "jjSwing-ID") return { name: "jjSwing", id, bytes: new Int8Array() };
     const wanted = id.replace(/-ID$/u, "");
-    if (id === "jjSwing-ID") return defaultArrangementStyle(meter, wanted);
     const files = Array.from(styleInput.files);
     const file = files.find(file => file.name.toLowerCase() === wanted.toLowerCase());
     if (file) return readLocalStyle(file, files);
@@ -1091,7 +1095,7 @@ async function readSavedStyle(id, meter) {
     await loadStylePack();
     const entry = styleArchive?.entries.find(entry => entry.name.toLowerCase() === wanted.toLowerCase() && !styleIssue(entry));
     if (entry) return { name: entry.name, id: `${entry.name}-ID`, bytes: new Int8Array(await styleArchive.read(entry)) };
-    return defaultArrangementStyle(meter, wanted);
+    return undefined;
 }
 
 function describeStyle(style) {
@@ -1163,7 +1167,24 @@ async function resolveArrangement(project, requestedSwing) {
         sources.push(...project.parts.map(() => 0));
     }
     const parts = project.parts.map((part, index) => arrangePart(part, styles[sources[index]], project.sections[part.section].meter));
-    return { styles, sources, parts, replacedStyles };
+    const overrideStyles = [], missingOverrides = [];
+    const available = new Set(styles.map(style => style.id.toLowerCase()));
+    for (const id of DesktopSongFiles.overrideStyleIds(parts)) {
+        if (available.has(id.toLowerCase())) continue;
+        const name = id.replace(/-ID$/u, "");
+        try {
+            const style = await findSavedStyle(id);
+            if (!style) {
+                missingOverrides.push(name);
+                continue;
+            }
+            overrideStyles.push(describeStyle(style));
+            available.add(style.id.toLowerCase());
+        } catch (error) {
+            missingOverrides.push(`${name} (${error.message})`);
+        }
+    }
+    return { styles, sources, parts, replacedStyles, overrideStyles, missingOverrides };
 }
 
 form.addEventListener("input", event => {
@@ -1219,7 +1240,8 @@ async function generateAccompaniment(fromPlay = false) {
         let midi;
         if (project) {
             if (!project.chords.length) throw new Error("コードを1つ以上入力してください。");
-            const { styles, sources, parts, replacedStyles } = await resolveArrangement(project, requestedSwing);
+            const { styles, sources, parts, replacedStyles, overrideStyles, missingOverrides } = await resolveArrangement(project, requestedSwing);
+            const allStyles = [...styles, ...overrideStyles];
             const followSong = rhythmEngine.value === "song";
             const unresolved = followSong && replacedStyles.size > 0;
             const savedStyleMix = editor.unresolvedStyleMix ?? editor.mix;
@@ -1230,7 +1252,7 @@ async function generateAccompaniment(fromPlay = false) {
                 const equivalent = mixerInstruments.find(instrument => instrument.desktop.id === track.instrument);
                 return equivalent ? { ...track, patch: equivalent.patch } : track;
             });
-            midi = engine.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(arrangement, styles, sources, playbackMix));
+            midi = engine.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(arrangement, allStyles, sources, playbackMix));
             const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
             const applied = engine.exports.wasImportedMixApplied();
             const original = new Map(inputMix.map(track => [`${track.rhythmId}\t${track.name}`, track]));
@@ -1248,6 +1270,11 @@ async function generateAccompaniment(fromPlay = false) {
             }
             for (const [requested, replacement] of replacedStyles) {
                 notices.push(t(`「${requested}」の代わりに「${replacement}」を使用しました。`, `Using “${replacement}” in place of “${requested}”.`));
+            }
+            if (missingOverrides.length) {
+                const names = missingOverrides.join(", ");
+                notices.push(t(`上書き先のスタイルが見つからないため、元のトラックで演奏します: ${names}。`,
+                    `Using the original tracks for unavailable override styles: ${names}.`));
             }
             if (followSong) {
                 const fallbackParts = new Set(project.parts.filter((part, index) => part.parameters.rpVariationID
@@ -1270,7 +1297,7 @@ async function generateAccompaniment(fromPlay = false) {
             editor.styleVariations = new Map(styles.map(style => [style.id, style.variations]));
             editor.render();
             const attached = new Map((followSong ? editor.attachedStyles : []).map(style => [style.id, style]));
-            for (const style of styles.filter(item => item.attach)) attached.set(style.id, { name: style.name, id: style.id,
+            for (const style of allStyles.filter(item => item.attach)) attached.set(style.id, { name: style.name, id: style.id,
                 data: Array.from(new Uint8Array(style.bytes.buffer)), ...(style.extension ? { baseName: style.baseName,
                     extensionData: Array.from(new Uint8Array(style.extension.buffer)) } : {}) });
             editor.style = [...attached.values()];

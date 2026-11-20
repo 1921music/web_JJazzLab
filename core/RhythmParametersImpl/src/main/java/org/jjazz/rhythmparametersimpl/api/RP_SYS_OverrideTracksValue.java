@@ -299,6 +299,18 @@ public class RP_SYS_OverrideTracksValue
      */
     static public RP_SYS_OverrideTracksValue loadFromString(Rhythm baseRhythm, String s) 
     {
+        return loadFromString(baseRhythm, s, id -> RhythmDatabase.getSharedInstance().getRhythmInstance(id));
+    }
+
+    @FunctionalInterface
+    public interface RhythmResolver
+    {
+        Rhythm resolve(String id) throws UnavailableRhythmException;
+    }
+
+    /** Restore a saved value with the caller's catalog of destination rhythms. */
+    static public RP_SYS_OverrideTracksValue loadFromString(Rhythm baseRhythm, String s, RhythmResolver resolver)
+    {
         checkNotNull(baseRhythm);
         checkNotNull(s);
 
@@ -310,7 +322,7 @@ public class RP_SYS_OverrideTracksValue
         } else if (!s.contains(">>") && s.contains(">"))
         {
             // Try the old method
-            map = loadFromStringBefore5_0_2(baseRhythm, s);
+            map = loadFromStringBefore5_0_2(baseRhythm, s, resolver);
         } else if (s.contains(">>"))
         {
             String strs[] = s.split("\\s*&&\\s*");
@@ -349,7 +361,7 @@ public class RP_SYS_OverrideTracksValue
                 Rhythm destRhythm;
                 try
                 {
-                    destRhythm = RhythmDatabase.getSharedInstance().getRhythmInstance(strDestRhythmId);
+                    destRhythm = resolver.resolve(strDestRhythmId);
                 } catch (UnavailableRhythmException ex)
                 {
                     LOGGER.log(Level.WARNING, "loadFromString() Ignoring unknown rhythm on this system. strDestRhythmId={0}", strDestRhythmId);
@@ -431,7 +443,7 @@ public class RP_SYS_OverrideTracksValue
      * @param s
      * @return Can not be null
      */
-    static private Map<RhythmVoice, Override> loadFromStringBefore5_0_2(Rhythm baseRhythm, String s)
+    static private Map<RhythmVoice, Override> loadFromStringBefore5_0_2(Rhythm baseRhythm, String s, RhythmResolver resolver)
     {
         checkNotNull(baseRhythm);
         checkNotNull(s);
@@ -463,7 +475,7 @@ public class RP_SYS_OverrideTracksValue
                 Rhythm destRhythm;
                 try
                 {
-                    destRhythm = RhythmDatabase.getSharedInstance().getRhythmInstance(strDestRhythmId);
+                    destRhythm = resolver.resolve(strDestRhythmId);
                 } catch (UnavailableRhythmException ex)
                 {
                     LOGGER.log(Level.WARNING, "loadFromStringBefore5_0_2() Ignoring unknown rhythm on this system. rhythmId={0}", strDestRhythmId);

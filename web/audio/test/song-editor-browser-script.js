@@ -581,6 +581,80 @@
             }
             report.multiStyle.push(summary);
         }
+        if (desktopFixture.styles) {
+            const speak = DesktopSongFiles.readSong(desktopFixture.song);
+            const speakMix = DesktopSongFiles.readMix(desktopFixture.mix);
+            const external = speak.parts.find(part => part.parameters.RP_SYS_OverrideTracksID?.includes("16BeatBallad.T547"));
+            const sameRhythm = speak.parts.find(part => part.parameters.RP_SYS_OverrideTracksID?.includes("jjSwing-ID"));
+            check(external && sameRhythm, "The Speak No Evil fixture has lost its track override examples");
+            async function renderFixture(project, mix) {
+                editor.open(structuredClone(project), structuredClone(mix), null, true);
+                await generate();
+                return song;
+            }
+            const notesIn = (timeline, partIndex, predicate) => {
+                const { from, to } = editor.partRanges()[partIndex];
+                const start = timeline.barTimes[from - 1], end = timeline.barTimes[to];
+                return timeline.events.filter(event => event.type === 0x90 && event.b && event.seconds >= start - 1e-7
+                    && event.seconds < end - 1e-7 && predicate(timeline.parts[event.part]))
+                    .map(event => [event.tick, event.a, event.b]).sort((a, b) => a[0] - b[0] || a[1] - b[1] || a[2] - b[2]);
+            };
+            const noteDigest = async notes => [...new Uint8Array(await crypto.subtle.digest("SHA-256",
+                new TextEncoder().encode(notes.map(note => note.join(",")).join("\n"))))]
+                .map(byte => byte.toString(16).padStart(2, "0")).join("");
+            const sameIndex = speak.parts.indexOf(sameRhythm);
+            const externalIndex = speak.parts.indexOf(external);
+            const nativeSpeak = await renderFixture(speak, speakMix);
+            const bass = track => track.name === "Bass";
+            const sameNotes = notesIn(nativeSpeak, sameIndex, bass);
+            check(sameNotes.length && editor.status.textContent.includes("16BeatBallad.T547"),
+                "The unavailable original donor was not reported or the same-rhythm override produced no notes");
+            const neutral = structuredClone(speak);
+            delete neutral.parts[sameIndex].parameters.RP_SYS_OverrideTracksID;
+            const neutralSame = notesIn(await renderFixture(neutral, speakMix), sameIndex, bass);
+            check(neutralSame.length > 0 && JSON.stringify(sameNotes) !== JSON.stringify(neutralSame),
+                "The saved same-rhythm override did not change the Bass track");
+            check(sameNotes.some((note, position) => position && note[0] === sameNotes[position - 1][0]
+                && note[1] !== sameNotes[position - 1][1]), "Overridden Bass did not use the saved polyphonic Chord2 voice");
+
+            const crossStyle = structuredClone(speak);
+            crossStyle.parts[externalIndex].parameters.RP_SYS_OverrideTracksID =
+                external.parameters.RP_SYS_OverrideTracksID.replace("16BeatBallad.T547.prs", "16BeatBallad2.S014.prs");
+            const crossNotes = notesIn(await renderFixture(crossStyle, speakMix), externalIndex, bass);
+            check(crossNotes.length > 0 && JSON.stringify(crossNotes) !== JSON.stringify(notesIn(nativeSpeak, externalIndex, bass)),
+                "A donor that is absent from the song structure did not replace the Bass track");
+            check(!mixerParts.some(track => track.styleId === "16BeatBallad2.S014.prs-ID")
+                && engine.exports.wasImportedMixApplied(), "The donor used a new mix channel or invalidated the saved mix");
+            const roundTripSpeak = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+            check(roundTripSpeak.parts[externalIndex].parameters.RP_SYS_OverrideTracksID
+                === crossStyle.parts[externalIndex].parameters.RP_SYS_OverrideTracksID, "The external override did not round-trip");
+            report.overrides = { sameRhythmNotes: sameNotes.length, externalStyleNotes: crossNotes.length,
+                sameRhythmNoteDigest: await noteDigest(sameNotes), externalStyleNoteDigest: await noteDigest(crossNotes) };
+
+            const petite = desktopFixture.multiStyle.find(fixture => fixture.name.startsWith("PetiteFleur"));
+            if (petite) {
+                const score = DesktopSongFiles.readSong(petite.song), mix = DesktopSongFiles.readMix(petite.mix);
+                const index = score.parts.findIndex(part => part.parameters.RP_SYS_DrumsTransformId?.includes("SNARE=-41"));
+                check(index >= 0, "The Petite Fleur fixture has lost its drum transform example");
+                const drums = track => track.drum;
+                const transformed = notesIn(await renderFixture(score, mix), index, drums);
+                const neutralDrums = structuredClone(score);
+                delete neutralDrums.parts[index].parameters.RP_SYS_DrumsTransformId;
+                const baseline = notesIn(await renderFixture(neutralDrums, mix), index, drums);
+                check(transformed.length && baseline.length && transformed.some(note => baseline.some(other =>
+                    note[0] === other[0] && note[1] === other[1] && note[2] < other[2])), "Saved drum mix did not reduce note velocity");
+                const layered = structuredClone(score);
+                layered.parts[index].parameters.RP_SYS_DrumsTransformId = "[AddTambourineEightsId#|DrumsMixIdhidden#]";
+                const tambourine = notesIn(await renderFixture(layered, mix), index, drums);
+                check(tambourine.filter(note => note[1] === 54).length > baseline.filter(note => note[1] === 54).length,
+                    "The built-in Tambourine pattern was not restored from a saved transform chain");
+                // The desktop AccentProcessor may insert or choose a crash at random.
+                const withoutCrash = notes => notes.filter(note => ![49, 52, 55, 57].includes(note[1]));
+                report.drumsTransform = { originalNotes: transformed.length, addedTambourineNotes: tambourine.length - baseline.length,
+                    originalNonCrashDigest: await noteDigest(withoutCrash(transformed)),
+                    tambourineNonCrashDigest: await noteDigest(withoutCrash(tambourine)) };
+            }
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
