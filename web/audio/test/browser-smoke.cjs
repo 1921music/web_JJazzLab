@@ -34,6 +34,13 @@ const yjzFixtures = yjz && yjzDirectory ? ["casa-forte", "ponteio", "across-the-
     song: fs.readFileSync(path.join(yjzDirectory, `${name}.sng`), "utf8")
 })) : [];
 const audioExport = process.env.JJAZZ_SMOKE_SUITE === "audio-export";
+const legacyFiles = process.env.JJAZZ_SMOKE_SUITE === "legacy-files";
+const legacyFixtures = legacyFiles ? JSON.stringify({
+    songs: ["PhaseDance - 2020-spVersion1.sng", "Soul - 2022 - spVersion2.sng", "Maxine_new - 2024 - spVersion4.sng"]
+        .map(name => fs.readFileSync(path.join(songFiles, name), "utf8")),
+    // These release fixtures come from earlier revisions of JJazzLab's song and rhythm resources.
+    mixes: [1, 2, 3, 4].map(version => fs.readFileSync(path.join(__dirname, "fixtures", "legacy-mixes", `v${version}.mix`), "utf8"))
+}).replaceAll("<", "\\u003c") : null;
 const songFixture = audioExport || process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
     song: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.sng"), "utf8"),
     mix: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.mix"), "utf8"),
@@ -49,7 +56,9 @@ const songFixture = audioExport || process.env.JJAZZ_SMOKE_SUITE === "song-edito
         song: fs.readFileSync(path.join(repertoire, `${name}.sng`), "utf8"), mix: fs.readFileSync(path.join(repertoire, `${name}.mix`), "utf8")
     })) : []
 }).replaceAll("<", "\\u003c") : null;
-const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
+const harness = legacyFiles
+    ? `const legacyFixtures = ${legacyFixtures};\n` + fs.readFileSync(path.join(__dirname, "legacy-file-browser-script.js"), "utf8")
+    : process.env.JJAZZ_SMOKE_SUITE === "style-library"
     ? "const styleFixtureUrl = " + JSON.stringify(fixtureUrl) + ";\n" + fs.readFileSync(path.join(__dirname, "style-library-browser-script.js"), "utf8")
     : process.env.JJAZZ_SMOKE_SUITE === "jjswing"
     ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8")

@@ -253,9 +253,11 @@ const DesktopSongFiles = (() => {
             const instrument = resolve(child(mix, "spIns"));
             const values = resolve(child(mix, "spInsSettings"));
             if (!instrument || !values || key.localName === "null") throw new Error("ミックスのパート設定が不正です。");
+            const instrumentId = member(instrument, "spSaveString");
+            const legacyPatch = instrumentId.includes("#_#") ? instrumentId.split("#_#").at(-1) : "";
             return [{
                 channel, rhythmId: content(key, "rhythmId"), name: content(key, "rvName"),
-                instrument: member(instrument, "spSaveString"), patch: member(instrument, "spPatchname"),
+                instrument: instrumentId, patch: member(instrument, "spPatchname") || legacyPatch,
                 mute: member(mix, "spMute") === "true", instrumentEnabled: member(mix, "spInsEnabled") !== "false",
                 volume: number(member(values, "spVolume"), "音量", 0, 127),
                 pan: number(content(values, "spPanoramic"), "パン", 0, 127),
