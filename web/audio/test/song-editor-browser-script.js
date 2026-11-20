@@ -337,6 +337,24 @@
         check(pianoRoll.phrase.notes.some(note => note.pitch === 74 && note.velocity === originalNote.velocity),
             "Undo did not restore the velocity in the note editor");
         editor.redoButton.click();
+        const midiInput = document.querySelector("#roll-midi-file");
+        if (midiInput) {
+            const userMidi = Uint8Array.of(77, 84, 104, 100, 0, 0, 0, 6, 0, 0, 0, 1, 0, 96, 77, 84, 114, 107, 0, 0, 0, 12,
+                24, 0x92, 67, 97, 48, 0x82, 67, 0, 0, 0xff, 0x2f, 0);
+            const midiFiles = new DataTransfer();
+            midiFiles.items.add(new File([userMidi], "phrase.mid", { type: "audio/midi" }));
+            midiInput.files = midiFiles.files;
+            midiInput.dispatchEvent(new Event("change"));
+            for (let i = 0; i < 50 && pianoRoll.phrase.notes.length !== 5; i++) {
+                await new Promise(resolve => setTimeout(resolve, 20));
+            }
+            const imported = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project)).userTracks[0];
+            check(UserPhrase.read(imported.phrase).notes.some(note => note.pitch === 67 && note.position === .25
+                && note.duration === .5 && note.velocity === 97), "MIDI import did not reach the saved user phrase");
+            editor.undoButton.click();
+            check(pianoRoll.phrase.notes.length === 4, "Undo did not remove the imported MIDI notes");
+            report.midiPhraseImport = true;
+        }
         document.querySelector("#add-user-track").click();
         check(pianoRoll.name === "User2" && pianoRoll.tool === "draw" && editor.project.userTracks.length === 2,
             "The Mix Console add action did not open a new user track in Draw mode");

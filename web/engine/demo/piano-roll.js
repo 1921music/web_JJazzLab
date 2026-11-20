@@ -141,9 +141,56 @@ class PianoRoll {
         };
         velocity.onpointercancel = () => { this.velocityDrag = false; this.velocityPreview = undefined; this.queuePaint(); };
         document.querySelector("#roll-quantize").onclick = () => this.quantizeNotes();
+        const midiFile = document.querySelector("#roll-midi-file");
+        document.querySelector("#roll-import-midi").onclick = () => midiFile.click();
+        midiFile.onchange = () => {
+            const file = midiFile.files[0];
+            midiFile.value = "";
+            if (file) this.importMidi(file);
+        };
+        const hasFiles = event => event.dataTransfer.types.includes("Files");
+        this.scroll.ondragover = event => {
+            if (hasFiles(event)) event.preventDefault();
+        };
+        this.scroll.ondrop = event => {
+            if (!hasFiles(event)) return;
+            event.preventDefault();
+            const files = event.dataTransfer.files;
+            if (files.length === 1) this.importMidi(files[0]);
+            else this.editor.notify(t("MIDIファイルを1つ選択してください。", "Select one MIDI file."), true);
+        };
         document.querySelector("#roll-play").onclick = () => this.play();
         document.querySelector("#roll-close").onclick = () => this.close();
         this.defaultVelocity = 90;
+    }
+
+    async importMidi(file) {
+        if (this.panel.hidden || !this.savedTrack || this.editor.grid.closest("[inert]")) return;
+        const target = this.savedTrack;
+        try {
+            const mix = this.editor.unresolvedStyleMix ?? this.editor.mix;
+            const userTrack = mix.find(track => /^Sp(?:Drums)?UserChannelRhythmID$/u.test(track.rhythmId) && track.name === target.name);
+            const channel = userTrack?.sourceChannel ?? userTrack?.channel ?? this.phrase.channel;
+            const bytes = new Int8Array(await file.arrayBuffer());
+            const engine = await getEngine();
+            if (this.panel.hidden || this.savedTrack !== target) return;
+            if (this.editor.grid.closest("[inert]")) {
+                throw new Error(t("伴奏の準備が終わってから再試行してください。", "Retry after the accompaniment is ready."));
+            }
+            const notes = UserPhrase.read(engine.exports.importMidiPhrase(bytes, channel, this.phrase.drum)).notes;
+            if (!notes.length) {
+                throw new Error(t(`MIDIチャンネル ${channel + 1} に取り込める音符がありません。`,
+                    `There are no notes to import on MIDI channel ${channel + 1}.`));
+            }
+            this.commit([...this.phrase.notes, ...notes], notes);
+            this.scroll.scrollLeft = Math.max(0, notes[0].position * this.pixels - PIANO_KEYS);
+            this.scroll.scrollTop = (127 - notes[0].pitch + .5) * PIANO_ROW - (this.scroll.clientHeight - PIANO_RULER) / 2;
+            this.scroll.focus({ preventScroll: true });
+        } catch (error) {
+            if (!this.panel.hidden && this.savedTrack === target) {
+                localizedText(this["roll-status"], `MIDIを読み込めません。 ${error.message}`, `Unable to import MIDI. ${error.message}`);
+            }
+        }
     }
 
     addTrack() {

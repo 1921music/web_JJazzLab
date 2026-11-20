@@ -1,12 +1,18 @@
 package org.jjazz.web.engine;
 
+import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.text.ParseException;
 import java.util.Arrays;
+import javax.sound.midi.InvalidMidiDataException;
+import javax.sound.midi.MidiSystem;
+import javax.sound.midi.Sequence;
 import org.jjazz.chordleadsheet.api.item.ExtChordSymbol;
 import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
 import org.jjazz.harmony.spi.ScaleManager;
+import org.jjazz.phrase.api.Phrase;
+import org.jjazz.phrase.api.Phrases;
 import org.jjazz.rhythmparametersimpl.api.RP_SYS_Variation;
 import org.teavm.jso.JSExport;
 
@@ -18,6 +24,26 @@ public final class WasmMidiEngine
     private static boolean importedMixApplied;
     private WasmMidiEngine()
     {
+    }
+
+    @JSExport
+    public static String importMidiPhrase(byte[] bytes, int channel, boolean drums) throws Exception
+    {
+        var sequence = MidiSystem.getSequence(new ByteArrayInputStream(bytes));
+        if (sequence.getDivisionType() != Sequence.PPQ)
+        {
+            throw new InvalidMidiDataException("The MIDI file does not use PPQ timing");
+        }
+        var phrases = Phrases.getPhrases(sequence.getResolution(), sequence.getTracks());
+        var result = new Phrase(channel, drums);
+        if (phrases.size() == 1)
+        {
+            result.add(phrases.getFirst());
+        } else
+        {
+            phrases.stream().filter(phrase -> phrase.getChannel() == channel).findFirst().ifPresent(result::add);
+        }
+        return Phrase.saveAsString(result);
     }
 
     @JSExport

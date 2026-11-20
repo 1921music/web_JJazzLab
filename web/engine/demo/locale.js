@@ -4,6 +4,8 @@ const labels = new Map(`
 メインメニュー|Main menu
 ファイル|File
 編集|Edit
+MIDIを取り込む…|Import MIDI…
+音符のMIDIファイル|MIDI file for notes
 選択範囲のみ再生|Play selected bars
 選択区間のみ再生|Play selected song part
 小節メモを表示|Show bar annotations
