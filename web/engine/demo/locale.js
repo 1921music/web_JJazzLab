@@ -10,6 +10,12 @@ MIDIを取り込む…|Import MIDI…
 選択区間のみ再生|Play selected song part
 小節メモを表示|Show bar annotations
 メモの行数|Annotation lines
+小節の高さ|Bar height
+コード譜の表示設定|Lead sheet appearance
+セクションの色|Section color
+コードの色|Chord color
+既定の色|Default color
+セクションの前で改行|Start section on a new line
 選択小節から練習曲を作成…|Create practice song from selected bars…
 練習曲を作成|Create practice song
 開始テンポ（BPM）|Starting tempo (BPM)

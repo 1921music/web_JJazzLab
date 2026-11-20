@@ -1195,6 +1195,32 @@
         while (generating) await new Promise(resolve => setTimeout(resolve, 20));
         check(editor.project.title === recovering && !document.querySelector("#recent-songs").open, "Recent Songs did not reopen the selected project");
         report.recentSongsAndRecovery = true;
+        const sectionForAppearance = editor.project.sections.find(section => section.bar > 0 && editor.grid.children[section.bar].querySelector(".chord-symbol"));
+        check(Boolean(sectionForAppearance), "The real song has no later section with an opening chord");
+        const appearanceBar = sectionForAppearance.bar;
+        editor.grid.children[appearanceBar].querySelector(".chord-symbol").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true, cancelable: true }));
+        document.querySelector('#bar-context [data-action="appearance"]').click();
+        const appearance = document.querySelector("#score-appearance form");
+        check(appearance.parentElement.open && !document.querySelector("#score-appearance-chord-fields").hidden, "Chord appearance did not open from the context menu");
+        for (const [name, value] of [["Section", "#226633"], ["Chord", "#5d1634"]]) {
+            const reset = appearance.elements[`default${name}Color`];
+            if (reset.checked) reset.click();
+            appearance.elements[`${name.toLowerCase()}Color`].value = value;
+        }
+        appearance.elements.newLine.checked = true;
+        appearance.requestSubmit();
+        editor.sheetColumns.value = 6;
+        editor.sheetColumns.dispatchEvent(new Event("change"));
+        editor.sheetHeight.value = 85;
+        editor.sheetHeight.dispatchEvent(new Event("change"));
+        const scoreWithAppearance = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+        const renderedBar = editor.grid.children[appearanceBar];
+        check(scoreWithAppearance.sections.find(section => section.bar === appearanceBar).clientProperties.PropSectionStartOnNewLine === "true"
+            && renderedBar.style.gridColumnStart === "1" && renderedBar.style.getPropertyValue("--section-color") === "#226633"
+            && renderedBar.querySelector(".chord-symbol").style.color === "rgb(93, 22, 52)", "Section and chord appearance did not display and round-trip");
+        check(scoreWithAppearance.clientProperties.PropClEditorZoomFactorX === "67" && scoreWithAppearance.clientProperties.PropClEditorZoomFactorY === "85"
+            && editor.grid.style.getPropertyValue("--sheet-columns") === "6" && editor.grid.style.getPropertyValue("--bar-height-zoom") === "1.7", "Native zoom factors did not display and round-trip");
+        report.sheetAppearance = true;
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

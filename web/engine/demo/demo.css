@@ -195,7 +195,7 @@ button:disabled { opacity: .5; cursor: default; }
 .score-bar {
     position: relative;
     min-width: 0;
-    min-height: calc(5.3rem + var(--annotation-extra-height, 0rem));
+    min-height: calc(3.9rem + 1.4rem * var(--bar-height-zoom, 1) + var(--annotation-extra-height, 0rem));
     overflow: hidden;
     color: #171715;
     background: #eeeae1;

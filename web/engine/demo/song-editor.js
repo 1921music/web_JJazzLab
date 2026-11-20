@@ -12,6 +12,7 @@ const compactDefaults = new Map([["BassStyleId", "auto"], ["DrumsStyleId", "auto
 const compactProperty = id => `PropCompactViewModeVisibleRps_${id}`;
 const flatChordNotes = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const sharpChordNotes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
+const sectionColors = ["#e7ac83", "#9bb487", "#8bbab5", "#b1a7d0", "#d4c381", "#9cb5d6"];
 
 function transposeChordLabel(name, semitones) {
     if (!semitones || name === "NC") return name;
@@ -178,7 +179,13 @@ class SongEditor {
         };
         document.querySelector("#save-project").onclick = () => this.save();
         this.exportButton.onclick = () => this.onExport?.();
-        document.querySelector("#sheet-columns").oninput = event => this.grid.style.setProperty("--sheet-columns", event.target.value);
+        this.sheetColumns = document.querySelector("#sheet-columns");
+        this.sheetHeight = document.querySelector("#sheet-height");
+        this.sheetColumns.oninput = () => this.grid.style.setProperty("--sheet-columns", this.sheetColumns.value);
+        this.sheetColumns.onchange = () => this.setSheetProperty("PropClEditorZoomFactorX",
+            String(Math.round((16 - this.sheetColumns.valueAsNumber) * 100 / 15)));
+        this.sheetHeight.oninput = () => this.grid.style.setProperty("--bar-height-zoom", this.sheetHeight.valueAsNumber / 50);
+        this.sheetHeight.onchange = () => this.setSheetProperty("PropClEditorZoomFactorY", this.sheetHeight.value);
         this.showAnnotations = document.querySelector("#show-bar-annotations");
         this.annotationLines = document.querySelector("#bar-annotation-lines");
         this.showAnnotations.onclick = () => this.setSheetProperty("PropBarAnnotationsVisible",
@@ -242,6 +249,52 @@ class SongEditor {
         this.rememberEdit(this.captureEdit());
         this.project.clientProperties = { ...this.project.clientProperties, [key]: value };
         this.render();
+    }
+
+    openScoreAppearance() {
+        const dialog = document.querySelector("#score-appearance");
+        const form = dialog.querySelector("form");
+        const section = this.project.sections.findLast(candidate => candidate.bar <= this.selectedBar);
+        if (!section) return;
+        const chord = this.selectedChord;
+        const keyForSection = "PropSectionColor";
+        const keyForChord = "SongPropUserFontColor";
+        const sectionDefault = sectionColors[this.project.sections.indexOf(section) % sectionColors.length];
+        const sectionColor = form.elements.sectionColor;
+        const defaultSectionColor = form.elements.defaultSectionColor;
+        const chordColor = form.elements.chordColor;
+        const defaultChordColor = form.elements.defaultChordColor;
+        const newLine = form.elements.newLine;
+        const storedSectionColor = desktopColor(section.clientProperties?.[keyForSection]);
+        const storedChordColor = desktopColor(chord?.clientProperties?.[keyForChord]);
+        dialog.querySelector("#score-appearance-section").textContent = section.name;
+        dialog.querySelector("#score-appearance-chord").textContent = chord ? this.chordLabel(chord.name, true) : "";
+        dialog.querySelector("#score-appearance-chord-fields").hidden = !chord;
+        sectionColor.value = storedSectionColor ?? sectionDefault;
+        chordColor.value = storedChordColor ?? "#171715";
+        sectionColor.disabled = defaultSectionColor.checked = !storedSectionColor;
+        chordColor.disabled = defaultChordColor.checked = !storedChordColor;
+        newLine.checked = section.clientProperties?.PropSectionStartOnNewLine === "true";
+        defaultSectionColor.onchange = () => { sectionColor.disabled = defaultSectionColor.checked; };
+        defaultChordColor.onchange = () => { chordColor.disabled = defaultChordColor.checked; };
+        form.elements.cancel.onclick = () => dialog.close();
+        form.onsubmit = event => {
+            event.preventDefault();
+            this.rememberEdit(this.captureEdit());
+            const colorProperty = (input, reset) => reset ? undefined : String(Number.parseInt(input.value.slice(1), 16) | 0xff000000);
+            const update = (item, key, value) => {
+                item.clientProperties ??= {};
+                if (value === undefined) delete item.clientProperties[key];
+                else item.clientProperties[key] = value;
+            };
+            update(section, keyForSection, colorProperty(sectionColor, defaultSectionColor.checked));
+            update(section, "PropSectionStartOnNewLine", newLine.checked ? "true" : undefined);
+            if (chord) update(chord, keyForChord, colorProperty(chordColor, defaultChordColor.checked));
+            this.render();
+            dialog.close();
+            this.grid.children[this.selectedBar]?.focus();
+        };
+        dialog.showModal();
     }
 
     rememberEdit(before) {
@@ -593,6 +646,7 @@ class SongEditor {
             case "play-selection": this.playSelection(); break;
             case "practice": this.openPracticeSong(); break;
             case "edit": case "section": case "chord": case "annotation": this.openBarEditor(action); break;
+            case "appearance": this.openScoreAppearance(); break;
             case "restart":
                 this.editArrangement(() => {
                     this.project.loopRestartBar = this.project.loopRestartBar === first ? undefined : first;
@@ -1601,6 +1655,14 @@ class SongEditor {
         this.meter.options[0].textContent = t("曲中で変化");
         this.meter.value = sections.some(section => section.meter !== sections[0].meter) ? "" : sections[0].meter;
         this.removeBar.disabled = bars < 2 || sections.at(-1).bar === bars - 1;
+        const zoomX = this.project.clientProperties?.PropClEditorZoomFactorX;
+        const zoomY = this.project.clientProperties?.PropClEditorZoomFactorY;
+        const zoomValue = (value, fallback) => /^\d+$/u.test(value) ? Math.min(100, Number(value)) : fallback;
+        this.sheetColumns.value = 16 - Math.round(15 * zoomValue(zoomX, 80) / 100);
+        this.sheetHeight.value = zoomValue(zoomY, 50);
+        if (zoomX == null) this.grid.style.removeProperty("--sheet-columns");
+        else this.grid.style.setProperty("--sheet-columns", this.sheetColumns.value);
+        this.grid.style.setProperty("--bar-height-zoom", this.sheetHeight.valueAsNumber / 50);
         const showAnnotations = this.project.clientProperties?.PropBarAnnotationsVisible === "true";
         const lines = Math.min(6, Math.max(1, Number.parseInt(this.project.clientProperties?.PropBarAnnotationsNbLines, 10) || 1));
         this.showAnnotations.setAttribute("aria-pressed", String(showAnnotations));
@@ -1610,9 +1672,8 @@ class SongEditor {
         this.grid.style.setProperty("--annotation-extra-height", `${showAnnotations ? (lines - 1) * .9 : 0}rem`);
         this.grid.replaceChildren();
         const chordsByBar = Map.groupBy(chords, chord => chord.bar);
-        const defaultColors = ["#e7ac83", "#9bb487", "#8bbab5", "#b1a7d0", "#d4c381", "#9cb5d6"];
         const colors = sections.map((section, index) =>
-            desktopColor(section.clientProperties?.PropSectionColor) ?? defaultColors[index % defaultColors.length]);
+            desktopColor(section.clientProperties?.PropSectionColor) ?? sectionColors[index % sectionColors.length]);
         let sectionIndex = 0;
         for (let bar = 0; bar < bars; bar++) {
             if (sections[sectionIndex + 1]?.bar === bar) sectionIndex++;
