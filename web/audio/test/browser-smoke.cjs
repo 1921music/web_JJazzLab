@@ -158,7 +158,7 @@ const child = spawn(chrome, [
 ], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
 const log = fs.createWriteStream(path.join(scratch, "chrome.log"));
 let buffer = "", finished = false;
-const timeout = setTimeout(() => finish({ ok: false, error: "Headless Chrome smoke test timed out", scratch }), 150000);
+const timeout = setTimeout(() => finish({ ok: false, error: "Headless Chrome smoke test timed out", scratch }), songFixture ? 240000 : 150000);
 function finish(result) {
     if (finished) return; finished = true;
     clearTimeout(timeout); child.kill(); log.end();

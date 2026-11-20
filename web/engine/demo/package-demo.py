@@ -128,7 +128,8 @@ def package(engine_dir, output):
     data += f'\nconst embeddedDesktopMixerPatches = {json.dumps(desktop_mixer_patches())};'
     data += f'\nconst embeddedSynth = "{synth}";\nconst embeddedWorklet = {json.dumps(worklet)};'
     licenses = "\n\n".join((DEMO.parents[1] / path).read_text(encoding="utf-8") for path in
-                           ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt"])
+                           ["audio/vendor/LICENSE", "audio/vendor/TimGM6mb-LICENSE.txt", "audio/vendor/GPL-2.0.txt",
+                            "../core/EmbeddedSynth/src/main/java/org/jjazz/embeddedsynth/lame/LICENSE"])
     html = template.replace("<!-- DEMO_STYLE -->", f"<style>\n{stylesheet}</style>").replace(
         "<!-- DEMO_SCRIPTS -->", inline_script(runtime) + "\n" + inline_script("\n".join([data, locale, midi, song_files, archive, player, audio_export, song_editor, song_print, song_folder, song_history, piano_roll, demo]))
     ).replace("<!-- AUDIO_LICENSES -->", "<pre>" + html_lib.escape(licenses) + "</pre>")

@@ -40,8 +40,35 @@ public final class WasmMidiEngine
     private static String[] songMix = new String[0];
     private static Phrase[] rhythmPhrases = new Phrase[16];
     private static boolean importedMixApplied;
+    private static WasmMp3Encoder mp3Encoder;
     private WasmMidiEngine()
     {
+    }
+
+    @JSExport
+    public static void startMp3(int sampleRate)
+    {
+        closeMp3();
+        mp3Encoder = new WasmMp3Encoder(sampleRate);
+    }
+
+    @JSExport
+    public static byte[] encodeMp3(float[] left, float[] right)
+    {
+        return mp3Encoder.encode(left, right);
+    }
+
+    @JSExport
+    public static byte[] finishMp3()
+    {
+        return mp3Encoder.finish();
+    }
+
+    @JSExport
+    public static void closeMp3()
+    {
+        if (mp3Encoder != null) mp3Encoder.close();
+        mp3Encoder = null;
     }
 
     @JSExport

@@ -1,9 +1,8 @@
 "use strict";
 
-async function renderSongWave(song, parts, master, onStatus) {
+async function renderSongAudio(song, parts, master, onStatus) {
     const rate = 44100;
     const frames = Math.ceil((song.duration + .1) * rate);
-    if (frames * 4 > 0xffffffff - 36) throw new Error(t("WAV形式で保存できる長さを超えています。", "The song exceeds the WAV file size limit."));
     const context = new OfflineAudioContext(2, frames, rate);
     const [assets] = await Promise.all([loadSynthAssets(onStatus), loadSynthWorklet(context)]);
     const module = await WebAssembly.compile(assets.wasm);
@@ -18,10 +17,9 @@ async function renderSongWave(song, parts, master, onStatus) {
             if (data.error) reject(new Error(data.error));
         };
     });
-    onStatus(t("WAVを生成しています…", "Rendering WAV…"));
+    onStatus(t("音声を生成しています…", "Rendering audio…"));
     try {
-        const audio = await Promise.race([context.startRendering(), failed]);
-        return encodeWave(audio);
+        return await Promise.race([context.startRendering(), failed]);
     } finally {
         node.port.close();
         node.disconnect();
@@ -30,6 +28,7 @@ async function renderSongWave(song, parts, master, onStatus) {
 
 function encodeWave(audio) {
     const dataBytes = audio.length * 4;
+    if (dataBytes > 0xffffffff - 36) throw new Error(t("WAV形式で保存できる長さを超えています。", "The song exceeds the WAV file size limit."));
     const header = new DataView(new ArrayBuffer(44));
     header.setUint32(0, 0x52494646);  // RIFF
     header.setUint32(4, 36 + dataBytes, true);
@@ -59,4 +58,24 @@ function encodeWave(audio) {
         chunks.push(chunk);
     }
     return new Blob(chunks, { type: "audio/wav" });
+}
+
+async function encodeMp3Audio(audio, onStatus) {
+    onStatus(t("MP3に変換しています…", "Encoding MP3…"));
+    const encoder = (await getEngine()).exports;
+    const left = audio.getChannelData(0), right = audio.getChannelData(1);
+    const encoded = [];
+    encoder.startMp3(audio.sampleRate);
+    try {
+        let lastYield = performance.now();
+        for (let start = 0; start < audio.length; start += 8192) {
+            encoded.push(encoder.encodeMp3(left.subarray(start, start + 8192), right.subarray(start, start + 8192)));
+            if (performance.now() - lastYield > 24) {
+                await new Promise(resolve => setTimeout(resolve, 0));
+                lastYield = performance.now();
+            }
+        }
+        encoded.push(encoder.finishMp3());
+        return new Blob(encoded, { type: "audio/mpeg" });
+    } finally { encoder.closeMp3(); }
 }

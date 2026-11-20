@@ -12,6 +12,8 @@ MIDIを取り込む…|Import MIDI…
 メモの行数|Annotation lines
 WAVを書き出す|Export WAV
 トラックをWAVとして保存|Save track as WAV
+MP3を書き出す|Export MP3
+トラックをMP3として保存|Save track as MP3
 小節の高さ|Bar height
 コード譜の表示設定|Lead sheet appearance
 セクションの色|Section color
