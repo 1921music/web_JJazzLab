@@ -293,6 +293,18 @@ MIDI入力に接続|Connect to MIDI Input
 遠隔操作を有効にする|Enable remote control
 操作|Action
 MIDI割り当て|MIDI binding
+MIDI出力設定…|MIDI Output Settings…
+MIDI出力設定|MIDI Output Settings
+MIDI出力に接続|Connect to MIDI Output
+SysExを許可して接続|Connect with SysEx permission
+出力機器|Output device
+再生開始時の初期化|Initialize when playback starts
+初期化しない|Skip initialization
+打楽器をチャンネル10にまとめる|Route percussion to channel 10
+音色・エフェクト・音量・パンを送信する|Send program, effects, volume and pan
+内蔵音源も鳴らす|Also play the built-in synthesizer
+MIDI出力遅延（ms）|MIDI output delay (ms)
+打楽器のキーマップ|Drum key mapping
 既定音色の割り当て…|Default Instrument Mappings…
 既定音色の割り当て|Default Instrument Mappings
 音源|Sound source

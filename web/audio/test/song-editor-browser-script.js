@@ -1917,6 +1917,56 @@
             }
             report.instrumentDefaults = true;
         }
+        {
+            const requestDescriptor = Object.getOwnPropertyDescriptor(navigator, "requestMIDIAccess");
+            const sent = [];
+            const output = { id: "external-gm", name: "Test GM output", state: "connected",
+                open: async () => {}, send: (bytes, time) => sent.push({ bytes: Array.from(bytes), time }), clear: () => {} };
+            Object.defineProperty(navigator, "requestMIDIAccess", { configurable: true, value: async ({ sysex }) => ({
+                sysexEnabled: sysex, outputs: new Map([[output.id, output]])
+            }) });
+            const prior = midiOutput.settings;
+            const saved = localStorage.getItem(midiOutput.key);
+            const dialog = midiOutput.dialog;
+            const fields = midiOutput.form.elements;
+            const oldCount = precount.getAttribute("aria-pressed");
+            try {
+                editor.newSong();
+                await generate();
+                const drum = song.events.find(event => song.parts[event.part].drum && event.type === 0x90 && event.b > 0);
+                const drumTarget = 126;
+                document.querySelector("#open-midi-output").click();
+                await fields.connectSysex.onclick();
+                fields.device.value = output.id;
+                fields.mode.value = "xg";
+                fields.drumMap.value = `${drum.a}=${drumTarget}`;
+                fields.delay.value = "5";
+                fields.sendSetup.checked = false;
+                midiOutput.form.requestSubmit();
+                check(!dialog.open && JSON.parse(localStorage.getItem(midiOutput.key)).device === output.id, "The output settings did not save");
+                precount.setAttribute("aria-pressed", "false");
+                await startPlayback();
+                for (let attempt = 0; !sent.some(({ bytes }) => bytes[0] === 0x99 && bytes[1] === drumTarget) && attempt < 120; attempt++)
+                    await new Promise(resolve => setTimeout(resolve, 25));
+                check(playing && sent[0]?.bytes.join() === midiOutputModes.xg.join()
+                    && sent.some(({ bytes, time }) => bytes[0] === 0x99 && bytes[1] === drumTarget && Number.isFinite(time)),
+                "The selected output did not receive initialization and mapped drum notes during actual playback");
+                check(!sent.some(({ bytes }) => (bytes[0] & 0xf0) === 0xc0), "Program changes were sent with mixer setup disabled");
+                await player.stop();
+                check(sent.some(({ bytes }) => bytes[0] === 0xb9 && bytes[1] === 123), "Stop did not release the drum channel");
+            } finally {
+                await player.stop();
+                if (dialog.open) dialog.close();
+                midiOutput.silence(true);
+                midiOutput.settings = prior;
+                precount.setAttribute("aria-pressed", oldCount);
+                if (saved === null) localStorage.removeItem(midiOutput.key);
+                else localStorage.setItem(midiOutput.key, saved);
+                if (requestDescriptor) Object.defineProperty(navigator, "requestMIDIAccess", requestDescriptor);
+                else delete navigator.requestMIDIAccess;
+            }
+            report.midiOutput = true;
+        }
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));

@@ -126,6 +126,28 @@ test("play selection stops at its end with looping disabled", async () => {
     assert.ok(!calls.some(call => call[2] === 0x90 && call[3] === 61));
 });
 
+test("external MIDI reflects note timing, drum routing and the setup flag", async () => {
+    const { processor: p, sent, render } = createProcessor();
+    const parts = [{ ...part, channel: 2 }, { ...part, name: "Drums", drum: true, channel: 4 }];
+    await p.command({ type: "song", song: {
+        duration: .512, parts,
+        events: [event(0, 0xc0, 4), event(.032, 0x90, 60, 100), event(.064, 0x90, 36, 90, 1), event(.096, 0x80, 36, 0, 1)]
+    }, loop: { enabled: false, start: 0, end: .512 } });
+    await p.command({ type: "mix", parts: [{ ...settings, outputChannel: 5 }, { ...settings, outputChannel: 7 }], master: 1 });
+    await p.command({ type: "play", midiOutput: { gmDrums: true, drumMap: [[36, 35]], sendSetup: false, monitor: false } });
+    assert.ok(render()[0].every(sample => sample === 0));
+    const messages = sent.filter(message => message.type === "midi").flatMap(message => message.messages);
+    const notes = messages.filter(({ bytes }) => (bytes[0] & 0xf0) === 0x90 || (bytes[0] & 0xf0) === 0x80);
+    assert.equal(JSON.stringify(notes), JSON.stringify([
+        { bytes: [0x95, 60, 100], seconds: .032 },
+        { bytes: [0x99, 35, 90], seconds: .064 },
+        { bytes: [0x89, 35, 0], seconds: .096 }
+    ]));
+    assert.ok(!messages.some(({ bytes }) => (bytes[0] & 0xf0) === 0xc0));
+    await p.command({ type: "midi-disable" });
+    assert.ok(render()[0].some(sample => sample > 0));
+});
+
 test("live range changes apply at the old boundary, then use the new range", async () => {
     const { processor: p, render } = createProcessor();
     await p.command({ type: "song", song: song([]), loop: { enabled: true, start: 0, end: .256 } });

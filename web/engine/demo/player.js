@@ -76,6 +76,7 @@ class AccompanimentPlayer {
                     if (!data.preview) this.onPosition(data);
                 }
                 else if (data.type === "refresh-applied") this.onRefreshApplied?.(data.version);
+                else if (data.type === "midi" && this.sendingMidi) this.onMidi?.(data.messages, this.context);
                 else if (data.type === "error") { this.ready = false; this.onError(data.error); }
                 else if (this.waiting.has(data.id)) {
                     const request = this.waiting.get(data.id); this.waiting.delete(data.id);
@@ -112,6 +113,7 @@ class AccompanimentPlayer {
 
     async play(song, loop, parts, master, startFromSelection = false, settings = {}) {
         this.previewing = Boolean(settings.preview);
+        this.sendingMidi = !this.previewing && Boolean(settings.midiOutput);
         if (this.loadedSong !== song) {
             await this.send("song", { song, loop, preview: this.previewing });
             this.loadedSong = song;
@@ -121,9 +123,14 @@ class AccompanimentPlayer {
         await this.send("play", { startFromSelection, ...settings });
     }
 
-    async stop() { if (this.ready) await this.send("stop"); }
-    async pause() { if (this.ready) await this.send("pause"); }
-    async panic() { if (this.ready) await this.send("panic"); }
+    stopMidi() {
+        if (!this.sendingMidi) return;
+        this.sendingMidi = false;
+        this.onMidiStop?.();
+    }
+    async stop() { this.stopMidi(); if (this.ready) await this.send("stop"); }
+    async pause() { this.stopMidi(); if (this.ready) await this.send("pause"); }
+    async panic() { this.onMidiStop?.(); if (this.ready) await this.send("panic"); }
     async click(enabled) { if (this.ready) await this.send("click", { enabled }); }
     async tempo(rate) { if (this.ready && this.loadedSong && !this.previewing) await this.send("tempo", { rate }); }
     async refresh(song, version) {

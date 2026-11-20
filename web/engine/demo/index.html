@@ -46,6 +46,7 @@
                     <button id="show-rhythm-library" type="button">リズムライブラリ…</button>
                     <button id="open-click-settings" type="button">クリック音の設定…</button>
                     <button id="open-midi-remote" type="button">MIDI遠隔操作…</button>
+                    <button id="open-midi-output" type="button">MIDI出力設定…</button>
                     <button id="open-instrument-defaults" type="button">既定音色の割り当て…</button>
                     <button id="open-song-memo" type="button">曲のメモ…</button>
                     <button id="toggle-reader" type="button" aria-controls="easy-reader" aria-expanded="false">練習ビュー</button>
@@ -517,6 +518,30 @@
             <div class="dialog-actions">
                 <button id="midi-remote-defaults" type="button" class="secondary">標準に戻す</button>
                 <button id="close-midi-remote" type="button" class="secondary">閉じる</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="midi-output" aria-labelledby="midi-output-title">
+        <form method="dialog">
+            <h2 id="midi-output-title">MIDI出力設定</h2>
+            <div class="rhythm-picker-fields">
+                <button name="connect" type="button" class="secondary">MIDI出力に接続</button>
+                <button name="connectSysex" type="button" class="secondary">SysExを許可して接続</button>
+            </div>
+            <label class="field">出力機器 <select name="device"></select></label>
+            <label class="field">再生開始時の初期化
+                <select name="mode"><option value="">初期化しない</option><option value="gm">GM</option><option value="gm2">GM2</option><option value="gs">GS</option><option value="xg">XG</option></select>
+            </label>
+            <label><input name="gmDrums" type="checkbox"> 打楽器をチャンネル10にまとめる</label>
+            <label><input name="sendSetup" type="checkbox"> 音色・エフェクト・音量・パンを送信する</label>
+            <label><input name="monitor" type="checkbox"> 内蔵音源も鳴らす</label>
+            <label class="field">MIDI出力遅延（ms） <input name="delay" type="number" min="0" max="250" step="1" required></label>
+            <label class="field">打楽器のキーマップ <textarea name="drumMap" rows="4" placeholder="36=35"></textarea></label>
+            <p role="status"></p>
+            <div class="dialog-actions">
+                <button name="closeDialog" type="button" class="secondary">キャンセル</button>
+                <button type="submit">適用</button>
             </div>
         </form>
     </dialog>

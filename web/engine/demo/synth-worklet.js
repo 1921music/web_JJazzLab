@@ -85,6 +85,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
     async command(message) {
         const { id, type } = message;
         try {
+            this.midiOffset = 0;
             if (type === "init") {
                 this.loadSoundFont(await WebAssembly.compile(message.wasm), message.soundfont);
             } else if (type === "song") {
@@ -105,6 +106,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.pendingLoop = null;
                 this.pendingRefresh = null;
                 this.clickPart = -1;
+                this.midiOutput = undefined;
                 this.effects.clear();
             } else if (type === "refresh") {
                 this.pendingRefresh = message.song && (this.playing || this.paused) && !this.preview
@@ -118,6 +120,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     const p = this.parts[i], settings = message.parts[i];
                     const enabled = !settings.mute && (!solo || settings.solo);
                     if (p.enabled && !enabled) this.api.synth_silence(i);
+                    if (p.enabled && !enabled && (!p.drum || !this.midiOutput?.gmDrums)) this.midiSilence(p.outputChannel ?? p.channel);
                     const changedProgram = settings.instrumentChoice?.program !== p.instrumentChoice?.program
                         || settings.instrumentEnabled !== p.instrumentEnabled;
                     const changedVolume = settings.volumeEnabled !== p.volumeEnabled;
@@ -126,6 +129,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     if (changedProgram) this.applyProgram(i);
                     if (changedVolume) this.api.synth_event(i, 0xb0, 7, p.volumeEnabled === false ? 127 : p.midiVolume ?? 127);
                     if (changedPan) this.api.synth_event(i, 0xb0, 10, p.panEnabled === false ? 64 : p.midiPan ?? 64);
+                    if (this.midiOutput) this.midiControllers(i, changedProgram);
                 }
                 this.masterTarget = message.master;
             } else if (type === "loop") {
@@ -135,6 +139,10 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             } else if (type === "tempo") {
                 this.setTempoRate(message.rate);
             } else if (type === "play") {
+                this.midiOutput = message.midiOutput;
+                this.primaryMidiDrum = this.parts.findIndex(p => p.drum && (p.outputChannel ?? p.channel) === 9);
+                if (this.primaryMidiDrum < 0) this.primaryMidiDrum = this.parts.findIndex(p => p.drum);
+                this.midiDrumMap = this.midiOutput && new Map(this.midiOutput.drumMap);
                 if (message.rate !== undefined || !message.resume) this.setTempoRate(message.rate ?? 1);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.clickEnabled = message.click ?? this.clickEnabled;
@@ -163,6 +171,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 }
                 this.paused = false;
                 this.playing = true;
+                if (this.midiOutput) for (let i = 0; i < this.parts.length; i++) this.midiControllers(i, true);
                 this.reportPosition();
             } else if (type === "pause") {
                 this.paused = this.playing;
@@ -172,6 +181,8 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.clickEnabled = message.enabled;
             } else if (type === "click-settings") {
                 this.configureClick(message.settings);
+            } else if (type === "midi-disable") {
+                this.midiOutput = undefined;
             } else if (type === "panic") {
                 for (let i = 0; i < this.parts.length; i++) this.api.synth_silence(i);
                 this.resetClick();
@@ -181,12 +192,14 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                 this.paused = false;
                 this.countFrames = 0;
                 this.pendingRefresh = null;
+                this.midiOutput = undefined;
                 this.resetClick();
                 for (let i = 0; i < this.parts.length; i++) this.api.synth_reset(i);
                 if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
                 this.frame = 0;
                 this.reportPosition();
             }
+            this.flushMidi();
             this.port.postMessage({ id, ok: true });
         } catch (error) {
             this.playing = false;
@@ -221,6 +234,58 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         this.api.synth_event(index, 0xc0, program ?? part.midiProgram, 0);
     }
 
+    queueMidi(channel, type, a, b) {
+        if (!this.midiOutput || this.preview || !Number.isInteger(channel) || channel < 0 || channel > 15) return;
+        const frame = typeof currentFrame === "number" ? currentFrame : 0;
+        const bytes = type === 0xc0 || type === 0xd0 ? [type | channel, a] : [type | channel, a, b];
+        (this.midiMessages ??= []).push({ bytes, seconds: (frame + this.midiOffset) / sampleRate });
+    }
+
+    flushMidi() {
+        if (!this.midiMessages?.length) return;
+        this.port.postMessage({ type: "midi", messages: this.midiMessages });
+        this.midiMessages = [];
+    }
+
+    midiChannel(part) {
+        return this.midiOutput.gmDrums && part.drum ? 9 : part.outputChannel ?? part.channel;
+    }
+
+    midiSilence(channel) {
+        for (const control of [64, 120, 123]) this.queueMidi(channel, 0xb0, control, 0);
+    }
+
+    midiControllers(index, program = false) {
+        const part = this.parts[index];
+        if (!this.midiOutput.sendSetup || (part.drum && this.midiOutput.gmDrums && index !== this.primaryMidiDrum)) return;
+        const channel = this.midiChannel(part);
+        if (program && part.instrumentEnabled !== false) {
+            const choice = part.instrumentChoice?.program;
+            this.queueMidi(channel, 0xb0, 0, choice === undefined ? part.bankMsb : 0);
+            this.queueMidi(channel, 0xb0, 32, choice === undefined ? part.bankLsb : 0);
+            this.queueMidi(channel, 0xc0, choice ?? part.midiProgram, 0);
+        }
+        const byte = value => Math.min(127, Math.max(0, Math.round(value)));
+        if (part.volumeEnabled !== false) this.queueMidi(channel, 0xb0, 7, byte((part.midiVolume ?? 127) * part.volume));
+        if (part.panEnabled !== false) this.queueMidi(channel, 0xb0, 10, byte((part.midiPan ?? 64) + part.pan * 64));
+        if (part.reverbEnabled) this.queueMidi(channel, 0xb0, 91, part.reverb);
+        if (part.chorusEnabled) this.queueMidi(channel, 0xb0, 93, part.chorus);
+    }
+
+    midiEvent(index, type, a, b) {
+        if (!this.midiOutput) return;
+        const part = this.parts[index], notes = type === 0x80 || type === 0x90 || type === 0xa0;
+        if (part.drum && this.midiOutput.gmDrums && index !== this.primaryMidiDrum && !notes) return;
+        const controller = type === 0xb0 && [0, 7, 10, 32, 39, 42, 91, 93].includes(a);
+        if ((type === 0xc0 || controller) && !this.midiOutput.sendSetup) return;
+        if (type === 0xb0 && (a === 7 || a === 10 || a === 91 || a === 93)) {
+            this.midiControllers(index);
+            return;
+        }
+        const pitch = part.drum && notes ? this.midiDrumMap?.get(a) ?? a : a;
+        this.queueMidi(this.midiChannel(part), type, pitch, b);
+    }
+
     event({ part: index, type, a, b }) {
         const part = this.parts[index];
         if (type === 0xc0) part.midiProgram = a;
@@ -232,10 +297,18 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             && (type === 0xc0 || (type === 0xb0 && (a === 0 || a === 32)))) return;
         if (type === 0xb0 && ((part.volumeEnabled === false && (a === 7 || a === 39))
                 || (part.panEnabled === false && (a === 10 || a === 42)))) return;
-        if (type !== 0x90 || !b || part.enabled) this.api.synth_event(index, type, a, b);
+        if (type !== 0x90 || !b || part.enabled) {
+            this.api.synth_event(index, type, a, b);
+            this.midiEvent(index, type, a, b);
+        }
     }
 
     seek(frame, chase = this.loop.chase) {
+        if (this.midiOutput) {
+            const channels = new Set(this.parts.map(part => this.midiChannel(part)));
+            if (this.clickEnabled) channels.add(this.midiOutput.gmDrums ? 9 : this.clickSettings?.channel);
+            for (const channel of channels) this.midiSilence(channel);
+        }
         for (const [index, part] of this.parts.entries()) {
             this.api.synth_reset(index);
             part.midiProgram = part.bankMsb = part.bankLsb = 0;
@@ -305,6 +378,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         this.clickPitch = strong ? highPitch : lowPitch;
         this.clickNoteFrames = velocity ? Math.max(1, Math.round(halfBeat)) : 0;
         if (velocity) this.api.synth_event(this.clickPart, 0x90, this.clickPitch, velocity);
+        if (velocity && this.midiOutput) this.queueMidi(this.midiOutput.gmDrums ? 9 : this.clickSettings.channel, 0x90, this.clickPitch, velocity);
     }
 
     releaseClick(rendered) {
@@ -313,6 +387,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
         if (this.clickNoteFrames <= 0) {
             this.clickNoteFrames = 0;
             this.api.synth_event(this.clickPart, 0x80, this.clickPitch, 0);
+            if (this.midiOutput) this.queueMidi(this.midiOutput.gmDrums ? 9 : this.clickSettings.channel, 0x80, this.clickPitch, 0);
         }
     }
 
@@ -323,6 +398,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
             let offset = 0;
             const rate = this.tempoRate;
             while (offset < left.length && this.countFrames > 0) {
+                this.midiOffset = offset;
                 const remaining = this.countFrames % this.countStep;
                 if (!remaining) {
                     const beat = this.countBars * this.countBeats - this.countFrames / this.countStep;
@@ -330,7 +406,7 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     this.hitClick(special ? beat % 2 === 0 : beat % this.countBeats === 0, this.countStep / 2, special);
                 }
                 const n = Math.min(128, left.length - offset, remaining || this.countStep, this.clickNoteFrames || Infinity);
-                if (this.clickPart >= 0) {
+                if (this.clickPart >= 0 && this.midiOutput?.monitor !== false) {
                     const pointer = this.api.synth_render(n) / 4 + this.clickPart * 256;
                     for (let f = 0; f < n; f++) {
                         this.master += (this.masterTarget - this.master) * 0.01;
@@ -338,12 +414,14 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                         right[offset + f] = this.pcm[pointer + f * 2 + 1] * this.master;
                     }
                 }
+                this.midiOffset = offset + n;
                 this.releaseClick(n);
                 offset += n;
                 this.countFrames -= n;
                 if (!this.countFrames) this.reportPosition();
             }
             while (offset < left.length && this.playing) {
+                this.midiOffset = offset;
                 let boundary = this.loop.enabled ? this.loop.end : this.playbackEnd;
                 if (this.frame >= boundary) {
                     if (this.pendingLoop) { this.loop = this.pendingLoop; this.pendingLoop = null; }
@@ -403,13 +481,17 @@ class SoundFontProcessor extends AudioWorkletProcessor {
                     const clickLeft = this.clickPart >= 0 ? this.pcm[clickOffset] : 0;
                     const clickRight = this.clickPart >= 0 ? this.pcm[clickOffset + 1] : 0;
                     const fade = Math.min(1, (playFrame - this.fadeStart) / (64 * rate), (boundary - playFrame) / (64 * rate));
-                    left[offset + f] = ((l + this.effects.left) * fade + clickLeft) * this.master;
-                    right[offset + f] = ((r + this.effects.right) * fade + clickRight) * this.master;
+                    if (this.midiOutput?.monitor !== false) {
+                        left[offset + f] = ((l + this.effects.left) * fade + clickLeft) * this.master;
+                        right[offset + f] = ((r + this.effects.right) * fade + clickRight) * this.master;
+                    }
                 }
+                this.midiOffset = offset + n;
                 this.releaseClick(n);
                 this.frame += n * rate; offset += n;
             }
             if (++this.report >= 32) { this.report = 0; this.reportPosition(); }
+            this.flushMidi();
         } catch (error) {
             this.playing = false;
             this.port.postMessage({ type: "error", error: error.message });

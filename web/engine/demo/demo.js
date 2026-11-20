@@ -209,6 +209,7 @@ const masterInput = document.querySelector("#master");
 const playStatus = document.querySelector("#play-status");
 const loopStatus = document.querySelector("#loop-status");
 const player = new AccompanimentPlayer(updatePosition, (message) => {
+    player.stopMidi();
     paused = playing = false; starting = false; updateButtons(); showPlayStatus(message, true);
 });
 let pendingAudition = Promise.resolve();
@@ -248,6 +249,7 @@ function updateButtons() {
     previousPart.disabled ||= quickMode.getAttribute("aria-pressed") === "true";
     editor.exportButton.disabled = document.querySelector("#save-project").disabled = !editor.project || starting || generating;
     document.querySelector("#open-song-print").disabled = !editor.project || generating || starting;
+    document.querySelector("#open-midi-output").disabled = generating || starting || playing || paused;
     document.querySelector("#open-recent-songs").disabled = generating || starting;
     songTabs.updateBusy();
     folderIO.update(generating || starting);
@@ -287,6 +289,7 @@ function updatePosition(position) {
     if (!song) return;
     playing = position.playing;
     paused = Boolean(position.paused);
+    if (!playing && !paused) player.stopMidi();
     let bar = song.barTimes.findIndex(time => time > position.seconds);
     if (bar < 0) bar = song.barTimes.length - 1;
     const beat = song.beatTimes.findLast(beat => beat.seconds <= position.seconds + .00002);
@@ -820,11 +823,18 @@ async function startPlayback(restart = false, stopAtEnd = false) {
         if (refresh && !await generateAccompaniment(true)) return;
         await audio;
         await pendingAudition;
+        let external;
+        try { external = await midiOutput.begin(!playing && !paused); }
+        catch (error) {
+            midiOutput.silence(true);
+            showPlayStatus(error.message, true);
+        }
         await player.play(song, readLoop(), instrumentDefaults.playbackMix(mixerParts), Number(masterInput.value) / 100, Boolean(editor.project), {
             resume: paused && !restart && !refresh,
             stopAtEnd,
             click: metronome.getAttribute("aria-pressed") === "true",
             clickSettings: clickSettings.resolve(),
+            midiOutput: external,
             precount: !restart && precount.getAttribute("aria-pressed") === "true" && precountMode.value,
             tempo: tempoInput.valueAsNumber,
             rate: playbackTempoRate()
@@ -2140,6 +2150,20 @@ async function generateAccompaniment(fromPlay = false, factoryRhythm) {
         generating = false; updateButtons();
     }
 }
+const midiOutput = new MidiOutput(() => {
+    player.stopMidi();
+    if (player.ready) player.send("midi-disable").catch(error => showPlayStatus(error.message, true));
+});
+player.onMidiStop = () => midiOutput.silence();
+player.onMidi = (messages, context) => {
+    try { midiOutput.emit(messages, context); }
+    catch (error) {
+        midiOutput.silence(true);
+        midiOutput.onDisconnect();
+        showPlayStatus(error.message, true);
+    }
+};
+
 const instrumentDefaults = new InstrumentDefaults({
     instruments: () => mixerInstruments,
     prepare: getEngine,
