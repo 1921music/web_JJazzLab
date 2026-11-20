@@ -4,16 +4,20 @@ import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
 import java.io.File;
 import java.text.ParseException;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
 import javax.sound.midi.InvalidMidiDataException;
 import javax.sound.midi.MidiSystem;
 import javax.sound.midi.Sequence;
 import org.jjazz.chordleadsheet.api.item.ExtChordSymbol;
+import org.jjazz.chordleadsheet.api.item.CLI_ChordSymbol;
+import org.jjazz.chordleadsheet.api.item.CLI_Section;
 import org.jjazz.chordleadsheet.api.item.NCExtChordSymbol;
 import org.jjazz.harmony.spi.ScaleManager;
 import org.jjazz.harmony.api.TimeSignature;
 import org.jjazz.humanizer.api.Humanizer;
+import org.jjazz.importers.api.TextReader;
 import org.jjazz.phrase.api.NoteEvent;
 import org.jjazz.phrase.api.Phrase;
 import org.jjazz.phrase.api.Phrases;
@@ -34,6 +38,37 @@ public final class WasmMidiEngine
     private static boolean importedMixApplied;
     private WasmMidiEngine()
     {
+    }
+
+    @JSExport
+    public static String[] readTextLeadSheet(String text)
+    {
+        WebServices.install();
+        TextReader.ParsedLeadSheet parsed;
+        try
+        {
+            parsed = new TextReader(text).readLeadSheet();
+        } catch (RuntimeException ex)
+        {
+            return new String[] { ex.getMessage() == null ? ex.getClass().getSimpleName() : ex.getMessage() };
+        }
+        if (parsed == null) return new String[0];
+        var sheet = parsed.leadSheet();
+        var rows = new ArrayList<String>();
+        rows.add(parsed.title());
+        rows.add(Integer.toString(parsed.tempo()));
+        rows.add(Integer.toString(sheet.getSizeInBars()));
+        for (var section : sheet.getItems(CLI_Section.class))
+        {
+            rows.add("section\t" + section.getPosition().getBar() + "\t" + section.getData().getTimeSignature().name()
+                    + "\t" + section.getData().getName());
+        }
+        for (var chord : sheet.getItems(CLI_ChordSymbol.class))
+        {
+            rows.add("chord\t" + chord.getPosition().getBar() + "\t" + chord.getPosition().getBeat()
+                    + "\t" + chord.getData().getName() + "\t" + chord.getData().getOriginalName());
+        }
+        return rows.toArray(String[]::new);
     }
 
     @JSExport

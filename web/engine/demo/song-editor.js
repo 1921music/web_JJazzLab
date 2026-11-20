@@ -2,6 +2,14 @@
 
 const partMarkers = ["theme", "solo", "theme2", "theme3", "theme4", "solo2", "solo3", "solo4"];
 const songTemplatePreference = "jjazzlab.songTemplate";
+const compactParameterLabels = new Map([
+    ["rpVariationID", "バリエーション"], ["BassStyleId", "ベースの奏法"], ["DrumsStyleId", "ドラムの奏法"],
+    ["rpIntensityID", "強弱"], ["RpFillID", "フィル"], ["rpTempoID", "テンポ比"], ["rpSysMarkerID", "マーカー"],
+    ["RpSysMuteID", "区間のミュート"]
+]);
+const compactDefaults = new Map([["BassStyleId", "auto"], ["DrumsStyleId", "auto"], ["rpIntensityID", "0"],
+    ["RpFillID", ""], ["rpTempoID", "100"], ["rpSysMarkerID", "theme"], ["RpSysMuteID", "[]"]]);
+const compactProperty = id => `PropCompactViewModeVisibleRps_${id}`;
 const flatChordNotes = ["C", "Db", "D", "Eb", "E", "F", "Gb", "G", "Ab", "A", "Bb", "B"];
 const sharpChordNotes = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
@@ -180,9 +188,11 @@ class SongEditor {
                 this.setSheetProperty("PropBarAnnotationsNbLines", this.annotationLines.value);
             } else this.render();
         };
-        const compact = document.querySelector("#structure-compact");
+        this.structureCompact = document.querySelector("#structure-compact");
         const zoom = document.querySelector("#structure-zoom");
-        compact.onclick = () => compact.setAttribute("aria-pressed", String(this.parts.classList.toggle("compact-view")));
+        this.structureCompact.onclick = () => this.setSheetProperty("PropViewMode",
+            this.parts.classList.contains("compact-view") ? "NORMAL" : "COMPACT");
+        document.querySelector("#structure-compact-settings").onclick = () => this.openCompactSettings();
         zoom.oninput = () => {
             this.parts.classList.remove("fit-view");
             this.parts.style.setProperty("--structure-zoom", zoom.valueAsNumber / 100);
@@ -266,6 +276,7 @@ class SongEditor {
     }
 
     open(project, mix, style = null, useSavedStyles = false) {
+        this.fileRequest = null;
         this.project = project;
         this.mix = mix;
         this.unresolvedStyleMix = undefined;
@@ -290,28 +301,48 @@ class SongEditor {
     async openFiles(input) {
         const files = Array.from(input.files);
         input.value = "";
-        if (!files.length) return;
+        return this.loadFiles(files);
+    }
+
+    async loadFiles(files) {
+        if (!files.length) return false;
+        const request = {};
+        this.fileRequest = request;
         try {
             const web = files.find(file => /\.jjazzweb$/iu.test(file.name));
-            if (web) {
+            const text = files.find(file => /\.txt$/iu.test(file.name));
+            let filename, project, mix = [], style;
+            if (web && files.length === 1) {
                 const data = JSON.parse(await web.text());
-                if (files.length !== 1 || data.version !== 1 || !data.song?.parts?.length || !data.song?.sections?.length) {
-                    throw new Error("Web用の曲ファイルを1つ選択してください。");
+                if (data.version !== 1) throw new Error(t("Web曲ファイルの形式に対応していません。", "Unsupported Web song format."));
+                filename = web.name;
+                project = DesktopSongFiles.validateSong(data.song);
+                mix = data.mix ?? [];
+                style = data.style;
+            } else if (text && files.length === 1) {
+                if (text.size > 2 * 1024 * 1024) throw new Error(t("テキスト譜面の上限は2MBです。", "The text lead sheet is larger than 2 MB."));
+                filename = text.name;
+                project = await this.onReadTextSong(await text.text());
+            } else {
+                const songFile = files.find(file => /\.sng$/iu.test(file.name));
+                const mixFile = files.find(file => /\.mix$/iu.test(file.name));
+                if (!songFile || files.length > 2 || (files.length === 2 && !mixFile)
+                    || (mixFile && songFile.name.slice(0, -4).toLowerCase() !== mixFile.name.slice(0, -4).toLowerCase())) {
+                    throw new Error(t(".sng と同名の .mix、または .jjazzweb / .txt を1つ選択してください。",
+                        "Choose a .sng with an optional same-name .mix, or one .jjazzweb or .txt file."));
                 }
-                this.open(DesktopSongFiles.validateSong(data.song), data.mix ?? [], data.style, true);
-                return;
+                filename = songFile.name;
+                project = DesktopSongFiles.readSong(await songFile.text());
+                if (mixFile) mix = DesktopSongFiles.readMix(await mixFile.text());
             }
-            const songFile = files.find(file => /\.sng$/iu.test(file.name));
-            const mixFile = files.find(file => /\.mix$/iu.test(file.name));
-            if (!songFile || files.length > 2 || (files.length === 2 && !mixFile)
-                || (mixFile && songFile.name.slice(0, -4).toLowerCase() !== mixFile.name.slice(0, -4).toLowerCase())) {
-                throw new Error(".sng と、必要に応じて同じ名前の .mix を選択してください。");
-            }
-            const song = DesktopSongFiles.readSong(await songFile.text());
-            const mix = mixFile ? DesktopSongFiles.readMix(await mixFile.text()) : [];
-            this.open(song, mix, null, true);
-            this.notify(t(`${songFile.name} を開きました。`, `Opened ${songFile.name}.`));
-        } catch (error) { this.notify(error.message, true); }
+            if (request !== this.fileRequest) return false;
+            this.open(project, mix, style, true);
+            this.notify(t(`${filename} を開きました。`, `Opened ${filename}.`));
+            return true;
+        } catch (error) {
+            if (request === this.fileRequest) this.notify(error.message, true);
+            return false;
+        }
     }
 
     newSong() {
@@ -1330,7 +1361,57 @@ class SongEditor {
         }
     }
 
-    renderPart(part, range, colors, visibleRows) {
+    compactRows(styleId) {
+        const saved = this.project.clientProperties?.[compactProperty(styleId)];
+        if (saved !== undefined) return new Set(saved.split(",").filter(Boolean));
+        const parts = this.project.parts.filter(part => part.styleId === styleId);
+        return new Set(["rpVariationID", ...Array.from(compactDefaults, ([id, value]) =>
+            parts.some(part => (part.parameters[id] ?? value) !== value) ? id : null).filter(Boolean)]);
+    }
+
+    openCompactSettings() {
+        const dialog = document.querySelector("#structure-compact-dialog");
+        const content = document.querySelector("#structure-compact-rows");
+        const rhythms = new Map(this.project.parts.map(part => [part.styleId, part.styleName || part.styleId]));
+        const groups = Array.from(rhythms, ([styleId, name]) => {
+            const group = document.createElement("fieldset");
+            const legend = document.createElement("legend");
+            legend.textContent = name;
+            group.append(legend);
+            const initial = this.compactRows(styleId);
+            const visible = Array.from(compactParameterLabels).filter(([key]) =>
+                !["BassStyleId", "DrumsStyleId"].includes(key) || DesktopSongFiles.sourceStyleId(styleId) === "jjSwing-ID");
+            const controls = visible.map(([key, label]) => {
+                const field = document.createElement("label");
+                field.className = "check";
+                const box = document.createElement("input");
+                box.type = "checkbox";
+                box.checked = initial.has(key);
+                box.value = key;
+                field.append(box, t(label));
+                group.append(field);
+                return box;
+            });
+            const hidden = [...initial].filter(key => !controls.some(control => control.value === key));
+            return { styleId, group, controls, hidden };
+        });
+        content.replaceChildren(...groups.map(({ group }) => group));
+        document.querySelector("#cancel-structure-compact").onclick = () => dialog.close();
+        document.querySelector("#structure-compact-form").onsubmit = event => {
+            event.preventDefault();
+            this.rememberEdit(this.captureEdit());
+            const properties = { ...this.project.clientProperties, PropViewMode: "COMPACT" };
+            for (const { styleId, controls, hidden } of groups) {
+                properties[compactProperty(styleId)] = [...controls.filter(control => control.checked).map(control => control.value), ...hidden].join(",");
+            }
+            this.project.clientProperties = properties;
+            dialog.close();
+            this.render();
+        };
+        dialog.showModal();
+    }
+
+    renderPart(part, range, colors, visibleRows, compactRows) {
         const index = range.index;
         const item = document.createElement("li");
         item.style.setProperty("--section-color", colors[part.section % colors.length]);
@@ -1431,7 +1512,8 @@ class SongEditor {
             if (!visibleRows.has(key)) continue;
             const row = document.createElement("label");
             row.className = "rp-row";
-            row.classList.toggle("primary-rp", key === "rpVariationID");
+            row.classList.toggle("compact-rp", compactRows.has(key));
+            row.dataset.rhythmParameter = key;
             const title = document.createElement("span");
             title.textContent = t(label);
             const enabled = swing || !["BassStyleId", "DrumsStyleId"].includes(key);
@@ -1478,6 +1560,8 @@ class SongEditor {
         }
         const muteRow = document.createElement("div");
         muteRow.className = "rp-row";
+        muteRow.classList.toggle("compact-rp", compactRows.has("RpSysMuteID"));
+        muteRow.dataset.rhythmParameter = "RpSysMuteID";
         const muteTitle = document.createElement("span");
         muteTitle.textContent = t("区間のミュート");
         const muted = (part.parameters.RpSysMuteID ?? "[]").slice(1, -1).split(",").filter(Boolean);
@@ -1673,10 +1757,14 @@ class SongEditor {
         this.selectionAnchor = Math.min(this.selectionAnchor, bars - 1);
         if (this.selectedChord && !chords.includes(this.selectedChord)) this.selectedChord = null;
         const ranges = this.partRanges();
+        const compact = this.project.clientProperties?.PropViewMode === "COMPACT";
+        this.structureCompact.setAttribute("aria-pressed", String(compact));
+        this.parts.classList.toggle("compact-view", compact);
+        const compactRows = new Map(Array.from(new Set(parts.map(part => part.styleId)), id => [id, this.compactRows(id)]));
         const showSwingRows = parts.some(part => DesktopSongFiles.sourceStyleId(part.styleId) === "jjSwing-ID");
         const visibleRows = new Set(["rpVariationID", "rpIntensityID", "RpFillID", "rpTempoID", "rpSysMarkerID"]);
         if (showSwingRows) { visibleRows.add("BassStyleId"); visibleRows.add("DrumsStyleId"); }
-        this.parts.replaceChildren(...parts.map((part, index) => this.renderPart(part, ranges[index], colors, visibleRows)));
+        this.parts.replaceChildren(...parts.map((part, index) => this.renderPart(part, ranges[index], colors, visibleRows, compactRows.get(part.styleId))));
         this.markSelection();
         const users = userTracks.map(track => track.name).join(", ");
         document.querySelector("#user-track-summary").textContent = users ? t(`ユーザートラック: ${users}`, `User tracks: ${users}`) : "";

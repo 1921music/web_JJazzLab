@@ -972,10 +972,28 @@ document.querySelector("#duplicate-song").onclick = () => editor.save("duplicate
 document.querySelector("#linearize-song").onclick = () => editor.save("linearize");
 document.querySelector("#save-song-template").onclick = () => editor.saveTemplate();
 document.querySelector("#clear-song-template").onclick = () => editor.clearTemplate();
-openProject.onchange = async () => {
-    const previous = editor.project;
-    await editor.openFiles(openProject);
-    if (editor.project !== previous && !mixer.hidden) prepareMixer.click();
+async function openSongFromFiles(pending) {
+    if (await pending && !mixer.hidden) prepareMixer.click();
+}
+openProject.onchange = () => openSongFromFiles(editor.openFiles(openProject));
+const canDropSong = event => !event.defaultPrevented && event.dataTransfer.types.includes("Files")
+    && !event.target.closest('#roll-scroll, input[type="file"]');
+workspace.addEventListener("dragover", event => {
+    if (!canDropSong(event)) return;
+    event.preventDefault();
+    event.dataTransfer.dropEffect = "copy";
+});
+workspace.addEventListener("drop", event => {
+    if (!canDropSong(event)) return;
+    event.preventDefault();
+    if (!generating && !starting) void openSongFromFiles(editor.loadFiles(Array.from(event.dataTransfer.files)));
+});
+editor.onReadTextSong = async contents => {
+    const engine = await getEngine();
+    return DesktopSongFiles.readTextSong(engine.exports.readTextLeadSheet(contents), meter => {
+        const styleName = meter === "FOUR_FOUR" ? "jjSwing" : meter === "THREE_FOUR" ? bundledJazzWaltz : bundledStyle;
+        return { styleId: styleName + "-ID", styleName };
+    });
 };
 editor.onChordScales = async name => (await getEngine()).exports.getChordScales(name);
 const pianoRoll = new PianoRoll(editor, (range, stopAtEnd) => {

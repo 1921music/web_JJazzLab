@@ -57,7 +57,7 @@ Hold／Shotを他の楽器にも適用|Extend Hold/Shot to more instruments
 新規作成|New song
 曲を開く|Open song
 曲を開く…|Open song…
-曲を開く (.sng / .mix / .jjazzweb)|Open song (.sng / .mix / .jjazzweb)
+曲を開く (.sng / .mix / .jjazzweb / .txt)|Open song (.sng / .mix / .jjazzweb / .txt)
 Web用に保存|Save Web project
 JJazzLab形式で書き出す|Export JJazzLab files
 JJazzLab形式で書き出す…|Export JJazzLab files…
@@ -148,6 +148,8 @@ Solo解除|Clear solo
 選択区間を編集…|Edit selected song parts…
 区間パラメーター|Song-part parameters
 リズム切り替えを解除|Remove rhythm change
+表示項目…|Visible parameters…
+コンパクト表示の項目|Parameters shown in compact view
 全音符を表示|Fit all notes
 選択を反転|Invert selection
 音符を試聴|Audition notes

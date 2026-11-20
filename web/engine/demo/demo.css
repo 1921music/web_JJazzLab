@@ -267,10 +267,10 @@ button:disabled { opacity: .5; cursor: default; }
     border: 1px solid #737477;
     background: #343638;
 }
-.song-parts.fit-view > li { flex: 1 0 5.8rem; }
+.song-parts.fit-view > li { flex: 1 1 5.8rem; min-width: 4rem; }
 .song-parts .selected-part { outline: 2px solid #66c9df; outline-offset: -2px; z-index: 1; }
 .song-parts .playing-bar { outline: 2px solid var(--playhead); outline-offset: -2px; }
-.part-heading { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .04rem .2rem; padding: .2rem .28rem; color: #282623; background: var(--section-color); }
+.part-heading { position: sticky; inset-block-start: 0; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: .04rem .2rem; padding: .2rem .28rem; color: #282623; background: var(--section-color); }
 .part-heading button, .part-heading select { text-align: start; background: transparent; color: inherit; border: 1px solid transparent; border-radius: 1px; padding: .03rem .08rem; min-width: 0; }
 .part-heading button:hover, .part-heading select:hover { border-color: #615e5570; }
 .part-name-button, .part-style { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -284,7 +284,9 @@ button:disabled { opacity: .5; cursor: default; }
 .song-parts input { width: 100%; min-width: 0; font-size: .78rem; text-align: center; color: #2b2825; background: transparent; border: 1px solid transparent; padding: .02rem .13rem; }
 .song-parts input:hover:not(:disabled) { background: #ffffff95; border-color: #9c9385; }
 .song-parts input:disabled { opacity: .46; }
-.compact-view .rp-row:not(.primary-rp) { display: none; }
+.compact-view .rp-row:not(.compact-rp) { display: none; }
+#structure-compact-rows { display: grid; gap: .65rem; }
+#structure-compact-rows fieldset { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: .35rem; }
 .part-controls { display: flex; justify-content: space-between; gap: .08rem; margin-top: auto; padding: .12rem; }
 .part-controls button { flex: 1; padding: .01rem .12rem; border-color: transparent; font-size: .78rem; }
 #user-track-summary { padding: 0 .65rem .42rem; }

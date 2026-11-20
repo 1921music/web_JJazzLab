@@ -52,7 +52,7 @@
             <div class="toolbar-group file-actions" aria-label="ファイルと編集">
                 <button id="new-project" class="tool-button" type="button" aria-label="新規作成" title="新規作成">＋</button>
                 <button id="open-project-button" class="tool-button" data-icon="open" type="button" aria-label="曲を開く" title="曲を開く"></button>
-                <input id="open-project" type="file" accept=".sng,.mix,.jjazzweb" aria-label="曲を開く (.sng / .mix / .jjazzweb)" multiple hidden>
+                <input id="open-project" type="file" accept=".sng,.mix,.jjazzweb,.txt" aria-label="曲を開く (.sng / .mix / .jjazzweb / .txt)" multiple hidden>
                 <button id="save-project" class="tool-button" type="button" aria-label="Web用に保存" title="Web用に保存">▣</button>
                 <button id="undo" class="tool-button" type="button" aria-label="元に戻す" title="元に戻す (Ctrl+Z)">↶</button>
                 <button id="redo" class="tool-button" type="button" aria-label="やり直す" title="やり直す (Ctrl+Y)">↷</button>
@@ -140,6 +140,7 @@
                     <button id="add-song-part" type="button" class="secondary" aria-label="演奏区間を追加" title="演奏区間を追加">＋</button>
                     <button id="edit-song-parts" type="button" class="secondary">選択区間を編集…</button>
                     <button id="structure-compact" type="button" class="secondary" aria-pressed="false">コンパクト</button>
+                    <button id="structure-compact-settings" type="button" class="secondary">表示項目…</button>
                     <label class="zoom-control">横ズーム <input id="structure-zoom" type="range" min="55" max="145" value="100" aria-label="曲構成の横ズーム"></label>
                     <button id="structure-fit" type="button" class="secondary">全体表示</button>
                 </div>
@@ -417,6 +418,17 @@
             <div class="dialog-actions">
                 <button id="clear-track-override" type="button" class="secondary">この上書きを解除</button>
                 <button id="close-track-overrides" type="button" class="secondary">閉じる</button>
+                <button type="submit">適用</button>
+            </div>
+        </form>
+    </dialog>
+
+    <dialog id="structure-compact-dialog" aria-labelledby="structure-compact-title">
+        <form id="structure-compact-form" method="dialog">
+            <h2 id="structure-compact-title">コンパクト表示の項目</h2>
+            <div id="structure-compact-rows"></div>
+            <div class="dialog-actions">
+                <button id="cancel-structure-compact" type="button" class="secondary">キャンセル</button>
                 <button type="submit">適用</button>
             </div>
         </form>

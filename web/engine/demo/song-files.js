@@ -190,6 +190,22 @@ const DesktopSongFiles = (() => {
         return song;
     }
 
+    function readTextSong(rows, rhythmForMeter) {
+        if (!rows.length) throw new Error(t("読み込めるコード譜がありません。", "The text contains no readable lead sheet."));
+        if (rows.length === 1) throw new Error(rows[0]);
+        const [title, tempo, bars, ...items] = Array.from(rows);
+        const sections = [], chords = [];
+        for (const row of items) {
+            const [kind, bar, value, name, originalName] = row.split("\t");
+            if (kind === "section") sections.push({ bar: Number(bar), name, meter: value });
+            else chords.push({ bar: Number(bar), name, originalName, beat: Number(value) });
+        }
+        const parts = sections.map(({ name, meter }, section) => ({
+            name, section, ...rhythmForMeter(meter), parameters: {}
+        }));
+        return validateSong({ title, tempo: Number(tempo), bars: Number(bars), sections, chords, parts, userTracks: [] });
+    }
+
     function readMix(xml) {
         const root = parse(xml, "MidiMix", "5");
         const settings = Array.from(child(root, "spInsMixes")?.children ?? []);
@@ -413,6 +429,6 @@ const DesktopSongFiles = (() => {
             + `<spInsMixes>\n${settings.join("\n")}\n</spInsMixes><spKeys>\n${keys.join("\n")}\n</spKeys></MidiMix>\n`;
     }
 
-    return { readSong, readMix, writeSong, writeMix, isUserMixTrack, mergeInstrumentMixes, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters,
+    return { readSong, readTextSong, readMix, writeSong, writeMix, isUserMixTrack, mergeInstrumentMixes, engineArgs, multiStyleEngineArgs, decodeEngineMix, validateSong, meters,
         sourceStyleId, readTrackOverrides, writeTrackOverrides, overrideStyleIds, readCustomPhrases, setCustomPhrase, barBeats };
 })();

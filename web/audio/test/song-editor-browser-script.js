@@ -162,7 +162,21 @@
         const compact = document.querySelector("#structure-compact");
         compact.click();
         check(editor.parts.classList.contains("compact-view"), "Compact view did not switch");
+        document.querySelector("#structure-compact-settings").click();
+        const compactSettings = document.querySelector("#structure-compact-dialog");
+        compactSettings.querySelector('[value="rpVariationID"]').checked = false;
+        compactSettings.querySelector('[value="rpIntensityID"]').checked = true;
+        document.querySelector("#structure-compact-form").requestSubmit();
+        const compactRows = editor.parts.firstElementChild.querySelectorAll(".compact-rp");
+        const compactSaved = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project)).clientProperties;
+        check(compactRows.length === 1 && compactRows[0].dataset.rhythmParameter === "rpIntensityID"
+            && compactSaved.PropCompactViewModeVisibleRps_jjSwing === undefined
+            && compactSaved["PropCompactViewModeVisibleRps_jjSwing-ID"] === "rpIntensityID" && compactSaved.PropViewMode === "COMPACT",
+            "Compact-view settings did not affect the visible rows or round-trip through the song");
+        check(getComputedStyle(editor.parts.querySelector(".part-heading")).position === "sticky", "Part headings did not stick during scrolling");
+        editor.undoButton.click();
         compact.click();
+        report.compactStructureSettings = true;
         const variation = index => document.querySelector(`input[list="part-${index}-rpVariationID"]`);
         const context = action => document.querySelector(`#parameter-context [data-action="${action}"]`);
         const firstVariation = variation(0).value;
@@ -1056,6 +1070,34 @@
                     tambourineNonCrashDigest: await noteDigest(withoutCrash(tambourine)) };
             }
         }
+        const gridText = ["title=X", "tempoBPM=96", "| Cmaj7 | F7 G7 | % | 3/4 Dm7 | G7 |"].join("\n");
+        const textFiles = new DataTransfer();
+        textFiles.items.add(new File([gridText], "practice-grid.txt", { type: "text/plain" }));
+        workspace.dispatchEvent(new DragEvent("drop", { dataTransfer: textFiles, bubbles: true, cancelable: true }));
+        for (let attempt = 0; editor.project.title !== "X" && attempt < 100; attempt++) await new Promise(resolve => setTimeout(resolve, 20));
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(editor.project.title === "X" && editor.project.tempo === 96 && editor.project.bars === 5
+            && editor.project.sections[1].meter === "THREE_FOUR" && song.barTimes.length === 6,
+            `The dropped text chart did not retain its title, tempo, sections, or meter: ${editor.status.textContent} ${status.textContent}`);
+        check(editor.project.chords.filter(chord => chord.bar === 2).map(chord => chord.name).join() === "F7,G7",
+            "The imported percent repeat did not keep both chords");
+        const beatText = await editor.onReadTextSong("useBase1\n1, 1, C\n3, 2.5, G7/B");
+        check(beatText.bars === 3 && beatText.chords.some(chord => chord.bar === 2 && chord.beat === 1.5 && chord.name === "G7/B"),
+            "Beat-based text positions were not imported");
+        const timed = await editor.onReadTextSong("tempo=120\n0, C\n2.5, G7");
+        check(timed.bars === 2 && timed.chords.some(chord => chord.bar === 1 && chord.beat === 1 && chord.name === "G7"),
+            "Timestamp-based positions were not converted using the tempo");
+        const mixedFiles = new DataTransfer();
+        mixedFiles.items.add(new File([desktopFixture.song], "drop.sng"));
+        mixedFiles.items.add(new File([desktopFixture.mix], "drop.mix"));
+        workspace.dispatchEvent(new DragEvent("drop", { dataTransfer: mixedFiles, bubbles: true, cancelable: true }));
+        for (let attempt = 0; !editor.project.title.startsWith("SpeakNoEvil") && attempt < 100; attempt++) {
+            await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        while (generating) await new Promise(resolve => setTimeout(resolve, 20));
+        check(editor.project.title.startsWith("SpeakNoEvil") && engine.exports.wasImportedMixApplied(),
+            "Dropping a desktop song with its mix did not keep the paired mix");
+        report.textAndDropImport = true;
         report.ok = true;
     } catch (error) { report.ok = false; report.error = error.stack || error.message; }
     console.log("JJAZZ_SMOKE_RESULT=" + JSON.stringify(report));
