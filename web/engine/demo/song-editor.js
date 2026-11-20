@@ -49,10 +49,12 @@ function packageSongFiles(files) {
     const encoder = new TextEncoder();
     const local = [], directory = [];
     let offset = 0;
-    for (const [filename, value] of files) {
+    for (const [filename, value, checksum] of files) {
         const name = encoder.encode(filename);
-        const bytes = typeof value === "string" ? encoder.encode(value) : new Uint8Array(value);
-        const crc = styleCrc32(bytes);
+        const bytes = value instanceof Blob ? value : typeof value === "string" ? encoder.encode(value) : new Uint8Array(value);
+        const length = bytes instanceof Blob ? bytes.size : bytes.length;
+        const crc = checksum ?? styleCrc32(bytes);
+        if (offset + 30 + name.length + length > 0xffffffff) throw new Error(t("ZIPのサイズ上限を超えています。", "The ZIP exceeds the file size limit."));
         for (const central of [false, true]) {
             const fixed = central ? 46 : 30;
             const header = new Uint8Array(fixed + name.length);
@@ -63,19 +65,21 @@ function packageSongFiles(files) {
             u32(0, central ? 0x02014b50 : 0x04034b50);
             u16(4 + extra, 20); u16(6 + extra, 0x0800);
             u16(12 + extra, 33);
-            u32(14 + extra, crc); u32(18 + extra, bytes.length); u32(22 + extra, bytes.length);
+            u32(14 + extra, crc); u32(18 + extra, length); u32(22 + extra, length);
             u16(26 + extra, name.length);
             header.set(name, fixed);
             if (central) { u16(4, 20); u32(42, offset); directory.push(header); }
             else local.push(header, bytes);
         }
-        offset += local.at(-2).length + bytes.length;
+        offset += local.at(-2).length + length;
     }
     const end = new Uint8Array(22);
     const view = new DataView(end.buffer);
     view.setUint32(0, 0x06054b50, true);
     view.setUint16(8, files.length, true); view.setUint16(10, files.length, true);
-    view.setUint32(12, directory.reduce((size, entry) => size + entry.length, 0), true);
+    const directoryLength = directory.reduce((size, entry) => size + entry.length, 0);
+    if (offset + directoryLength + end.length > 0xffffffff) throw new Error(t("ZIPのサイズ上限を超えています。", "The ZIP exceeds the file size limit."));
+    view.setUint32(12, directoryLength, true);
     view.setUint32(16, offset, true);
     return new Blob([...local, ...directory, end]);
 }

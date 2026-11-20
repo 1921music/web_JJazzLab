@@ -33,7 +33,8 @@ const yjzDirectory = process.env.JJAZZ_YJZ_FIXTURES;
 const yjzFixtures = yjz && yjzDirectory ? ["casa-forte", "ponteio", "across-the-universe"].map(name => ({ name,
     song: fs.readFileSync(path.join(yjzDirectory, `${name}.sng`), "utf8")
 })) : [];
-const songFixture = process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
+const audioExport = process.env.JJAZZ_SMOKE_SUITE === "audio-export";
+const songFixture = audioExport || process.env.JJAZZ_SMOKE_SUITE === "song-editor" ? JSON.stringify({
     song: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.sng"), "utf8"),
     mix: fs.readFileSync(path.join(songFiles, "SpeakNoEvil - 2026.mix"), "utf8"),
     africa: process.env.JJAZZ_AFRICA_FIXTURE ? fs.readFileSync(process.env.JJAZZ_AFRICA_FIXTURE, "utf8") : null,
@@ -50,7 +51,7 @@ const harness = process.env.JJAZZ_SMOKE_SUITE === "style-library"
     : process.env.JJAZZ_SMOKE_SUITE === "jjswing"
     ? fs.readFileSync(path.join(__dirname, "jjswing-browser-script.js"), "utf8")
     : yjz ? `const yjzFixtures = ${JSON.stringify(yjzFixtures).replaceAll("<", "\\u003c")};\n` + fs.readFileSync(path.join(__dirname, "yjz-browser-script.js"), "utf8")
-    : songFixture ? `const desktopFixture = ${songFixture};\n` + fs.readFileSync(path.join(__dirname, "song-editor-browser-script.js"), "utf8") : `
+    : songFixture ? `const desktopFixture = ${songFixture};\n` + fs.readFileSync(path.join(__dirname, audioExport ? "audio-export-browser-script.js" : "song-editor-browser-script.js"), "utf8") : `
 (async () => {
     const check = (value, message) => { if (!value) throw new Error(message); };
     const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
@@ -158,7 +159,7 @@ const child = spawn(chrome, [
 ], { windowsHide: true, stdio: ["ignore", "pipe", "pipe"] });
 const log = fs.createWriteStream(path.join(scratch, "chrome.log"));
 let buffer = "", finished = false;
-const timeout = setTimeout(() => finish({ ok: false, error: "Headless Chrome smoke test timed out", scratch }), songFixture ? 240000 : 150000);
+const timeout = setTimeout(() => finish({ ok: false, error: "Headless Chrome smoke test timed out", scratch }), 150000);
 function finish(result) {
     if (finished) return; finished = true;
     clearTimeout(timeout); child.kill(); log.end();

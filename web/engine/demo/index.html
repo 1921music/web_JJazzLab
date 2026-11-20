@@ -24,8 +24,10 @@
                     <button id="clear-song-template" type="button">標準テンプレートに戻す</button>
                     <button data-command="export-project" type="button">JJazzLab形式で書き出す…</button>
                     <button data-command="download" type="button">MIDI（GM）を書き出す</button>
-                    <button id="export-wave" type="button">WAVを書き出す</button>
-                    <button id="export-mp3" type="button">MP3を書き出す</button>
+                    <button id="export-wave" type="button" data-audio-export="wav">WAVを書き出す</button>
+                    <button id="export-mp3" type="button" data-audio-export="mp3">MP3を書き出す</button>
+                    <button id="export-wave-tracks" type="button" data-audio-export="wav" data-all-tracks>トラック別WAVをZIPで書き出す</button>
+                    <button id="export-mp3-tracks" type="button" data-audio-export="mp3" data-all-tracks>トラック別MP3をZIPで書き出す</button>
                     <button id="open-song-print" type="button">印刷…</button>
                 </div></details>
                 <details><summary>編集</summary><div>

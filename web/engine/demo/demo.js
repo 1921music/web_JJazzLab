@@ -245,7 +245,7 @@ function updateButtons() {
 }
 
 function updateMenus() {
-    for (const id of ["export-wave", "export-mp3"]) document.getElementById(id).disabled = generating || starting || exportingAudio;
+    for (const button of document.querySelectorAll("[data-audio-export]")) button.disabled = generating || starting || exportingAudio;
     for (const button of document.querySelectorAll("[data-command]")) {
         const action = document.getElementById(button.dataset.command);
         if (action === download) { button.disabled = generating || starting; continue; }
@@ -567,20 +567,40 @@ function openMixerContext(part, strip, x, y) {
 }
 
 let exportingAudio = false;
-async function exportAudio(format, trackId) {
+async function exportAudio(format, trackId, allTracks = false) {
     if (exportingAudio || generating || starting || !form.reportValidity()) return;
     exportingAudio = true;
     updateMenus();
     try {
         if ((!song || accompanimentDirty || tempoDirty) && !await generateAccompaniment()) return;
-        const track = trackId === undefined ? undefined : mixerParts.find(part => part.id === trackId);
+        const renderedSong = song;
+        const master = Number(masterInput.value) / 100;
+        const mix = structuredClone(mixerParts);
+        const track = trackId === undefined ? undefined : mix.find(part => part.id === trackId);
         if (trackId !== undefined && !track) throw new Error(t("トラックが見つかりません。", "The track is unavailable."));
-        const parts = track ? mixerParts.map(part => ({ ...part, mute: part !== track, solo: part === track })) : mixerParts;
         const name = editor.project ? editor.fileStem() : "JJazzLab";
-        const suffix = track ? `-${track.name.replace(/[<>:"/\\|?*]/gu, "_")}` : "";
-        const rendered = await renderSongAudio(song, structuredClone(parts), Number(masterInput.value) / 100, showStatus);
-        const audio = format === "mp3" ? await encodeMp3Audio(rendered, showStatus) : encodeWave(rendered);
-        downloadSongFile(`${name}${suffix}.${format}`, audio, audio.type);
+        const trackName = part => part.name.replace(/[<>:"/\\|?*]/gu, "_");
+        const render = async (selected, progress) => {
+            const parts = selected ? mix.map(part => ({ ...part, mute: part !== selected, solo: part === selected })) : mix;
+            const rendered = await renderSongAudio(renderedSong, parts, master, progress);
+            return format === "mp3" ? encodeMp3Audio(rendered, progress) : encodeWave(rendered);
+        };
+        if (allTracks) {
+            const tracks = mix.filter(part => !part.mute && part.trackIndex !== undefined);
+            if (!tracks.length) throw new Error(t("書き出せるミュートされていないトラックがありません。", "There are no unmuted tracks to export."));
+            const files = [];
+            for (const [index, part] of tracks.entries()) {
+                const progress = message => showStatus(`${index + 1}/${tracks.length} ${part.name} — ${t(message)}`);
+                const audio = await render(part, progress);
+                let checksum = 0;
+                for await (const chunk of audio.stream()) checksum = styleCrc32(chunk, checksum);
+                files.push([`${String(index + 1).padStart(2, "0")}-${trackName(part)}.${format}`, audio, checksum]);
+            }
+            downloadSongFile(`${name}-${format}-tracks.zip`, packageSongFiles(files), "application/zip");
+        } else {
+            const audio = await render(track, showStatus);
+            downloadSongFile(`${name}${track ? `-${trackName(track)}` : ""}.${format}`, audio, audio.type);
+        }
         showStatus(t("音声の書き出しが完了しました。", "Audio export complete."));
     } catch (error) { showStatus(error.message, true); }
     finally { exportingAudio = false; updateMenus(); }
@@ -1020,8 +1040,9 @@ folderIO.onOpen = () => { if (!mixer.hidden) prepareMixer.click(); };
 const recentSongs = new SongHistory(editor, () => { if (!mixer.hidden) prepareMixer.click(); });
 editor.onBeforeOpen = () => { void recentSongs.flush(); };
 document.querySelector("#duplicate-song").onclick = () => editor.save("duplicate");
-document.querySelector("#export-wave").onclick = () => exportAudio("wav");
-document.querySelector("#export-mp3").onclick = () => exportAudio("mp3");
+for (const button of document.querySelectorAll("[data-audio-export]")) {
+    button.onclick = () => exportAudio(button.dataset.audioExport, undefined, button.hasAttribute("data-all-tracks"));
+}
 document.querySelector("#linearize-song").onclick = () => editor.save("linearize");
 document.querySelector("#save-song-template").onclick = () => editor.saveTemplate();
 document.querySelector("#clear-song-template").onclick = () => editor.clearTemplate();

@@ -14,6 +14,8 @@ WAVを書き出す|Export WAV
 トラックをWAVとして保存|Save track as WAV
 MP3を書き出す|Export MP3
 トラックをMP3として保存|Save track as MP3
+トラック別WAVをZIPで書き出す|Export WAV tracks as ZIP
+トラック別MP3をZIPで書き出す|Export MP3 tracks as ZIP
 小節の高さ|Bar height
 コード譜の表示設定|Lead sheet appearance
 セクションの色|Section color

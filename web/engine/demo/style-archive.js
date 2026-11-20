@@ -4,12 +4,14 @@
 // All bytes stay in memory; no filesystem, persistent storage or download link.
 const styleArchiveLimits = { archive: 16 * 1024 * 1024, entry: 1024 * 1024, total: 64 * 1024 * 1024, count: 2000 };
 
-function styleCrc32(bytes) {
-    let crc = 0xffffffff;
-    for (const byte of bytes) {
-        crc ^= byte;
-        for (let bit = 0; bit < 8; bit++) crc = (crc >>> 1) ^ ((crc & 1) ? 0xedb88320 : 0);
-    }
+const crc32Table = Uint32Array.from({ length: 256 }, (_, byte) => {
+    for (let bit = 0; bit < 8; bit++) byte = (byte >>> 1) ^ ((byte & 1) ? 0xedb88320 : 0);
+    return byte;
+});
+
+function styleCrc32(bytes, previous = 0) {
+    let crc = previous ^ 0xffffffff;
+    for (let index = 0; index < bytes.length; index++) crc = (crc >>> 8) ^ crc32Table[(crc ^ bytes[index]) & 255];
     return (crc ^ 0xffffffff) >>> 0;
 }
 
