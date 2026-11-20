@@ -184,7 +184,7 @@ const DesktopSongFiles = (() => {
     const mixValues = ["patch", "instrumentEnabled", "volume", "pan", "transpose", "velocityShift", "reverb", "chorus",
         "volumeEnabled", "panEnabled", "reverbEnabled", "chorusEnabled"];
     const playableParameters = new Set(["rpVariationID", "rpIntensityID", "RpFillID", "RpSysMuteID", "rpSysMarkerID",
-        "rpTempoID", "BassStyleId", "DrumsStyleId"]);
+        "rpTempoID", "BassStyleId", "DrumsStyleId", "RP_SYS_CustomPhraseId"]);
 
     function decodeEngineMix(rows) {
         return Array.from(rows, row => {

@@ -216,9 +216,10 @@ class SongEditor {
         this.render();
     }
 
-    open(project, mix, style = null) {
+    open(project, mix, style = null, useSavedStyles = false) {
         this.project = project;
         this.mix = mix;
+        this.unresolvedStyleMix = undefined;
         this.style = style;
         this.selectedPart = null;
         this.selectedChord = null;
@@ -233,7 +234,7 @@ class SongEditor {
         document.querySelector("#quick-chords").hidden = true;
         document.querySelector("#chords").required = false;
         this.render();
-        this.onOpen(this);
+        this.onOpen(this, useSavedStyles);
     }
 
     async openFiles(input) {
@@ -247,7 +248,7 @@ class SongEditor {
                 if (files.length !== 1 || data.version !== 1 || !data.song?.parts?.length || !data.song?.sections?.length) {
                     throw new Error("Web用の曲ファイルを1つ選択してください。");
                 }
-                this.open(DesktopSongFiles.validateSong(data.song), data.mix ?? [], data.style);
+                this.open(DesktopSongFiles.validateSong(data.song), data.mix ?? [], data.style, true);
                 return;
             }
             const songFile = files.find(file => /\.sng$/iu.test(file.name));
@@ -258,7 +259,7 @@ class SongEditor {
             }
             const song = DesktopSongFiles.readSong(await songFile.text());
             const mix = mixFile ? DesktopSongFiles.readMix(await mixFile.text()) : [];
-            this.open(song, mix);
+            this.open(song, mix, null, true);
             this.notify(t(`${songFile.name} を開きました。`, `Opened ${songFile.name}.`));
         } catch (error) { this.notify(error.message, true); }
     }
@@ -1075,7 +1076,7 @@ class SongEditor {
 
     save() {
         try {
-            const data = { version: 1, song: this.project, mix: this.renderedMix ?? this.mix, style: this.style };
+            const data = { version: 1, song: this.project, mix: this.unresolvedStyleMix ?? this.renderedMix ?? this.mix, style: this.style };
             downloadSongFile(`${this.fileStem()}.jjazzweb`, JSON.stringify(data), "application/json");
         } catch (error) { this.notify(error.message, true); }
     }
@@ -1084,7 +1085,8 @@ class SongEditor {
         try {
             if (!this.renderedMix) throw new Error("伴奏を生成してから書き出してください。");
             const stem = this.fileStem();
-            const files = new Map([[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)], [`${stem}.mix`, this.desktopMixXml()]]);
+            const files = new Map([[`${stem}.sng`, DesktopSongFiles.writeSong(this.project)]]);
+            if (this.nativeMix.length) files.set(`${stem}.mix`, this.desktopMixXml());
             for (const style of this.attachedStyles) {
                 // JJazzLab looks for an exact basename and a lowercase base extension on case-sensitive filesystems.
                 const baseName = style.extensionData ? `${style.name.slice(0, -4)}.${style.baseName.split(".").at(-1).toLowerCase()}` : style.name;
@@ -1096,6 +1098,8 @@ class SongEditor {
     }
 
     desktopMixXml() {
-        return DesktopSongFiles.writeMix(this.renderedMix.map(track => ({ ...track, channel: track.sourceChannel ?? track.channel })));
+        return DesktopSongFiles.writeMix(this.nativeMix.map(track => ({ ...track, channel: track.sourceChannel ?? track.channel })));
     }
+
+    get nativeMix() { return this.unresolvedStyleMix ?? this.renderedMix ?? []; }
 }

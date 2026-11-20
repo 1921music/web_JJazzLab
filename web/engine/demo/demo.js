@@ -99,7 +99,11 @@ libraryStyle.addEventListener("change", () => {
     const selected = styleArchive.entries.find(entry => entry.path === libraryStyle.value);
     if (selected && styleIssue(selected)) { showStylePackStatus(styleIssue(selected), true); renderStyleChoices(); return; }
     selectedLibraryStyle = selected;
-    if (selectedLibraryStyle) { styleInput.value = ""; bundledExtension.value = ""; }
+    if (selectedLibraryStyle) {
+        styleInput.value = ""; bundledExtension.value = "";
+        rhythmEngine.value = "yamaha";
+        rhythmEngine.dispatchEvent(new Event("change"));
+    }
     extendedVariationField.hidden = true;
     accompanimentDirty = true;
     if (song) showStatus("次回の再生から変更を反映します。");
@@ -109,7 +113,11 @@ styleInput.addEventListener("change", () => {
     extendedVariationField.hidden = true;
 });
 bundledExtension.addEventListener("change", () => {
-    if (bundledExtension.value) { selectedLibraryStyle = undefined; libraryStyle.value = ""; styleInput.value = ""; }
+    if (bundledExtension.value) {
+        selectedLibraryStyle = undefined; libraryStyle.value = ""; styleInput.value = "";
+        rhythmEngine.value = "yamaha";
+        rhythmEngine.dispatchEvent(new Event("change"));
+    }
     extendedVariationField.hidden = true;
 });
 
@@ -279,9 +287,9 @@ function updateMixerButtons() {
     muteAll.disabled = !mixerParts.length;
     clearSolo.disabled = !mixerParts.some(part => part.solo);
     document.querySelector("#reset-mixer").disabled = !mixerParts.length;
-    saveMix.disabled = !editor.renderedMix || activeProject !== editor.project || !song;
+    saveMix.disabled = !editor.renderedMix || !editor.nativeMix.length || activeProject !== editor.project || !song;
     document.querySelector("#import-mix-button").disabled = !editor.project || generating || starting || !editor.baseMix?.length
-        || activeProject !== editor.project;
+        || activeProject !== editor.project || editor.unresolvedStyleMix !== undefined;
     document.querySelector("#panic").disabled = !mixerParts.length;
 }
 
@@ -732,7 +740,7 @@ function clearPlayback() {
     updateButtons();
 }
 
-const editor = new SongEditor((opened) => {
+const editor = new SongEditor((opened, useSavedStyles) => {
     pianoRoll.close();
     chosenRange = null;
     activeProject = undefined;
@@ -743,8 +751,9 @@ const editor = new SongEditor((opened) => {
     styleInput.value = "";
     tempoInput.value = opened.project.tempo;
     const sources = new Set(opened.project.parts.map(part => DesktopSongFiles.sourceStyleId(part.styleId)));
-    rhythmEngine.querySelector('option[value="song"]').hidden = sources.size === 1;
-    rhythmEngine.value = sources.size > 1 ? "song" : sources.has("jjSwing-ID") ? "jjswing" : "yamaha";
+    const followSong = useSavedStyles || sources.size > 1;
+    rhythmEngine.querySelector('option[value="song"]').hidden = !followSong;
+    rhythmEngine.value = followSong ? "song" : sources.has("jjSwing-ID") ? "jjswing" : "yamaha";
     rhythmEngine.dispatchEvent(new Event("change"));
     player.stop().catch(error => showPlayStatus(error.message, true));
     clearPlayback();
@@ -778,11 +787,12 @@ document.querySelector("#open-piano-roll").onclick = () => pianoRoll.panel.hidde
 document.querySelector("#add-user-track").onclick = () => pianoRoll.addTrack();
 quickMode.addEventListener("click", () => {
     if (!editor.project) {
-        if (draft) editor.open(draft.project, draft.mix, draft.style);
+        if (draft) editor.open(draft.project, draft.mix, draft.style, draft.useSavedStyles);
         else document.querySelector("#new-project").click();
         return;
     }
-    draft = { project: editor.project, mix: editor.mix, style: editor.style };
+    draft = { project: editor.project, mix: editor.unresolvedStyleMix ?? editor.mix, style: editor.style,
+        useSavedStyles: rhythmEngine.value === "song" };
     pianoRoll.close();
     editor.project = null;
     activeProject = undefined;
@@ -919,7 +929,8 @@ document.querySelector("#import-mix-button").onclick = () => importMix.click();
 importMix.onchange = async () => {
     const file = importMix.files[0];
     importMix.value = "";
-    if (!file || !editor.project || activeProject !== editor.project || generating || starting) return;
+        if (!file || !editor.project || activeProject !== editor.project || generating || starting
+                || editor.unresolvedStyleMix !== undefined) return;
     const project = editor.project;
     try {
         const key = track => `${track.rhythmId}\t${track.name}`;
@@ -1018,7 +1029,7 @@ function selectVariation(saved, available) {
 }
 
 async function resolveArrangement(project, requestedSwing) {
-    const styles = [], sources = [];
+    const styles = [], sources = [], replacedStyles = new Map();
     const byId = new Map();
     const firstMeter = project.sections[project.parts[0].section].meter;
     const mixedMeters = project.parts.some(part => project.sections[part.section].meter !== firstMeter);
@@ -1030,6 +1041,7 @@ async function resolveArrangement(project, requestedSwing) {
             const key = id === "jjSwing-ID" ? `${id}:${meter}` : id;
             if (!bySource.has(key)) {
                 const style = await readSavedStyle(id, meter);
+                if (style.replaced) replacedStyles.set(style.replaced, style.name);
                 if (!byId.has(style.id)) {
                     byId.set(style.id, styles.length);
                     styles.push(describeStyle(style));
@@ -1045,11 +1057,12 @@ async function resolveArrangement(project, requestedSwing) {
         if (style.meter !== firstMeter && !mixedMeters && !hasAdaptedStyle && ["THREE_FOUR", "FOUR_FOUR"].includes(firstMeter)) {
             style = describeStyle(await defaultArrangementStyle(firstMeter, style.name));
         }
+        if (style.replaced) replacedStyles.set(style.replaced, style.name);
         styles.push(style);
         sources.push(...project.parts.map(() => 0));
     }
     const parts = project.parts.map((part, index) => arrangePart(part, styles[sources[index]], project.sections[part.section].meter));
-    return { styles, sources, parts };
+    return { styles, sources, parts, replacedStyles };
 }
 
 form.addEventListener("input", event => {
@@ -1105,17 +1118,21 @@ async function generateAccompaniment(fromPlay = false) {
         let midi;
         if (project) {
             if (!project.chords.length) throw new Error("コードを1つ以上入力してください。");
-            const { styles, sources, parts } = await resolveArrangement(project, requestedSwing);
+            const { styles, sources, parts, replacedStyles } = await resolveArrangement(project, requestedSwing);
+            const followSong = rhythmEngine.value === "song";
+            const unresolved = followSong && replacedStyles.size > 0;
+            const savedStyleMix = editor.unresolvedStyleMix ?? editor.mix;
+            const inputMix = followSong && !unresolved ? savedStyleMix : editor.mix;
             style = styles.length === 1 ? styles[0] : { name: project.title };
             const arrangement = { ...project, tempo: tempo || project.tempo, parts };
-            const playbackMix = editor.mix.map(track => {
+            const playbackMix = inputMix.map(track => {
                 const equivalent = mixerInstruments.find(instrument => instrument.desktop.id === track.instrument);
                 return equivalent ? { ...track, patch: equivalent.patch } : track;
             });
             midi = engine.exports.generateSongMidiWithChordRendering(...DesktopSongFiles.multiStyleEngineArgs(arrangement, styles, sources, playbackMix));
             const defaults = DesktopSongFiles.decodeEngineMix(engine.exports.getSongMix());
             const applied = engine.exports.wasImportedMixApplied();
-            const original = new Map(editor.mix.map(track => [`${track.rhythmId}\t${track.name}`, track]));
+            const original = new Map(inputMix.map(track => [`${track.rhythmId}\t${track.name}`, track]));
             const keepAssignments = applied && original.size === defaults.length
                 && defaults.every(track => original.has(`${track.rhythmId}\t${track.name}`));
             const completeMix = defaults.map(track => {
@@ -1128,21 +1145,34 @@ async function generateAccompaniment(fromPlay = false) {
             if (requestedSwing && (styles.length !== 1 || styles[0].id !== "jjSwing-ID")) {
                 notices.push("jjSwingは4/4専用のため、この曲の拍子に対応するスタイルで演奏します。");
             }
-            for (const resolved of styles) {
-                if (resolved.replaced) notices.push(`「${resolved.replaced}」の代わりに「${resolved.name}」を使用しました。`);
+            for (const [requested, replacement] of replacedStyles) {
+                notices.push(t(`「${requested}」の代わりに「${replacement}」を使用しました。`, `Using “${replacement}” in place of “${requested}”.`));
             }
-            if (editor.mix.length && !applied) notices.push("スタイルやトラックが異なるため、既定ミックスを使用しました。");
+            if (followSong) {
+                const fallbackParts = new Set(project.parts.filter((part, index) => part.parameters.rpVariationID
+                    && part.parameters.rpVariationID !== parts[index].parameters.rpVariationID).map(part => part.name));
+                if (fallbackParts.size) {
+                    const names = [...fallbackParts].join(", ");
+                    notices.push(t(`利用できないバリエーションを演奏時のみ代替: ${names}。`, `Using a playback-only variation substitute in: ${names}.`));
+                }
+            }
+            if (inputMix.length && !applied) notices.push(t("スタイルやトラックが異なるため、既定ミックスを使用しました。"));
+            if (unresolved) notices.push(t("元のリズム指定とミックスを保存します。代替スタイルのミックス調整は今回の再生用です。",
+                "Saved files keep the original styles and mix. Mixer edits to replacement styles apply to playback in this session."));
             const substitutes = defaults.filter((track, index) => track.patch !== completeMix[index].patch).map(track => track.name);
             if (substitutes.length) notices.push(`Web音源で音色を代替: ${substitutes.join("、")}。`);
             editor.notify(notices.join(" "));
             editor.baseMix = editor.renderedMix = editor.mix = completeMix;
-            editor.project.parts = arrangement.parts;
+            editor.unresolvedStyleMix = unresolved ? savedStyleMix : undefined;
+            if (!followSong) editor.project.parts = arrangement.parts;
             editor.project.tempo = arrangement.tempo;
             editor.styleVariations = new Map(styles.map(style => [style.id, style.variations]));
             editor.render();
-            editor.style = styles.filter(style => style.attach).map(style => ({ name: style.name, id: style.id,
+            const attached = new Map((followSong ? editor.attachedStyles : []).map(style => [style.id, style]));
+            for (const style of styles.filter(item => item.attach)) attached.set(style.id, { name: style.name, id: style.id,
                 data: Array.from(new Uint8Array(style.bytes.buffer)), ...(style.extension ? { baseName: style.baseName,
-                    extensionData: Array.from(new Uint8Array(style.extension.buffer)) } : {}) }));
+                    extensionData: Array.from(new Uint8Array(style.extension.buffer)) } : {}) });
+            editor.style = [...attached.values()];
             editor.exportButton.disabled = false;
             activeProject = project;
             barBeats = DesktopSongFiles.barBeats(arrangement);

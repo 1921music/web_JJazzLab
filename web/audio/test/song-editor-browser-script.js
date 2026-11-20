@@ -112,6 +112,20 @@
         check(song.barTimes.length === 11, "AABA with 3-bar A and 1-bar B must produce ten bars");
         check(editor.project.chords[1].beat === 2, "Editing the arrangement lost the second chord");
         check(editor.renderedMix.length > 0, "New song does not have a writable mix");
+        const customBass = editor.renderedMix.find(track => /bass/iu.test(track.name));
+        check(customBass, "The rhythm does not expose a bass voice for the custom phrase test");
+        const customPhrase = `${customBass.name}%[0|95,61,0.5:0.5]`;
+        editor.project.parts[0].parameters.RP_SYS_CustomPhraseId = customPhrase;
+        editor.changed();
+        await generate();
+        const customNote = song.events.find(event => event.type === 0x90 && event.a === 95 && event.b === 61
+            && song.parts[event.part].name === customBass.name);
+        check(customNote && customNote.seconds > song.barTimes[0] && customNote.seconds < song.barTimes[1],
+            "Native custom phrase did not replace the chosen voice in its song part");
+        check(DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project)).parts[0].parameters.RP_SYS_CustomPhraseId === customPhrase,
+            "Native custom phrase did not round-trip");
+        delete editor.project.parts[0].parameters.RP_SYS_CustomPhraseId;
+        editor.changed();
         editor.grid.firstElementChild.querySelector(".chord-symbol").dispatchEvent(new MouseEvent("contextmenu", { bubbles: true }));
         editor.contextMenu.querySelector('[data-action="chord"]').click();
         check(editor.barDialog.open && !document.querySelector("#chord-interpretation").hidden, "Chord interpretation editor did not open");
@@ -170,7 +184,7 @@
         await editor.openFiles(open);
         check(editor.project.title.startsWith("SpeakNoEvil"), editor.status.textContent);
         const originalVariations = editor.project.parts.map(part => part.parameters.rpVariationID);
-        check(rhythmEngine.value === "jjswing", "A desktop jjSwing song did not select jjSwing");
+        check(rhythmEngine.value === "song", "A desktop jjSwing song did not default to the saved rhythm");
         await generate();
         check(editor.project.parts.every((part, index) => part.parameters.rpVariationID === originalVariations[index]),
             "Generating a desktop jjSwing song changed its saved variations");
@@ -296,6 +310,25 @@
         if (desktopFixture.styles) {
             const bytes = Uint8Array.from(atob(desktopFixture.styles), character => character.charCodeAt(0));
             styleArchive = new MemoryStyleArchive(bytes.buffer);
+            const missingStyle = "MissingExampleForRoundTrip.sty-ID";
+            const saved = DesktopSongFiles.readSong(desktopFixture.song);
+            const savedMix = DesktopSongFiles.readMix(desktopFixture.mix).map(track =>
+                track.rhythmId === "jjSwing-ID" ? { ...track, rhythmId: missingStyle } : track);
+            for (const part of saved.parts) part.styleId = missingStyle;
+            saved.parts[0].parameters.rpVariationID = "Uninstalled style variation";
+            editor.open(saved, savedMix, null, true);
+            await generate();
+            check(song.parts.some(part => part.styleId !== missingStyle) && editor.status.textContent.includes("MissingExampleForRoundTrip"),
+                "Unavailable native rhythm did not produce a temporary accompaniment");
+            const roundTrip = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(editor.project));
+            check(roundTrip.parts.every(part => part.styleId === missingStyle)
+                && roundTrip.parts[0].parameters.rpVariationID === "Uninstalled style variation",
+                "Temporary playback replaced the saved native rhythm or variation");
+            check(DesktopSongFiles.readMix(editor.desktopMixXml()).some(track => track.rhythmId === missingStyle),
+                "Temporary playback replaced the saved native mix");
+            await generate();
+            check(editor.nativeMix.some(track => track.rhythmId === missingStyle), "Regenerating the substitute lost the native mix");
+            report.missingStyleRoundTrip = true;
         }
         report.repertoire = [];
         for (const fixture of desktopFixture.repertoire) {
