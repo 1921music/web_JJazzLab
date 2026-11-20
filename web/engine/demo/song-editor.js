@@ -2,6 +2,11 @@
 
 const partMarkers = ["theme", "solo", "theme2", "theme3", "theme4", "solo2", "solo3", "solo4"];
 
+function desktopColor(value) {
+    if (typeof value !== "string" || !/^-?\d+$/u.test(value)) return undefined;
+    return `#${(Number(value) & 0xffffff).toString(16).padStart(6, "0")}`;
+}
+
 function downloadSongFile(name, data, type) {
     const url = URL.createObjectURL(new Blob([data], { type }));
     const link = document.createElement("a");
@@ -327,10 +332,23 @@ class SongEditor {
     }
 
     handleBarKey(event, bar) {
-        const columns = getComputedStyle(this.grid).gridTemplateColumns.split(" ").length;
-        const motion = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -columns, ArrowDown: columns }[event.key];
-        if (motion) {
-            event.preventDefault(); this.selectBar(bar + motion, event.shiftKey, true);
+        if (event.key.startsWith("Arrow")) {
+            event.preventDefault();
+            const direction = event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 1;
+            let nextBar = bar + direction;
+            if (event.key === "ArrowUp" || event.key === "ArrowDown") {
+                const cells = [...this.grid.children];
+                const current = cells[bar];
+                while (cells[nextBar] && cells[nextBar].offsetTop === current.offsetTop) nextBar += direction;
+                if (!cells[nextBar]) return;
+                const rowTop = cells[nextBar].offsetTop;
+                for (let other = nextBar + direction; cells[other]?.offsetTop === rowTop; other += direction) {
+                    if (Math.abs(cells[other].offsetLeft - current.offsetLeft) < Math.abs(cells[nextBar].offsetLeft - current.offsetLeft)) {
+                        nextBar = other;
+                    }
+                }
+            }
+            this.selectBar(nextBar, event.shiftKey, true);
         } else if (event.code === "Space" && (event.ctrlKey || event.metaKey)) {
             event.preventDefault(); this.playSelection();
         } else if (event.key === "Enter" || event.key === " ") {
@@ -352,6 +370,8 @@ class SongEditor {
         if (menu === this.contextMenu) {
             menu.querySelector('[data-action="chord"]').hidden = !this.selectedChord;
             menu.querySelector('[data-action="paste"]').disabled = !this.barClipboard;
+            const [first, last] = this.selectedRange();
+            menu.querySelector('[data-action="remove-bars"]').disabled = last - first + 1 >= this.project.bars;
             const restart = menu.querySelector('[data-action="restart"]');
             restart.disabled = this.selectedRange()[0] !== this.selectedRange()[1];
             restart.setAttribute("aria-pressed", String(this.project.loopRestartBar === this.selectedBar));
@@ -405,6 +425,9 @@ class SongEditor {
                     this.project.bars++;
                 });
                 break;
+            case "remove-bars":
+                this.removeBars(first, last);
+                break;
             case "end":
                 this.editArrangement(() => {
                     const removed = this.project.sections.findIndex(section => section.bar > last);
@@ -417,6 +440,49 @@ class SongEditor {
                     this.project.sections.splice(removed);
                 });
         }
+    }
+
+    removeBars(first, last) {
+        const count = last - first + 1;
+        if (count >= this.project.bars) return;
+        this.editArrangement(() => {
+            const { sections, parts, chords } = this.project;
+            const replaceInitial = first === 0 && sections.some(section => section.bar === last + 1);
+            const isRemoved = bar => bar >= first && bar <= last;
+            const movedBar = bar => bar > last ? bar - count : bar;
+            const sectionIndices = new Map();
+            const nextSections = [];
+            sections.forEach((section, index) => {
+                if (isRemoved(section.bar) && (index !== 0 || replaceInitial)) return;
+                sectionIndices.set(index, nextSections.length);
+                nextSections.push({ ...section, bar: movedBar(section.bar) });
+            });
+            const nextChords = chords.filter(chord => !isRemoved(chord.bar))
+                .map(chord => ({ ...chord, bar: movedBar(chord.bar) }));
+            for (const chord of nextChords) {
+                const section = nextSections.findLast(item => item.bar <= chord.bar);
+                const beats = DesktopSongFiles.meters[section.meter][1];
+                if (chord.beat < beats) continue;
+                // A cut can remove a section boundary and put surviving chords in a shorter meter.
+                const occupied = new Set(nextChords.filter(other => other.bar === chord.bar).map(other => other.beat));
+                let beat = beats - 0.5;
+                while (beat >= 0 && occupied.has(beat)) beat -= 0.5;
+                if (beat < 0) throw new Error(t("削除後の拍子に収まらないコードがあります。", "Some chords do not fit the time signature after deletion."));
+                chord.beat = beat;
+            }
+            const nextParts = parts.filter(part => sectionIndices.has(part.section))
+                .map(part => ({ ...part, section: sectionIndices.get(part.section) }));
+            const restart = this.project.loopRestartBar;
+            Object.assign(this.project, {
+                bars: this.project.bars - count, sections: nextSections, chords: nextChords,
+                parts: nextParts.length ? nextParts : [{ ...parts[0], section: 0, name: nextSections[0].name }],
+                annotations: (this.project.annotations ?? []).filter(note => !isRemoved(note.bar))
+                    .map(note => ({ ...note, bar: movedBar(note.bar) })),
+                loopRestartBar: restart === undefined || isRemoved(restart) ? undefined : movedBar(restart)
+            });
+            this.selectedBar = this.selectionAnchor = Math.min(first, this.project.bars - 1);
+            this.selectedChord = this.selectedPart = null;
+        });
     }
 
     trimBarExtras(last) {
@@ -520,8 +586,10 @@ class SongEditor {
             const before = this.captureEdit();
             if (this.editingAnnotation) {
                 const text = this.annotationField.value.trim();
-                this.project.annotations = (this.project.annotations ?? []).filter(note => note.bar !== bar);
-                if (text) this.project.annotations.push({ bar, text });
+                const notes = this.project.annotations ?? [];
+                const previous = notes.find(note => note.bar === bar);
+                this.project.annotations = notes.filter(note => note.bar !== bar);
+                if (text) this.project.annotations.push({ ...previous, bar, text });
             } else if (this.editingSection) this.setSectionName(bar, this.sectionField.value.trim(), this.sectionMeter.value);
             else if (this.editingChord) {
                 const parsed = this.parseBarChords(bar, this.chordField.value);
@@ -827,7 +895,9 @@ class SongEditor {
         this.removeBar.disabled = bars < 2 || sections.at(-1).bar === bars - 1;
         this.grid.replaceChildren();
         const chordsByBar = Map.groupBy(chords, chord => chord.bar);
-        const colors = ["#e7ac83", "#9bb487", "#8bbab5", "#b1a7d0", "#d4c381", "#9cb5d6"];
+        const defaultColors = ["#e7ac83", "#9bb487", "#8bbab5", "#b1a7d0", "#d4c381", "#9cb5d6"];
+        const colors = sections.map((section, index) =>
+            desktopColor(section.clientProperties?.PropSectionColor) ?? defaultColors[index % defaultColors.length]);
         let sectionIndex = 0;
         for (let bar = 0; bar < bars; bar++) {
             if (sections[sectionIndex + 1]?.bar === bar) sectionIndex++;
@@ -838,8 +908,9 @@ class SongEditor {
             const cell = document.createElement("div");
             cell.className = "score-bar";
             cell.setAttribute("role", "option");
-            cell.style.setProperty("--section-color", colors[sectionIndex % colors.length]);
+            cell.style.setProperty("--section-color", colors[sectionIndex]);
             cell.classList.toggle("section-start", start);
+            if (start && section.clientProperties?.PropSectionStartOnNewLine === "true") cell.style.gridColumnStart = "1";
             const names = symbols.map(chord => chord.name).join(", ") || t("コードなし", "no chords");
             cell.setAttribute("aria-label", t(`${bar + 1}小節、${section.name}、${meter}、${names}`, `Bar ${bar + 1}, ${section.name}, ${meter}, ${names}`));
             const number = document.createElement("span");
@@ -861,6 +932,8 @@ class SongEditor {
             for (const [index, chord] of symbols.entries()) {
                 const symbol = document.createElement("span");
                 symbol.className = "chord-symbol";
+                const color = desktopColor(chord.clientProperties?.SongPropUserFontColor);
+                if (color) symbol.style.color = color;
                 const next = symbols[index + 1];
                 const late = !next && chord.beat / beats >= 0.75;
                 const compact = symbols.length > 2 || (next && next.beat - chord.beat < 1);

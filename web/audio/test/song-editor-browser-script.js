@@ -49,6 +49,13 @@
         fourth.dispatchEvent(new Event("change"));
         check(!song && !playButton.disabled && document.querySelector("#generate").hidden, "Play requires a manual generation step");
         playButton.click();
+        editor.grid.children[1].dispatchEvent(new MouseEvent("contextmenu"));
+        editor.contextMenu.querySelector('[data-action="remove-bars"]').click();
+        check(editor.project.bars === 3 && editor.project.sections[1].bar === 2,
+            "Deleting a middle bar did not move the following section");
+        editor.undoButton.click();
+        check(editor.project.bars === 4 && editor.project.sections[1].bar === 3,
+            "Undo did not restore the deleted bar and section position");
         while (starting || generating) await new Promise(resolve => setTimeout(resolve, 20));
         check(playing, `Play did not prepare the song: ${status.textContent} ${playStatus.textContent}`);
         await player.pause();
@@ -87,6 +94,19 @@
         check(editor.barDialog.open && !document.querySelector("#chord-interpretation").hidden, "Chord interpretation editor did not open");
         const scale = document.querySelector("#chord-scale");
         for (let attempt = 0; scale.options.length < 2 && attempt < 50; attempt++) {
+        const decorated = structuredClone(annotated);
+        decorated.tags = ["Practice & rehearsal"];
+        decorated.clientProperties = { PropClEditorZoomFactorY: "62" };
+        decorated.sections[0].clientProperties = { PropSectionStartOnNewLine: "true" };
+        decorated.chords[0].clientProperties = { SongPropUserFontColor: "-65536" };
+        decorated.annotations[0].clientProperties = { TestAnnotationProperty: "<memo>" };
+        decorated.parts[0].clientProperties = { TestPartProperty: "1" };
+        const restored = DesktopSongFiles.readSong(DesktopSongFiles.writeSong(decorated));
+        check(restored.tags[0] === decorated.tags[0] && restored.clientProperties.PropClEditorZoomFactorY === "62"
+            && restored.sections[0].clientProperties.PropSectionStartOnNewLine === "true"
+            && restored.chords[0].clientProperties.SongPropUserFontColor === "-65536"
+            && restored.annotations[0].clientProperties.TestAnnotationProperty === "<memo>"
+            && restored.parts[0].clientProperties.TestPartProperty === "1", "Native display properties or tags did not round-trip");
             await new Promise(resolve => setTimeout(resolve, 20));
         }
         check(scale.options.length > 1, "JJazzLab scales were not available for the current chord");

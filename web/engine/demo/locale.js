@@ -4,6 +4,7 @@ const labels = new Map(`
 メインメニュー|Main menu
 ファイル|File
 編集|Edit
+選択小節を削除|Delete selected bars
 コードの発音|Chord interpretation
 アクセント|Accent
 既定|Default

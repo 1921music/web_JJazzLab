@@ -65,6 +65,12 @@ const DesktopSongFiles = (() => {
             ...(scale ? { scale: { index: attr(scale, "spStdScaleIndex"), pitch: attr(scale, "spStartNotePitch") } } : {}) };
     }
 
+    function readClientProperties(owner, name = "spClientProperties") {
+        const properties = resolve(child(resolve(child(owner, name)), "properties"));
+        const entries = [...(properties?.children ?? [])].map(entry => [...entry.children].map(value => resolve(value).textContent));
+        return entries.length ? { clientProperties: Object.fromEntries(entries) } : {};
+    }
+
     function readSong(xml) {
         const root = parse(xml, "Song", "4");
         const leadSheet = resolve(child(root, "spChordLeadSheet"));
@@ -73,14 +79,14 @@ const DesktopSongFiles = (() => {
         const items = Array.from(child(leadSheet, "spItems")?.children ?? []);
         const annotations = items.filter(item => attr(item, "resolves-to") === "CLI_BarAnnotationImplSP").map(item => ({
             bar: number(attr(item, "spBarIndex"), "小節メモの位置", 0, bars - 1),
-            text: content(item, "spAnnotation")
+            text: content(item, "spAnnotation"), ...readClientProperties(item)
         }));
         const restart = items.find(item => attr(item, "resolves-to") === "CLI_LoopRestartBarImplSP");
         const sectionNodes = items.filter(item => attr(item, "resolves-to") === "CLI_SectionImplSP");
         const sections = sectionNodes.map(section => ({
             name: attr(section, "spName"),
             bar: number(attr(section, "spBarIndex"), "セクションの小節", 0, bars - 1),
-            meter: attr(section, "spTs")
+            meter: attr(section, "spTs"), ...readClientProperties(section)
         }));
         const chords = items.filter(item => attr(item, "resolves-to") === "CLI_ChordSymbolSP").map(item => {
             const chord = resolve(child(item, "spChord"));
@@ -99,7 +105,7 @@ const DesktopSongFiles = (() => {
             } : undefined;
             return { name, bar: Number(match[1] ?? 0), beat: Number(match[2].replace(",", ".")),
                 ...(originalName && originalName !== attr(chord, "spName") ? { originalName } : {}),
-                ...readRendering(chord), ...(alternate ? { alternate } : {}) };
+                ...readRendering(chord), ...(alternate ? { alternate } : {}), ...readClientProperties(item) };
         });
         const parts = Array.from(child(structure, "spSpts")?.children ?? []).map(part => {
             const section = sectionNodes.indexOf(resolve(child(part, "spParentSection")));
@@ -108,7 +114,7 @@ const DesktopSongFiles = (() => {
                 .map(entry => Array.from(entry.children, value => resolve(value).textContent))
                 .filter(pair => pair.length === 2));
             return { name: attr(part, "spName"), section, styleId: attr(part, "spRhythmId"),
-                styleName: content(part, "spRhythmName"), parameters };
+                styleName: content(part, "spRhythmName"), parameters, ...readClientProperties(part) };
         });
         const userTracks = Array.from(child(root, "spMapUserPhrases")?.children ?? []).map(entry => ({
             name: resolve(entry.firstElementChild).textContent,
@@ -117,7 +123,9 @@ const DesktopSongFiles = (() => {
         if (sections.length === 0 || sections[0].bar !== 0 || parts.length === 0) {
             throw new Error("曲に譜面セクションと演奏区間が必要です。");
         }
-        return validateSong({ title: attr(root, "spName"), comments: content(root, "spComments"),
+        const tags = [...(resolve(child(root, "spTags"))?.children ?? [])].map(tag => resolve(tag).textContent);
+        return validateSong({ title: attr(root, "spName"), comments: content(root, "spComments"), tags,
+            ...readClientProperties(root, "spClientPropertiesV3"),
             tempo: number(attr(root, "spTempo"), "テンポ", 20, 400),
             bars, sections, chords, parts, userTracks, annotations,
             ...(restart ? { loopRestartBar: number(attr(restart, "spBarIndex"), "ループの折り返し位置", 0, bars - 1) } : {}) });
@@ -229,6 +237,14 @@ const DesktopSongFiles = (() => {
     })[char]);
     const xmlText = (tag, value) => `<${tag}>${escape(value)}</${tag}>`;
 
+    function writeClientProperties(item, ownerClass) {
+        const tag = ownerClass ? "spClientProperties" : "spClientPropertiesV3";
+        const entries = Object.entries(item.clientProperties ?? {}).map(([key, value]) =>
+            `<entry>${xmlText("string", key)}${xmlText("string", value)}</entry>`).join("");
+        const owner = ownerClass ? `<owner class="${ownerClass}" reference="../.."/>` : "";
+        return `<${tag}>${entries ? `<properties>${entries}</properties>` : ""}${owner}</${tag}>`;
+    }
+
     function writeRendering(chord) {
         const scale = chord.scale
             ? `<StdScaleInstance resolves-to="StdScaleInstanceSP" spVERSION="2" spStdScaleIndex="${escape(chord.scale.index)}" spStartNotePitch="${escape(chord.scale.pitch)}"/>`
@@ -250,7 +266,7 @@ const DesktopSongFiles = (() => {
     function writeSong(song) {
         const sections = song.sections.map(section => ({ bar: section.bar, beat: -1, xml:
             `<CLI__SectionImpl resolves-to="CLI_SectionImplSP" spName="${escape(section.name)}" spTs="${escape(section.meter)}" spBarIndex="${section.bar}">`
-            + '<spVERSION>4</spVERSION><spClientProperties><owner class="CLI_SectionImpl" reference="../.."/></spClientProperties></CLI__SectionImpl>' }));
+            + '<spVERSION>4</spVERSION>' + writeClientProperties(section, "CLI_SectionImpl") + '</CLI__SectionImpl>' }));
         const chords = song.chords.map(chord => {
             const start = chord.name === "NC" ? '<spChord class="NCExtChordSymbol" resolves-to="NCExtChordSymbolSP" spVERSION="2" spName="NCExtChordSymbol">'
                 : `<spChord resolves-to="ExtChordSymbolSP" spName="${escape(chord.name)}" spOriginalName="${escape(chord.originalName ?? chord.name)}"><spVERSION>3</spVERSION>`;
@@ -258,12 +274,12 @@ const DesktopSongFiles = (() => {
                 '<CLI__ChordSymbolImpl resolves-to="CLI_ChordSymbolSP"><spVERSION>3</spVERSION>' + start
                 + writeRendering(chord) + writeAlternate(chord.alternate) + '</spChord>'
                 + `<spPos resolves-to="PositionSP" spVERSION="2" spPos="[${chord.bar}:${chord.beat}]"/>`
-                + '<spClientProperties><owner class="CLI_ChordSymbolImpl" reference="../.."/></spClientProperties></CLI__ChordSymbolImpl>' };
+                + writeClientProperties(chord, "CLI_ChordSymbolImpl") + '</CLI__ChordSymbolImpl>' };
         });
         const extras = (song.annotations ?? []).map(note => ({ bar: note.bar, beat: -0.5,
             xml: `<CLI__BarAnnotationImpl resolves-to="CLI_BarAnnotationImplSP" spVERSION="2" spBarIndex="${note.bar}">`
                 + xmlText("spAnnotation", note.text)
-                + '<spClientProperties><owner class="CLI_BarAnnotationImpl" reference="../.."/></spClientProperties></CLI__BarAnnotationImpl>' }));
+                + writeClientProperties(note, "CLI_BarAnnotationImpl") + '</CLI__BarAnnotationImpl>' }));
         if (song.loopRestartBar !== undefined) extras.push({ bar: song.loopRestartBar, beat: -0.25,
             xml: `<CLI__LoopRestartBarImpl resolves-to="CLI_LoopRestartBarImplSP" spVERSION="1" spBarIndex="${song.loopRestartBar}"/>` });
         const items = [...sections, ...chords, ...extras].sort((a, b) => a.bar - b.bar || a.beat - b.beat).map(item => item.xml);
@@ -277,7 +293,7 @@ const DesktopSongFiles = (() => {
             const block = `<SongPartImpl resolves-to="SongPartImplSP" spRhythmId="${escape(part.styleId)}" spRhythmTs="${escape(section.meter)}" spStartBarIndex="${start}" spName="${escape(part.name)}" spNbBars="${length}">`
                 + '<spVERSION>3</spVERSION>' + xmlText("spRhythmName", part.styleName)
                 + `<spParentSection class="CLI_SectionImpl" reference="../../../../spChordLeadSheet/spItems/CLI__SectionImpl${suffix}"/>`
-                + '<spClientProperties><owner class="SongPartImpl" reference="../.."/></spClientProperties>'
+                + writeClientProperties(part, "SongPartImpl")
                 + `<spHashMapRpIdValue>${parameters}</spHashMapRpIdValue></SongPartImpl>`;
             start += length;
             return block;
@@ -285,12 +301,12 @@ const DesktopSongFiles = (() => {
         const users = song.userTracks.map(track => `<entry>${xmlText("string", track.name)}<Phrase resolves-to="PhraseSP" spVERSION="2">`
             + `${xmlText("spSaveString", track.phrase)}</Phrase></entry>`);
         return `<Song resolves-to="SongSP" spName="${escape(song.title)}" spTempo="${song.tempo}">\n<spVERSION>4</spVERSION>`
-            + xmlText("spComments", song.comments) + '<spTags/>'
+            + xmlText("spComments", song.comments) + `<spTags>${(song.tags ?? []).map(tag => xmlText("string", tag)).join("")}</spTags>`
             + '<spChordLeadSheet class="ChordLeadSheetImpl" resolves-to="ChordLeadSheetImplSP"><spVERSION>3</spVERSION>'
             + `<spItems>\n${items.join("\n")}\n</spItems><spSize>${song.bars}</spSize></spChordLeadSheet>`
             + '<spSongStructure class="SongStructureImpl" resolves-to="SongStructureImplSP"><spVERSION>3</spVERSION>'
             + `<spSpts>\n${arrangement.join("\n")}\n</spSpts><spParentCls class="ChordLeadSheetImpl" reference="../../spChordLeadSheet"/></spSongStructure>`
-            + `<spMapUserPhrases>\n${users.join("\n")}\n</spMapUserPhrases><spClientPropertiesV3/></Song>\n`;
+            + `<spMapUserPhrases>\n${users.join("\n")}\n</spMapUserPhrases>${writeClientProperties(song)}</Song>\n`;
     }
 
     function writeMix(tracks) {
